@@ -64,6 +64,14 @@ Il progetto è composto da tre componenti:
 | **Preferences** (`prefs.js` + `prefs.blp`) | GJS / Blueprint / Libadwaita | Pannello impostazioni nativo con binding GSettings live |
 | **Daemon** (`daemon/main.py`) | Python / dasbus | Cattura audio, wake word detection, riconoscimento vocale |
 
+```mermaid
+graph LR
+    Extension["GNOME Extension<br/>(extension.js)"] <-->|D-Bus Session Bus| Daemon["Daemon Python<br/>(main.py)"]
+    Extension <-->|GSettings| SharedConfig[("GSettings")]
+    Prefs["Preferences UI<br/>(prefs.js + prefs.blp)"] <-->|GSettings| SharedConfig
+    Prefs <-->|D-Bus| Daemon
+```
+
 ---
 
 ## 📁 Struttura del Progetto

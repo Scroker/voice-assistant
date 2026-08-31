@@ -6,34 +6,28 @@
 
 Voice Assistant è un'estensione GNOME Shell che implementa un assistente vocale **completamente locale** (nessun dato lascia la macchina). L'architettura è a **tre livelli** con comunicazione bidirezionale su D-Bus.
 
-```
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                              GNOME Shell (GJS)                                 │
-│  ┌───────────────────┐          ┌───────────────────────────────────────────┐  │
-│  │   extension.js    │◄────────►│        prefs.js + data/ui/prefs.blp       │  │
-│  │  (Panel Indicator) │  GSettings  │     (Libadwaita Declarative UI)           │  │
-│  └────────┬──────────┘          └──────────┬────────────────────────────────┘  │
-│           │ D-Bus (Session Bus)             │ GSettings                            │
-│           │ org.local.VoiceAssistant        │ (bind diretto)                       │
-└───────────┼────────────────────────────────┼───────────────────────────────────┘
-            │                                │
-            ▼                                ▼
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                    Python Daemon (systemd user service)                        │
-│  ┌──────────────────────────────────────────────────────────────────────────┐  │
-│  │  main.py — VoiceAssistant (dasbus @dbus_interface)                       │  │
-│  │   ├── audio_callback → queue.Queue → _audio_loop thread                  │  │
-│  │   ├── Wake Word engine (Vosk small-it, fisso)                            │  │
-│  │   ├── STT provider (Vosk | Whisper, selezionabile)                       │  │
-│  │   └── PowerInhibitor (logind + GNOME SessionManager)                     │  │
-│  └──────────────────────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────────────────────┐  │
-│  │  providers/                                                              │  │
-│  │   ├── base.py        — STTProvider (ABC)                                 │  │
-│  │   ├── vosk_provider  — streaming reale (KaldiRecognizer)                 │  │
-│  │   └── whisper_provider — batch (faster-whisper)                          │  │
-│  └──────────────────────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph GNOME_Shell ["GNOME Shell (GJS)"]
+        ext["extension.js<br/>(Panel Indicator)"]
+        prefs["prefs.js + data/ui/prefs.blp<br/>(Libadwaita Declarative UI)"]
+        ext <-->|GSettings| prefs
+    end
+
+    subgraph Python_Daemon ["Python Daemon (systemd user service)"]
+        main["main.py — VoiceAssistant<br/>(dasbus @dbus_interface)"]
+        subgraph Providers ["providers/"]
+            base["base.py — STTProvider"]
+            vosk["vosk_provider (Kaldi)"]
+            whisper["whisper_provider (faster-whisper)"]
+            base --> vosk
+            base --> whisper
+        end
+        main --> Providers
+    end
+
+    ext <-->|D-Bus Session Bus| main
+    prefs -->|GSettings Direct Bind| main
 ```
 
 ---
@@ -53,25 +47,23 @@ Il processo viene avviato da `start.sh` tramite systemd e si registra sul Sessio
 
 ### State Machine
 
-```
-                 ┌──────────────────────────────┐
-                 │         downloading           │
-                 │ (modello non ancora pronto)   │
-                 └──────────────┬───────────────┘
-                                │ provider caricato
-                                ▼
-    ┌──────────┐         ┌──────────┐         ┌──────────────┐
-    │ disabled │◄───────►│   idle   │────────►│  listening   │
-    │ (microfono│ toggle  │(wakeword │ wakeword│  (STT attivo) │
-    │  chiuso)  │         │ attivo)  │ rilevata│              │
-    └──────────┘         └──────────┘         └──────┬───────┘
-                                ▲                     │
-                                │    testo/silenzio   │
-                                │                     ▼
-                                │              ┌──────────────┐
-                                └──────────────│  processing  │
-                                               │  (LLM / MCP) │
-                                               └──────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> disabled
+    disabled --> idle : ToggleListening() / GSettings enabled=true
+    idle --> disabled : ToggleListening() / GSettings enabled=false
+    
+    idle --> listening : Wakeword rilevata
+    listening --> processing : Testo/Silenzio
+    processing --> idle : Completato
+
+    state downloading {
+        [*] --> ScaricamentoModello
+        ScaricamentoModello --> [*] : Modello Pronto
+    }
+
+    idle --> downloading : Richiesta Download
+    downloading --> idle : Modello caricato
 ```
 
 ---
@@ -80,22 +72,19 @@ Il processo viene avviato da `start.sh` tramite systemd e si registra sul Sessio
 
 ### Ciclo di Vita
 
-```
-enable()
-  ├── Registra GResource (icone SVG, D-Bus XML, UI prefs compilata, servizi systemd)
-  ├── Crea AssistantIndicator (PanelMenu.Button nella top bar con stili stylesheet.css)
-  ├── Registra Keybinding nativa GNOME ('toggle-shortcut' -> <Super>v)
-  └── setupDaemonServices(extensionDir)
-        ├── Legge i template .service.in da GResource
-        ├── Scrive voice-assistant.service in ~/.config/systemd/user/
-        ├── Scrive org.local.VoiceAssistant.service in ~/.local/share/dbus-1/services/
-        ├── systemctl --user daemon-reload
-        └── systemctl --user start voice-assistant.service
+```mermaid
+flowchart TD
+    subgraph enable ["enable()"]
+        A1["1. Registra GResource<br/>(Icone SVG, D-Bus XML, UI prefs compilata)"] --> A2["2. Crea AssistantIndicator<br/>(PanelMenu.Button + stylesheet.css)"]
+        A2 --> A3["3. Registra Keybinding Nativa<br/>(toggle-shortcut -> Super+V)"]
+        A3 --> A4["4. setupDaemonServices()<br/>(Inietta unit Systemd & D-Bus da GResource)"]
+        A4 --> A5["5. Avvia Servizio Systemd"]
+    end
 
-disable()
-  ├── Rimuove la Keybinding nativa
-  ├── Distrugge l'indicatore
-  └── De-registra GResource
+    subgraph disable ["disable()"]
+        B1["1. Rimuovi Keybinding Nativa"] --> B2["2. Distruggi Indicatore Top Bar"]
+        B2 --> B3["3. Deregistra GResource"]
+    end
 ```
 
 ### D-Bus Proxy
