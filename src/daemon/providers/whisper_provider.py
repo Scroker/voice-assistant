@@ -41,6 +41,7 @@ class WhisperProvider(STTProvider):
             def __init__(self, original_stderr):
                 self.original_stderr = original_stderr
                 self.pattern_pct = re.compile(r'(\d{1,3})%')
+                self.pattern_size = re.compile(r'([\d.]+)\s*([kMGT]?B)')
 
             def write(self, buf):
                 self.original_stderr.write(buf.replace('\r', '\n'))
@@ -61,11 +62,36 @@ class WhisperProvider(STTProvider):
                     cb = info.get('cb')
                     tdir = info.get('target_dir')
                     state = info.get('state')
-                    if not (cb and tdir and state):
+                    if not (cb and state):
                         continue
 
                     percent = None
-                    if os.path.isdir(tdir):
+
+                    # 1. Prova prima la percentuale esplicita nel buffer (es. "45%")
+                    match_pct = self.pattern_pct.search(buf)
+                    if match_pct:
+                        val = int(match_pct.group(1))
+                        if 0 <= val <= 100:
+                            percent = min(99, val)
+
+                    # 2. Prova a estrarre la dimensione scaricata nel buffer (es. "23.2MB")
+                    if percent is None:
+                        match_size = self.pattern_size.search(buf)
+                        if match_size:
+                            val = float(match_size.group(1))
+                            unit = match_size.group(2)
+                            
+                            if unit == "B": dl_mb = val / (1024 * 1024)
+                            elif unit == "kB": dl_mb = val / 1024
+                            elif unit == "MB": dl_mb = val
+                            elif unit == "GB": dl_mb = val * 1024
+                            else: dl_mb = val
+                            
+                            total_mb = sizes.get(ms, 140)
+                            percent = min(99, max(0, int((dl_mb / total_mb) * 100)))
+
+                    # 3. Fallback: dimensione cartella su disco (es. file già decompressi/spostati)
+                    if percent is None and tdir and os.path.isdir(tdir):
                         total_mb = sizes.get(ms, 140)
                         try:
                             total_bytes = sum(
@@ -77,13 +103,6 @@ class WhisperProvider(STTProvider):
                             percent = min(99, max(0, int((dl_mb / total_mb) * 100)))
                         except Exception:
                             percent = None
-
-                    if percent is None:
-                        match_pct = self.pattern_pct.search(buf)
-                        if match_pct:
-                            val = int(match_pct.group(1))
-                            if 0 <= val <= 100:
-                                percent = val
 
                     if percent is not None and percent > state['pct']:
                         state['pct'] = percent
