@@ -275,17 +275,17 @@ const AssistantIndicator = GObject.registerClass(
                 case 'listening':
                     this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
-                    this._icon.set_style('color: #3584e4;');
+                    this._icon.set_style('color: #3584e4;'); // Blu GNOME
                     break;
                 case 'processing':
                     this._icon.gicon = null;
                     this._icon.icon_name = 'brain-augmented-symbolic';
-                    this._icon.set_style('color: #e5a50a;');
+                    this._icon.set_style('color: #e5a50a;'); // Giallo/Arancio GNOME
                     break;
                 case 'speaking':
-                    this._icon.gicon = null;
-                    this._icon.icon_name = 'audio-volume-high-symbolic';
-                    this._icon.set_style('color: #3584e4;');
+                    this._icon.icon_name = null;
+                    this._icon.gicon = this._customGIcon;
+                    this._icon.set_style('color: #2ec27e;'); // Verde GNOME
                     break;
                 case 'downloading':
                     this._icon.gicon = null;
