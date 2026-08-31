@@ -505,9 +505,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 const row = new Adw.ActionRow({
                     title: m.name,
                     subtitle: m.subtitle || `${m.provider.toUpperCase()} • ${m.size_text || ''}`,
-                    activatable: true,
-                    margin_top: 4,
-                    margin_bottom: 4
+                    activatable: true
                 });
 
                 const checkBtn = new Gtk.CheckButton({
