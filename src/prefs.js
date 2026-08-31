@@ -687,12 +687,31 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         // 3. INTELLIGENZA ARTIFICIALE (LLM) BINDINGS
         // ==========================================
         const llmEnableRow = builder.get_object('llm_enable_row');
+        const llmModeRow = builder.get_object('llm_mode_row');
+        const llmSystemPromptRow = builder.get_object('llm_system_prompt_row');
         const llmUrlRow = builder.get_object('llm_url_row');
         const llmModelRow = builder.get_object('llm_model_row');
 
         settings.bind('llm-enabled', llmEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        settings.bind('llm-system-prompt', llmSystemPromptRow, 'text', Gio.SettingsBindFlags.DEFAULT);
         settings.bind('llm-url', llmUrlRow, 'text', Gio.SettingsBindFlags.DEFAULT);
         settings.bind('llm-model', llmModelRow, 'text', Gio.SettingsBindFlags.DEFAULT);
+
+        let currentLlmMode = settings.get_string('llm-mode') || 'local';
+        llmModeRow.selected = (currentLlmMode === 'ollama' || currentLlmMode === 'http') ? 1 : 0;
+
+        const updateLlmModeVisibility = () => {
+            let isExternal = (llmModeRow.selected === 1);
+            llmUrlRow.visible = isExternal;
+            llmModelRow.visible = isExternal;
+        };
+        updateLlmModeVisibility();
+
+        llmModeRow.connect('notify::selected', () => {
+            let newMode = (llmModeRow.selected === 1) ? 'ollama' : 'local';
+            settings.set_string('llm-mode', newMode);
+            updateLlmModeVisibility();
+        });
 
 
         // ==========================================

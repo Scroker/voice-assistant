@@ -72,9 +72,14 @@
       <description>Le istruzioni iniziali che guidano la personalità dell'assistente.</description>
     </key>
     <key name="llm-temperature" type="d">
-      <default>0.7</default>
+      <default>0.3</default>
       <summary>Temperatura LLM</summary>
       <description>Parametro di creatività delle risposte (da 0.0 a 1.0).</description>
+    </key>
+    <key name="llm-mode" type="s">
+      <default>'local'</default>
+      <summary>Modalità esecuzione LLM</summary>
+      <description>Modalità di esecuzione LLM ('local', 'ollama', 'http').</description>
     </key>
     <key name="tts-engine" type="s">
       <default>'piper'</default>

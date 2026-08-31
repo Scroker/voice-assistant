@@ -230,19 +230,34 @@ Adw.NavigationSplitView split_view {
               Adw.PreferencesPage llm_page {
                 Adw.PreferencesGroup {
                   title: _("Large Language Model (LLM)");
-                  description: _("Configure the connection to the local LLM server (Ollama / LocalAI) for intelligent response processing.");
+                  description: _("Configure the in-daemon local GGUF model or external server (Ollama / LocalAI).");
 
                   Adw.SwitchRow llm_enable_row {
                     title: _("Enable LLM Responses");
-                    subtitle: _("Send voice transcriptions to the LLM to generate complex responses");
+                    subtitle: _("Send voice transcriptions to the LLM to generate intelligent responses");
+                  }
+
+                  Adw.ComboRow llm_mode_row {
+                    title: _("Execution Engine");
+                    subtitle: _("Choose between native in-daemon GGUF or external HTTP server");
+                    model: Gtk.StringList {
+                      strings: [
+                        "Local GGUF (In-Daemon Llama 3.2)",
+                        "External HTTP (Ollama / LocalAI)"
+                      ];
+                    };
+                  }
+
+                  Adw.EntryRow llm_system_prompt_row {
+                    title: _("System Prompt (Instructions)");
                   }
 
                   Adw.EntryRow llm_url_row {
-                    title: _("LLM Server URL");
+                    title: _("Ollama Server URL");
                   }
 
                   Adw.EntryRow llm_model_row {
-                    title: _("Model Name");
+                    title: _("Ollama Model Name");
                   }
                 }
               }

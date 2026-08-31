@@ -208,11 +208,18 @@ class VoiceAssistant(object):
         self.audio_player = AudioPlayer()
         self.audio_player.start()
 
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            val = self.settings.get_value(key)
+            return val.unpack() if val is not None else default
+        except Exception:
+            return default
+
         self.tts_manager = TTSServiceManager(
             audio_player=self.audio_player
         )
 
-        self.llm_service = LLMServiceManager()
+        self.llm_service = LLMServiceManager(settings_observer=self)
 
         self.pipeline_controller = PipelineController(
             state_machine=StateMachine(),
