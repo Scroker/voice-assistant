@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.voice-assistant" path="/org/gnome/shell/extensions/voice-assistant/">
+    <key name="wakeword" type="s">
+      <default>'assistente'</default>
+      <summary>Wakeword per l'assistente</summary>
+      <description>La parola chiave che il demone ascolterà per attivarsi.</description>
+    </key>
+    <key name="stt-provider" type="s">
+      <default>'vosk'</default>
+      <summary>Provider STT</summary>
+      <description>Il motore di riconoscimento vocale (vosk, whisper, ecc).</description>
+    </key>
+    <key name="stt-model" type="s">
+      <default>'vosk-model-small-it-0.22'</default>
+      <summary>Modello STT</summary>
+      <description>Il modello selezionato per il provider corrente.</description>
+    </key>
+    <key name="stt-hardware" type="s">
+      <default>'cpu'</default>
+      <summary>Hardware STT</summary>
+      <description>Dispositivo di esecuzione (es. cpu, cuda).</description>
+    </key>
+    <key name="stt-extra" type="s">
+      <default>'{}'</default>
+      <summary>Configurazioni Extra</summary>
+      <description>Configurazioni addizionali codificate in formato JSON.</description>
+    </key>
+    <key name="enabled" type="b">
+      <default>true</default>
+      <summary>Stato abilitazione assistente</summary>
+      <description>Indica se l'assistente è in ascolto della wakeword.</description>
+    </key>
+    <key name="models-dir" type="s">
+      <default>''</default>
+      <summary>Cartella salvataggio modelli</summary>
+      <description>La cartella in cui vengono salvati e cercati i modelli STT.</description>
+    </key>
+    <key name="llm-provider" type="s">
+      <default>'ollama'</default>
+      <summary>Provider LLM</summary>
+      <description>Il provider di intelligenza artificiale per l'elaborazione (ollama, llama.cpp, openai, disabled).</description>
+    </key>
+    <key name="llm-model" type="s">
+      <default>'llama3.2:3b'</default>
+      <summary>Modello LLM</summary>
+      <description>Il modello di linguaggio selezionato.</description>
+    </key>
+    <key name="llm-endpoint" type="s">
+      <default>'http://localhost:11434'</default>
+      <summary>Endpoint Server LLM</summary>
+      <description>L'URL dell'API del server LLM locale o remoto.</description>
+    </key>
+    <key name="llm-system-prompt" type="s">
+      <default>'Sei un assistente vocale integrato per GNOME Shell. Rispondi in modo breve, amichevole e preciso in lingua italiana.'</default>
+      <summary>Prompt di sistema LLM</summary>
+      <description>Le istruzioni iniziali che guidano la personalità dell'assistente.</description>
+    </key>
+    <key name="llm-temperature" type="d">
+      <default>0.7</default>
+      <summary>Temperatura LLM</summary>
+      <description>Parametro di creatività delle risposte (da 0.0 a 1.0).</description>
+    </key>
+    <key name="tts-provider" type="s">
+      <default>'piper'</default>
+      <summary>Provider Sintesi Vocale (TTS)</summary>
+      <description>Il motore di sintesi vocale (piper, coqui, espeak, disabled).</description>
+    </key>
+    <key name="tts-voice" type="s">
+      <default>'it_IT-paola-medium'</default>
+      <summary>Voce TTS</summary>
+      <description>La voce selezionata per la sintesi vocale.</description>
+    </key>
+    <key name="tts-speed" type="d">
+      <default>1.0</default>
+      <summary>Velocità parlato TTS</summary>
+      <description>Moltiplicatore velocità di riproduzione della voce.</description>
+    </key>
+    <key name="tts-enabled" type="b">
+      <default>true</default>
+      <summary>Abilitazione sintesi vocale</summary>
+      <description>Se vero, l'assistente leggerà a voce le risposte generate.</description>
+    </key>
+    <key name="mcp-enabled" type="b">
+      <default>true</default>
+      <summary>Abilitazione Protocollo MCP</summary>
+      <description>Abilita l'integrazione del Model Context Protocol per gli strumenti e le azioni dell'assistente.</description>
+    </key>
+    <key name="mcp-servers" type="s">
+      <default>'[{"id":"gnome-system","name":"Controllo Sistema GNOME","command":"internal","enabled":true}]'</default>
+      <summary>Server MCP configurati</summary>
+      <description>Lista in formato JSON dei server e degli strumenti MCP abilitati.</description>
+    </key>
+  </schema>
+</schemalist>

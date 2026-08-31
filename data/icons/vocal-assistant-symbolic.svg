@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+  <!-- Barra 1 (Sinistra) -->
+  <rect x="1" y="6" width="2" height="4" rx="1" />
+  <!-- Barra 2 -->
+  <rect x="4" y="4" width="2" height="8" rx="1" />
+  <!-- Barra 3 (Centro) -->
+  <rect x="7" y="2" width="2" height="12" rx="1" />
+  <!-- Barra 4 -->
+  <rect x="10" y="4" width="2" height="8" rx="1" />
+  <!-- Barra 5 (Destra) -->
+  <rect x="13" y="6" width="2" height="4" rx="1" />
+</svg>

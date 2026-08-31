@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/gnome/shell/extensions/voice-assistant">
+    <file preprocess="xml-stripblanks">icons/audio-input-microphone-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/audio-volume-high-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/brain-augemnted-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/brain-augmented-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/drive-harddisk-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/edit-clear-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/folder-download-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/folder-open-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/go-previous-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/help-about-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/mic-1-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/preferences-system-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/system-run-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/user-trash-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/vocal-assistant-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/web-browser-symbolic.svg</file>
+  </gresource>
+</gresources>

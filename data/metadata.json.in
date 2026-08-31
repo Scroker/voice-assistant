@@ -1,0 +1,9 @@
+{
+  "uuid": "voice-assistant@mkswap.github.io",
+  "name": "Linux Voice Assistant MCP",
+  "description": "Trigger e interfaccia per l'assistente vocale locale",
+  "shell-version": [
+    "50"
+  ],
+  "url": "https://localhost"
+}
