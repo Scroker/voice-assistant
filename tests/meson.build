@@ -34,3 +34,8 @@ test('test_services_downloader', python3,
   args: [files('test_services_downloader.py')],
   workdir: meson.project_source_root()
 )
+
+test('test_core_pipeline', python3,
+  args: [files('test_core_pipeline.py')],
+  workdir: meson.project_source_root()
+)
