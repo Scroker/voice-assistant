@@ -238,11 +238,11 @@ class VoiceAssistantSystemIndicator extends QuickSettings.SystemIndicator {
     }
 });
 
-// Pulsante nella Top Bar
+// Pulsante nella Top Bar (trigger diretto al click, senza menu a tendina)
 const AssistantIndicator = GObject.registerClass(
     class AssistantIndicator extends PanelMenu.Button {
         _init(extension) {
-            super._init(0.5, 'Voice Assistant Trigger');
+            super._init(0.5, 'Voice Assistant Trigger', true);
             this._extension = extension;
 
             this._customGIcon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg');
@@ -252,30 +252,19 @@ const AssistantIndicator = GObject.registerClass(
             });
             this.add_child(this._icon);
 
-            this._toggleItem = new PopupMenu.PopupMenuItem(_('Enable / Disable'));
-            this._toggleItem.connect('activate', () => {
-                this._extension._toggleRecording();
+            this.connect('event', (actor, event) => {
+                if (event.type() === Clutter.EventType.BUTTON_PRESS) {
+                    this._extension._toggleRecording();
+                    return Clutter.EVENT_STOP;
+                }
+                return Clutter.EVENT_PROPAGATE;
             });
-            this.menu.addMenuItem(this._toggleItem);
-
-            this._downloadItem = new PopupMenu.PopupMenuItem(_(''));
-            this._downloadItem.setSensitive(false);
-            this._downloadItem.visible = false;
-            this.menu.addMenuItem(this._downloadItem);
-
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-            this._settingsItem = new PopupMenu.PopupMenuItem(_('Preferences'));
-            this._settingsItem.connect('activate', () => {
-                this._extension.openPreferences();
-            });
-            this.menu.addMenuItem(this._settingsItem);
 
             this._updateUiState(this._extension._lastState || 'unavailable');
         }
 
         _updateUiState(state) {
-            // L'icona nella barra in alto appare SOLO quando l'assistente è attivo
+            // L'icona nella barra in alto appare SOLO quando l'assistente è attivo (non disabled o unavailable)
             if (state === 'disabled' || state === 'unavailable') {
                 this.visible = false;
                 return;
@@ -287,45 +276,27 @@ const AssistantIndicator = GObject.registerClass(
                     this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style('color: #3584e4;');
-                    if (this._toggleItem) {
-                        this._toggleItem.label.text = _('Disable Assistant');
-                        this._toggleItem.setSensitive(true);
-                    }
                     break;
                 case 'processing':
                     this._icon.gicon = null;
                     this._icon.icon_name = 'brain-augmented-symbolic';
                     this._icon.set_style('color: #e5a50a;');
-                    if (this._toggleItem) {
-                        this._toggleItem.label.text = _('Disable Assistant');
-                        this._toggleItem.setSensitive(true);
-                    }
                     break;
                 case 'speaking':
                     this._icon.gicon = null;
                     this._icon.icon_name = 'audio-volume-high-symbolic';
                     this._icon.set_style('color: #3584e4;');
-                    if (this._toggleItem) {
-                        this._toggleItem.label.text = _('Disable Assistant');
-                        this._toggleItem.setSensitive(true);
-                    }
                     break;
                 case 'downloading':
                     this._icon.gicon = null;
                     this._icon.icon_name = 'folder-download-symbolic';
                     this._icon.set_style('color: #e5a50a;');
-                    if (this._toggleItem) this._toggleItem.setSensitive(true);
                     break;
                 case 'idle':
                 default:
                     this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style(null);
-                    if (this._toggleItem) {
-                        this._toggleItem.label.text = _('Disable Assistant');
-                        this._toggleItem.setSensitive(true);
-                    }
-                    if (this._downloadItem) this._downloadItem.visible = false;
                     break;
             }
         }
