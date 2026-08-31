@@ -17,7 +17,7 @@ fi
 source venv/bin/activate
 
 # Verifica se mancano dipendenze da requirements.txt
-if ! python3 -c "import sounddevice, dasbus, vosk" &>/dev/null; then
+if ! python3 -c "import sounddevice, dasbus, vosk, llama_cpp, piper" &>/dev/null; then
     echo "Installazione/Aggiornamento dipendenze da requirements.txt..."
     pip install -r requirements.txt
 fi
