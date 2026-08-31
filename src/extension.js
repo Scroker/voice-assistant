@@ -27,6 +27,7 @@ import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 // Funzione per l'installazione dei servizi systemd e dbus (stile GSConnect)
@@ -105,18 +106,6 @@ function setupDaemonServices(extensionDir) {
     }
 }
 
-function stopDaemonService() {
-    try {
-        let stopProc = new Gio.Subprocess({
-            argv: ['systemctl', '--user', 'stop', 'voice-assistant.service'],
-            flags: Gio.SubprocessFlags.NONE
-        });
-        stopProc.init(null);
-    } catch(e) {
-        console.error(`[VoiceAssistant] Failed to stop systemd service: ${e.message}`);
-    }
-}
-
 // Definizione dell'interfaccia D-Bus (Caricata da GResource o fallback)
 let VoiceAssistantIface;
 try {
@@ -158,14 +147,90 @@ try {
 
 const VoiceAssistantProxy = Gio.DBusProxy.makeProxyWrapper(VoiceAssistantIface);
 
-// Classe del pulsante nella Top Bar
+// Quick Settings Toggle Button
+const VoiceAssistantQuickToggle = GObject.registerClass(
+class VoiceAssistantQuickToggle extends QuickSettings.QuickToggle {
+    _init(extension) {
+        super._init({
+            title: _('Voice Assistant'),
+            subtitle: _('Idle'),
+            gicon: Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg'),
+            toggleMode: true,
+        });
+
+        this._extension = extension;
+        this.connect('clicked', () => {
+            this._extension._toggleRecording();
+        });
+    }
+
+    updateUiState(state) {
+        switch (state) {
+            case 'listening':
+                this.checked = true;
+                this.subtitle = _('In ascolto...');
+                break;
+            case 'processing':
+                this.checked = true;
+                this.subtitle = _('Elaborazione...');
+                break;
+            case 'speaking':
+                this.checked = true;
+                this.subtitle = _('Riproduzione...');
+                break;
+            case 'downloading':
+                this.checked = true;
+                this.subtitle = _('Download...');
+                break;
+            case 'disabled':
+                this.checked = false;
+                this.subtitle = _('Disabilitato');
+                break;
+            case 'unavailable':
+                this.checked = false;
+                this.subtitle = _('Non disponibile');
+                break;
+            case 'idle':
+            default:
+                this.checked = true;
+                this.subtitle = _('In attesa');
+                break;
+        }
+    }
+});
+
+// Quick Settings System Indicator
+const VoiceAssistantSystemIndicator = GObject.registerClass(
+class VoiceAssistantSystemIndicator extends QuickSettings.SystemIndicator {
+    _init(extension) {
+        super._init();
+        this._extension = extension;
+        this._toggle = new VoiceAssistantQuickToggle(extension);
+        this.quickSettingsItems.push(this._toggle);
+    }
+
+    updateUiState(state) {
+        if (this._toggle) {
+            this._toggle.updateUiState(state);
+        }
+    }
+
+    destroy() {
+        if (this._toggle) {
+            this._toggle.destroy();
+            this._toggle = null;
+        }
+        super.destroy();
+    }
+});
+
+// Pulsante nella Top Bar
 const AssistantIndicator = GObject.registerClass(
     class AssistantIndicator extends PanelMenu.Button {
         _init(extension) {
             super._init(0.5, 'Voice Assistant Trigger');
             this._extension = extension;
 
-            // Creazione icona grafica
             this._customGIcon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg');
             this._icon = new St.Icon({
                 gicon: this._customGIcon,
@@ -173,20 +238,12 @@ const AssistantIndicator = GObject.registerClass(
             });
             this.add_child(this._icon);
 
-            this._settings = this._extension.getSettings('org.gnome.shell.extensions.voice-assistant');
-            
-            // Imposta lo stato visivo iniziale su non disponibile finché il demone non si connette
-            this._dbusProxy = null;
-            this._signalId = null;
-
-            // Costruzione del menu a tendina
             this._toggleItem = new PopupMenu.PopupMenuItem(_('Enable / Disable'));
             this._toggleItem.connect('activate', () => {
-                this._toggleRecording();
+                this._extension._toggleRecording();
             });
             this.menu.addMenuItem(this._toggleItem);
 
-            // Voce separata per il progresso di download (nascosta di default)
             this._downloadItem = new PopupMenu.PopupMenuItem(_(''));
             this._downloadItem.setSensitive(false);
             this._downloadItem.visible = false;
@@ -200,94 +257,15 @@ const AssistantIndicator = GObject.registerClass(
             });
             this.menu.addMenuItem(this._settingsItem);
 
-            this._updateUiState('unavailable');
-            this._connectToDaemon();
-        }
-
-        _connectToDaemon() {
-            this._watchId = Gio.bus_watch_name(
-                Gio.BusType.SESSION,
-                'org.local.VoiceAssistant',
-                Gio.BusNameWatcherFlags.AUTO_START,
-                (connection, name, nameOwner) => {
-                    console.log(`[VoiceAssistant] Demone apparso sul bus (${nameOwner})`);
-                    new VoiceAssistantProxy(
-                        Gio.DBus.session,
-                        'org.local.VoiceAssistant',
-                        '/org/local/VoiceAssistant',
-                        (proxy, error) => {
-                            if (error) {
-                                console.error(`[VoiceAssistant] Errore di connessione D-Bus: ${error.message}`);
-                                this._updateUiState('unavailable');
-                                return;
-                            }
-                            this._dbusProxy = proxy;
-                            let isEnabled = this._settings.get_boolean('enabled');
-                            this._updateUiState(isEnabled ? 'idle' : 'disabled');
-
-                            this._stateSignalId = this._dbusProxy.connectSignal(
-                                'StateChanged',
-                                (proxy, senderName, [newState]) => {
-                                    this._updateUiState(newState);
-                                }
-                            );
-                            
-                            this._progressSignal = this._dbusProxy.connectSignal('DownloadProgress',
-                                (proxy, senderName, [pName, mName, percent]) => {
-                                    if (this._downloadItem) {
-                                        if (percent >= 0 && percent < 100) {
-                                            this._downloadItem.label.text = _(`Downloading ${pName} (${mName}): ${percent}%`);
-                                            this._downloadItem.visible = true;
-                                        } else {
-                                            this._downloadItem.visible = false;
-                                        }
-                                    }
-                                });
-                        }
-                    );
-                },
-                () => {
-                    console.log('[VoiceAssistant] Demone scomparso dal bus');
-                    this._dbusProxy = null;
-                    this._updateUiState('unavailable');
-                }
-            );
-        }
-
-        _toggleRecording() {
-            if (this._dbusProxy) {
-                this._dbusProxy.ToggleListeningRemote((result, error) => {
-                    if (error) {
-                        console.error(`[VoiceAssistant] Errore ToggleListening: ${error.message}`);
-                    }
-                });
-            } else {
-                let currentState = this._settings.get_boolean('enabled');
-                this._settings.set_boolean('enabled', !currentState);
-            }
-        }
-
-        _showOsd(text) {
-            try {
-                let icon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg');
-                if (Main.osdWindowManager.showAll) {
-                    Main.osdWindowManager.showAll(icon, text, null, null);
-                } else {
-                    Main.osdWindowManager.show(-1, icon, text, null, null);
-                }
-            } catch (e) {
-                console.error(`[VoiceAssistant] Errore OSD: ${e}`);
-            }
+            this._updateUiState(this._extension._lastState || 'unavailable');
         }
 
         _updateUiState(state) {
-            console.log(`[VoiceAssistant] Aggiornamento stato UI: ${state}`);
             switch (state) {
                 case 'listening':
                     this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style('color: #3584e4;');
-                    this._showOsd(_('In ascolto...'));
                     if (this._toggleItem) {
                         this._toggleItem.label.text = _('Disable Assistant');
                         this._toggleItem.setSensitive(true);
@@ -349,57 +327,200 @@ const AssistantIndicator = GObject.registerClass(
                     break;
             }
         }
-
-        destroy() {
-            if (this._watchId) {
-                Gio.bus_unwatch_name(this._watchId);
-                this._watchId = 0;
-            }
-            if (this._dbusProxy) {
-                if (this._stateSignalId) this._dbusProxy.disconnectSignal(this._stateSignalId);
-                if (this._progressSignal) this._dbusProxy.disconnectSignal(this._progressSignal);
-                this._stateSignalId = null;
-                this._progressSignal = null;
-                this._dbusProxy = null;
-            }
-            super.destroy();
-        }
-    });
+    }
+);
 
 // Classe principale dell'estensione
 export default class VoiceAssistantExtension extends Extension {
     enable() {
-        // Carica e registra il bundle GResource
         this._resource = Gio.Resource.load(this.dir.get_child('org.gnome.shell.extensions.voice-assistant.gresource').get_path());
         Gio.resources_register(this._resource);
 
-        this._indicator = new AssistantIndicator(this);
-        Main.panel.addToStatusArea(this.uuid, this._indicator);
-
-        // Scorciatoia da tastiera nativa per attivare/disattivare l'ascolto
         this._settings = this.getSettings('org.gnome.shell.extensions.voice-assistant');
+        this._lastState = 'unavailable';
+        this._dbusProxy = null;
+
+        this._connectToDaemon();
+
+        this._syncIndicators();
+        this._modeSignalId = this._settings.connect('changed::indicator-mode', () => {
+            this._syncIndicators();
+        });
+
         Main.wm.addKeybinding(
             'toggle-shortcut',
             this._settings,
             Meta.KeyBindingFlags.NONE,
             Shell.ActionMode.ALL,
             () => {
-                if (this._indicator) {
-                    this._indicator._toggleRecording();
-                }
+                this._toggleRecording();
             }
         );
 
-        // Installa e avvia il demone tramite Systemd/DBus
         setupDaemonServices(this.dir);
     }
 
+    _syncIndicators() {
+        let mode = this._settings.get_string('indicator-mode') || 'panel';
+
+        // Top Panel Indicator
+        if (mode === 'panel' || mode === 'both') {
+            if (!this._indicator) {
+                this._indicator = new AssistantIndicator(this);
+                Main.panel.addToStatusArea(this.uuid, this._indicator);
+            }
+        } else {
+            if (this._indicator) {
+                this._indicator.destroy();
+                this._indicator = null;
+            }
+        }
+
+        // Quick Settings Indicator
+        if (mode === 'quicksettings' || mode === 'both') {
+            if (!this._quickIndicator) {
+                this._quickIndicator = new VoiceAssistantSystemIndicator(this);
+                Main.panel.statusArea.quickSettings.addExternalIndicator(this._quickIndicator);
+            }
+        } else {
+            if (this._quickIndicator) {
+                if (this._quickIndicator.quickSettingsItems) {
+                    this._quickIndicator.quickSettingsItems.forEach(item => item.destroy());
+                }
+                this._quickIndicator.destroy();
+                this._quickIndicator = null;
+            }
+        }
+
+        this._updateUiState(this._lastState);
+    }
+
+    _connectToDaemon() {
+        this._watchId = Gio.bus_watch_name(
+            Gio.BusType.SESSION,
+            'org.local.VoiceAssistant',
+            Gio.BusNameWatcherFlags.AUTO_START,
+            (connection, name, nameOwner) => {
+                console.log(`[VoiceAssistant] Demone apparso sul bus (${nameOwner})`);
+                new VoiceAssistantProxy(
+                    Gio.DBus.session,
+                    'org.local.VoiceAssistant',
+                    '/org/local/VoiceAssistant',
+                    (proxy, error) => {
+                        if (error) {
+                            console.error(`[VoiceAssistant] Errore di connessione D-Bus: ${error.message}`);
+                            this._updateUiState('unavailable');
+                            return;
+                        }
+                        this._dbusProxy = proxy;
+                        let isEnabled = this._settings.get_boolean('enabled');
+                        this._updateUiState(isEnabled ? 'idle' : 'disabled');
+
+                        this._stateSignalId = this._dbusProxy.connectSignal(
+                            'StateChanged',
+                            (proxy, senderName, [newState]) => {
+                                this._updateUiState(newState);
+                            }
+                        );
+                        
+                        this._progressSignal = this._dbusProxy.connectSignal('DownloadProgress',
+                            (proxy, senderName, [pName, mName, percent]) => {
+                                this._updateDownloadProgress(pName, mName, percent);
+                            });
+                    }
+                );
+            },
+            () => {
+                console.log('[VoiceAssistant] Demone scomparso dal bus');
+                this._dbusProxy = null;
+                this._updateUiState('unavailable');
+            }
+        );
+    }
+
+    _toggleRecording() {
+        if (this._dbusProxy) {
+            this._dbusProxy.ToggleListeningRemote((result, error) => {
+                if (error) {
+                    console.error(`[VoiceAssistant] Errore ToggleListening: ${error.message}`);
+                }
+            });
+        } else {
+            let currentState = this._settings.get_boolean('enabled');
+            this._settings.set_boolean('enabled', !currentState);
+        }
+    }
+
+    _showOsd(text) {
+        try {
+            let icon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg');
+            if (Main.osdWindowManager.showAll) {
+                Main.osdWindowManager.showAll(icon, text, null, null);
+            } else {
+                Main.osdWindowManager.show(-1, icon, text, null, null);
+            }
+        } catch (e) {
+            console.error(`[VoiceAssistant] Errore OSD: ${e}`);
+        }
+    }
+
+    _updateUiState(state) {
+        this._lastState = state;
+        if (state === 'listening') {
+            this._showOsd(_('In ascolto...'));
+        }
+
+        if (this._indicator) {
+            this._indicator._updateUiState(state);
+        }
+        if (this._quickIndicator) {
+            this._quickIndicator.updateUiState(state);
+        }
+    }
+
+    _updateDownloadProgress(pName, mName, percent) {
+        if (this._indicator && this._indicator._downloadItem) {
+            if (percent >= 0 && percent < 100) {
+                this._indicator._downloadItem.label.text = _(`Downloading ${pName} (${mName}): ${percent}%`);
+                this._indicator._downloadItem.visible = true;
+            } else {
+                this._indicator._downloadItem.visible = false;
+            }
+        }
+    }
+
     disable() {
+        if (this._modeSignalId) {
+            this._settings.disconnect(this._modeSignalId);
+            this._modeSignalId = null;
+        }
+
+        if (this._watchId) {
+            Gio.bus_unwatch_name(this._watchId);
+            this._watchId = 0;
+        }
+
+        if (this._dbusProxy) {
+            if (this._stateSignalId) this._dbusProxy.disconnectSignal(this._stateSignalId);
+            if (this._progressSignal) this._dbusProxy.disconnectSignal(this._progressSignal);
+            this._stateSignalId = null;
+            this._progressSignal = null;
+            this._dbusProxy = null;
+        }
+
         Main.wm.removeKeybinding('toggle-shortcut');
 
         if (this._indicator) {
             this._indicator.destroy();
             this._indicator = null;
+        }
+
+        if (this._quickIndicator) {
+            if (this._quickIndicator.quickSettingsItems) {
+                this._quickIndicator.quickSettingsItems.forEach(item => item.destroy());
+            }
+            this._quickIndicator.destroy();
+            this._quickIndicator = null;
         }
 
         if (this._resource) {

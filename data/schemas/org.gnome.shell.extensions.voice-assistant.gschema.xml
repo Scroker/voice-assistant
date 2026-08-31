@@ -116,5 +116,10 @@
       <summary>Scorciatoia da tastiera per attivare l'ascolto</summary>
       <description>Combinazione di tasti per attivare/disattivare manualmente l'ascolto dell'assistente.</description>
     </key>
+    <key name="indicator-mode" type="s">
+      <default>'panel'</default>
+      <summary>Modalità dell'indicatore UI</summary>
+      <description>Posizione dell'indicatore nell'interfaccia di GNOME Shell ('panel', 'quicksettings', 'both').</description>
+    </key>
   </schema>
 </schemalist>
