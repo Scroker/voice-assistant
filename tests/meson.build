@@ -49,3 +49,8 @@ test('test_services_llm', python3,
   args: [files('test_services_llm.py')],
   workdir: meson.project_source_root()
 )
+
+test('test_logger', python3,
+  args: [files('test_logger.py')],
+  workdir: meson.project_source_root()
+)

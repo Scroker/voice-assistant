@@ -32,6 +32,7 @@ from services.tts_service import TTSServiceManager
 from services.llm_service import LLMServiceManager
 from core.pipeline import PipelineController
 from core.state import StateMachine
+from core.logger import setup_logger, install_global_exception_hooks, ErrorCollector
 
 import gi
 gi.require_version('Gio', '2.0')
@@ -214,8 +215,11 @@ class VoiceAssistant(object):
 
         self.llm_service = LLMServiceManager(settings_observer=self)
 
+        self.state_machine = StateMachine()
+        self.state_machine.add_callback(self.set_state)
+
         self.pipeline_controller = PipelineController(
-            state_machine=StateMachine(),
+            state_machine=self.state_machine,
             audio_player=self.audio_player,
             llm_streamer=lambda prompt: self.llm_service.stream_tokens(prompt),
             tts_engine=lambda text: self.tts_manager.speak(text)
@@ -504,6 +508,25 @@ class VoiceAssistant(object):
         """Ritorna una stringa JSON con i modelli attualmente in fase di scaricamento e la relativa percentuale."""
         return json.dumps(self._downloading_models)
 
+    def GetErrorReports(self) -> str:
+        """Ritorna i report degli errori memorizzati in formato JSON."""
+        reports = ErrorCollector.list_reports(limit=20)
+        return json.dumps(reports)
+
+    def ClearErrorReports(self) -> bool:
+        """Svuota la cronologia dei report di errore."""
+        from core.logger import ERROR_REPORTS_DIR
+        try:
+            if os.path.exists(ERROR_REPORTS_DIR):
+                for f in os.listdir(ERROR_REPORTS_DIR):
+                    fpath = os.path.join(ERROR_REPORTS_DIR, f)
+                    if os.path.isfile(fpath):
+                        os.remove(fpath)
+            return True
+        except Exception as e:
+            print(f"Errore pulizia report: {e}")
+            return False
+
     def DownloadModel(self, provider: str, model_name: str) -> bool:
         """Avvia lo scaricamento di un modello in background via D-Bus senza cambiare il modello in uso."""
         def _download_thread():
@@ -738,6 +761,8 @@ class VoiceAssistant(object):
                 self.trigger_assistant()
 
 if __name__ == '__main__':
+    setup_logger()
+    install_global_exception_hooks()
     assistant = VoiceAssistant()
     bus = SessionMessageBus()
     bus.publish_object("/org/local/VoiceAssistant", assistant)

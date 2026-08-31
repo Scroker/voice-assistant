@@ -20,6 +20,11 @@
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
     </method>
+    <method name="GetErrorReports">
+      <arg type="s" direction="out" name="reports_json"/>
+    </method>
+    <method name="ClearErrorReports">
+    </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
     </signal>

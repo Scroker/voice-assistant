@@ -317,6 +317,13 @@ export default class VoiceAssistantExtension extends Extension {
 
         this._syncIndicators();
 
+        this._settingsSignal = this._settings.connect('changed::enabled', () => {
+            let isEnabled = this._settings.get_boolean('enabled');
+            if (!this._dbusProxy) {
+                this._updateUiState(isEnabled ? 'idle' : 'disabled');
+            }
+        });
+
         Main.wm.addKeybinding(
             'toggle-shortcut',
             this._settings,
@@ -452,6 +459,11 @@ export default class VoiceAssistantExtension extends Extension {
             this._stateSignalId = null;
             this._progressSignal = null;
             this._dbusProxy = null;
+        }
+
+        if (this._settingsSignal) {
+            this._settings.disconnect(this._settingsSignal);
+            this._settingsSignal = null;
         }
 
         Main.wm.removeKeybinding('toggle-shortcut');
