@@ -26,8 +26,11 @@ class WhisperProvider(STTProvider):
         
         # Variabili GLOBALI sul modulo sys, visibili da TUTTI i thread del processo.
         # NON usare contextvars: i thread worker di huggingface non ereditano il contesto.
+        # Variabili GLOBALI sul modulo sys, visibili da TUTTI i thread del processo.
+        # NON usare contextvars: i thread worker di huggingface non ereditano il contesto.
         sys._va_progress_cb = progress_callback
         sys._va_model_size = model_size
+        sys._va_target_dir = None
         sys._va_dl_state = {'mb': -1, 'pct': -1}
 
         class GlobalTqdmRedirector:
@@ -41,13 +44,38 @@ class WhisperProvider(STTProvider):
                 cb = getattr(sys, '_va_progress_cb', None)
                 if not cb:
                     return
-                    
+
+                target_dir = getattr(sys, '_va_target_dir', None)
+                model_size = getattr(sys, '_va_model_size', 'base')
+                
                 percent = None
-                match_pct = self.pattern_pct.search(buf)
-                if match_pct:
-                    val = int(match_pct.group(1))
-                    if 0 <= val <= 100:
-                        percent = val
+                if target_dir and os.path.isdir(target_dir):
+                    sizes = {
+                        "tiny": 75, "tiny.en": 75,
+                        "base": 140, "base.en": 140,
+                        "small": 466, "small.en": 466,
+                        "medium": 1500, "medium.en": 1500,
+                        "large-v1": 3100, "large-v2": 3100,
+                        "large-v3": 3100, "large": 3100
+                    }
+                    total_mb = sizes.get(model_size, 140)
+                    try:
+                        total_bytes = sum(
+                            os.path.getsize(os.path.join(r, f))
+                            for r, _, files in os.walk(target_dir)
+                            for f in files
+                        )
+                        dl_mb = total_bytes / (1024 * 1024)
+                        percent = min(99, max(0, int((dl_mb / total_mb) * 100)))
+                    except Exception:
+                        percent = None
+
+                if percent is None:
+                    match_pct = self.pattern_pct.search(buf)
+                    if match_pct:
+                        val = int(match_pct.group(1))
+                        if 0 <= val <= 100:
+                            percent = val
 
                 if percent is None:
                     match_size = self.pattern_size.search(buf)
@@ -71,7 +99,7 @@ class WhisperProvider(STTProvider):
                             "large-v3": 3100, "large": 3100
                         }
                         total_mb = sizes.get(ms, 140)
-                        percent = min(100, max(0, int((dl_mb / total_mb) * 100)))
+                        percent = min(99, max(0, int((dl_mb / total_mb) * 100)))
                 
                 if percent is None:
                     return
@@ -113,6 +141,7 @@ class WhisperProvider(STTProvider):
 
         model_folder_name = f"whisper-{model_size}" if not model_size.startswith("whisper-") else model_size
         target_dir = os.path.join(self.MODELS_DIR, model_folder_name)
+        sys._va_target_dir = target_dir
         os.makedirs(self.MODELS_DIR, exist_ok=True)
 
         # Migrazione vecchie cartelle HuggingFace (models--Systran--faster-whisper-*)
