@@ -45,6 +45,18 @@ class AudioPlayer:
         sr = sample_rate or self.sample_rate
         self.queue.put((pcm_data, sr))
 
+    def play_wav_bytes(self, wav_bytes: bytes):
+        """Parse WAV header and enqueue audio PCM data for playback."""
+        import io
+        import wave
+        try:
+            with wave.open(io.BytesIO(wav_bytes), 'rb') as wf:
+                sample_rate = wf.getframerate()
+                pcm_data = wf.readframes(wf.getnframes())
+                self.enqueue_audio(pcm_data, sample_rate)
+        except Exception as e:
+            print(f"[AudioPlayer] Error parsing WAV bytes: {e}")
+
     def _worker(self):
         import numpy as np
         while self._running and not self._stop_event.is_set():
