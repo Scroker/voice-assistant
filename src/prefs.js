@@ -427,27 +427,21 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             title: _('Seleziona Modello STT')
         });
 
-        // Funzione per scansionare i modelli presenti sul disco
         const getInstalledModelIds = () => {
             const installed = new Set();
             const modelsPath = getModelsPath();
             const dir = Gio.File.new_for_path(modelsPath);
             try {
                 if (dir.query_exists(null)) {
-                    const enumerator = dir.enumerate_children('standard::*', Gio.FileQueryInfoFlags.NONE, null);
+                    const enumerator = dir.enumerate_children('standard::name,standard::type', Gio.FileQueryInfoFlags.NONE, null);
                     let info;
                     while ((info = enumerator.next_file(null)) !== null) {
                         if (info.get_file_type() === Gio.FileType.DIRECTORY) {
                             let fname = info.get_name();
-                            let fullFolderPath = GLib.build_filenamev([modelsPath, fname]);
+                            if (fname.startsWith('.')) continue;
+                            installed.add(fname);
                             if (fname.startsWith('whisper-')) {
-                                let modelBinPath = GLib.build_filenamev([fullFolderPath, 'model.bin']);
-                                if (GLib.file_test(modelBinPath, GLib.FileTest.EXISTS)) {
-                                    installed.add(fname);
-                                    installed.add(fname.substring('whisper-'.length));
-                                }
-                            } else {
-                                installed.add(fname);
+                                installed.add(fname.substring('whisper-'.length));
                             }
                         }
                     }
@@ -478,7 +472,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 if (activeFilter === 'vosk' && m.provider !== 'vosk') return false;
                 if (activeFilter === 'whisper' && m.provider !== 'whisper') return false;
                 
-                let isInstalled = installedSet.has(m.id) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`));
+                let isInstalled = installedSet.has(m.id) || installedSet.has(`${m.provider}-${m.id}`) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`));
                 if (activeFilter === 'installed' && !isInstalled) return false;
 
                 // Filtro testo di ricerca
@@ -506,7 +500,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 let modelKey = `${m.provider}:${m.id}`;
                 let isDownloading = downloadingProgress.has(modelKey);
                 let downloadPct = downloadingProgress.get(modelKey) || 0;
-                let isInstalled = !isDownloading && (installedSet.has(m.id) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`)));
+                let isInstalled = !isDownloading && (installedSet.has(m.id) || installedSet.has(`${m.provider}-${m.id}`) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`)));
 
                 const row = new Adw.ActionRow({
                     title: m.name,
@@ -645,6 +639,12 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     const box = new Gtk.Box({ spacing: 6, valign: Gtk.Align.CENTER });
                     box.append(progressBar);
                     row.add_suffix(box);
+                } else if (isInstalled && isCurrent) {
+                    const activeIcon = Gtk.Image.new_from_icon_name('check-plain-symbolic');
+                    activeIcon.valign = Gtk.Align.CENTER;
+                    activeIcon.add_css_class('accent');
+                    activeIcon.tooltip_text = _('Modello attualmente in uso');
+                    row.add_suffix(activeIcon);
                 } else if (isInstalled && !isCurrent) {
                     const deleteBtn = Gtk.Button.new_from_icon_name('user-trash-symbolic');
                     deleteBtn.valign = Gtk.Align.CENTER;
