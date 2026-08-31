@@ -27,6 +27,11 @@ import sounddevice as sd
 from providers import get_provider
 import notify2
 
+from audio.player import AudioPlayer
+from services.tts_service import TTSServiceManager
+from core.pipeline import PipelineController
+from core.state import StateMachine
+
 import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
@@ -198,6 +203,20 @@ class VoiceAssistant(object):
         
         threading.Thread(target=_load_ww, daemon=True).start()
             
+        # Inizializza Audio Player, TTS e Pipeline Controller
+        self.audio_player = AudioPlayer()
+        self.audio_player.start()
+
+        self.tts_manager = TTSServiceManager(
+            audio_player=self.audio_player
+        )
+
+        self.pipeline_controller = PipelineController(
+            state_machine=StateMachine(),
+            audio_player=self.audio_player,
+            tts_engine=lambda text: self.tts_manager.speak(text)
+        )
+
         # Avviamo il caricamento in un thread per evitare di bloccare 
         # la registrazione D-Bus e causare un timeout di systemd
         self._load_id = 1
@@ -692,11 +711,15 @@ class VoiceAssistant(object):
             print(f"\n[Testo Riconosciuto]: {text}\n")
             self.set_state("processing")
             
-            # Qui si potrebbe integrare la chiamata a un LLM (es. Ollama) o l'esecuzione di comandi.
-            # Per questa prima fase, stampiamo semplicemente a schermo e torniamo in idle.
-            print("Elaborazione completata (Fase 1: solo STT). Ritorno in attesa.")
+            # Esecuzione tramite Pipeline Controller (Fast-Path o Fallback TTS)
+            res = self.pipeline_controller.process_text_input(text)
             
-            self.set_state("idle")
+            # Se non c'è stato match Fast-Path e non c'è ancora un LLM attivo, rispondi con sintesi di conferma del testo
+            if not res.get("fast_path") and not res.get("response"):
+                print(f"[TTS Fallback] Sintesi vocale per: '{text}'")
+                self.tts_manager.speak(f"Ho ascoltato: {text}")
+            
+            GLib.idle_add(self.set_state, "idle")
         elif self._state == "idle":
             # Controllo di sicurezza se la wakeword viene identificata solo nel risultato finale
             if self.wakeword in text:
