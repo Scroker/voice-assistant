@@ -23,6 +23,7 @@ class WhisperProvider(STTProvider):
         
         import sys
         import re
+        import threading
         
         if not hasattr(sys, '_va_downloads'):
             sys._va_downloads = {}
@@ -30,8 +31,10 @@ class WhisperProvider(STTProvider):
         model_folder_name = f"whisper-{model_size}" if not model_size.startswith("whisper-") else model_size
         target_dir = os.path.join(self.MODELS_DIR, model_folder_name)
 
+        thread_id = threading.get_ident()
         if progress_callback:
-            sys._va_downloads[model_size] = {
+            sys._va_downloads[thread_id] = {
+                'model_size': model_size,
                 'cb': progress_callback,
                 'target_dir': target_dir,
                 'state': {'pct': -1}
@@ -48,6 +51,18 @@ class WhisperProvider(STTProvider):
                 if not downloads:
                     return
 
+                current_tid = threading.get_ident()
+                info = downloads.get(current_tid)
+                if not info:
+                    return
+
+                ms = info.get('model_size')
+                cb = info.get('cb')
+                tdir = info.get('target_dir')
+                state = info.get('state')
+                if not (ms and cb and state):
+                    return
+
                 sizes = {
                     "tiny": 75, "tiny.en": 75,
                     "base": 140, "base.en": 140,
@@ -57,50 +72,43 @@ class WhisperProvider(STTProvider):
                     "large-v3": 3100, "large": 3100
                 }
 
-                for ms, info in list(downloads.items()):
-                    cb = info.get('cb')
-                    tdir = info.get('target_dir')
-                    state = info.get('state')
-                    if not (cb and state):
-                        continue
+                percent = None
 
-                    percent = None
+                # 1. Calcola la percentuale dai MB realmente trasferiti (es. "28.1MB", ignorando "47.2kB/s")
+                match_size = self.pattern_size.search(buf)
+                if match_size:
+                    val = float(match_size.group(1))
+                    unit = match_size.group(2).upper()
+                    
+                    if unit == "B": dl_mb = val / (1024 * 1024)
+                    elif unit == "KB": dl_mb = val / 1024
+                    elif unit == "MB": dl_mb = val
+                    elif unit == "GB": dl_mb = val * 1024
+                    else: dl_mb = val
+                    
+                    total_mb = sizes.get(ms, 140)
+                    percent = min(99, max(0, int((dl_mb / total_mb) * 100)))
 
-                    # 1. Calcola la percentuale dai MB realmente trasferiti (es. "28.1MB", ignorando "47.2kB/s")
-                    match_size = self.pattern_size.search(buf)
-                    if match_size:
-                        val = float(match_size.group(1))
-                        unit = match_size.group(2).upper()
-                        
-                        if unit == "B": dl_mb = val / (1024 * 1024)
-                        elif unit == "KB": dl_mb = val / 1024
-                        elif unit == "MB": dl_mb = val
-                        elif unit == "GB": dl_mb = val * 1024
-                        else: dl_mb = val
-                        
-                        total_mb = sizes.get(ms, 140)
+                # 2. Fallback: dimensione cartella su disco (es. file già decompressi/spostati)
+                if percent is None and tdir and os.path.isdir(tdir):
+                    total_mb = sizes.get(ms, 140)
+                    try:
+                        total_bytes = sum(
+                            os.path.getsize(os.path.join(r, f))
+                            for r, _, files in os.walk(tdir)
+                            for f in files
+                        )
+                        dl_mb = total_bytes / (1024 * 1024)
                         percent = min(99, max(0, int((dl_mb / total_mb) * 100)))
+                    except Exception:
+                        percent = None
 
-                    # 2. Fallback: dimensione cartella su disco (es. file già decompressi/spostati)
-                    if percent is None and tdir and os.path.isdir(tdir):
-                        total_mb = sizes.get(ms, 140)
-                        try:
-                            total_bytes = sum(
-                                os.path.getsize(os.path.join(r, f))
-                                for r, _, files in os.walk(tdir)
-                                for f in files
-                            )
-                            dl_mb = total_bytes / (1024 * 1024)
-                            percent = min(99, max(0, int((dl_mb / total_mb) * 100)))
-                        except Exception:
-                            percent = None
-
-                    if percent is not None and percent > state['pct']:
-                        state['pct'] = percent
-                        try:
-                            cb(percent)
-                        except Exception as e:
-                            print(f"Errore callback progresso ({ms}): {e}", flush=True)
+                if percent is not None and percent > state['pct']:
+                    state['pct'] = percent
+                    try:
+                        cb(percent)
+                    except Exception as e:
+                        print(f"Errore callback progresso ({ms}): {e}", flush=True)
 
             def flush(self):
                 self.original_stderr.flush()
@@ -157,7 +165,7 @@ class WhisperProvider(STTProvider):
             raise RuntimeError(f"Errore caricamento/download modello Whisper {model_size}: {e}")
         finally:
             if hasattr(sys, '_va_downloads'):
-                sys._va_downloads.pop(model_size, None)
+                sys._va_downloads.pop(thread_id, None)
 
         self.audio_buffer = bytearray()
         
