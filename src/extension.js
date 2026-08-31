@@ -167,17 +167,8 @@ class VoiceAssistantQuickToggle extends QuickSettings.QuickMenuToggle {
         // Header del Menu QuickSettings
         this.menu.setHeader('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg', _('Voice Assistant'), _('Assistente Vocale Locale'));
 
-        // Voce per il cambio stato / attivazione
-        this._toggleItem = new PopupMenu.PopupMenuItem(_('Attiva / Disattiva'));
-        this._toggleItem.connect('activate', () => {
-            this._extension._toggleRecording();
-        });
-        this.menu.addMenuItem(this._toggleItem);
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        // Voce per le preferenze
-        this._settingsItem = new PopupMenu.PopupMenuItem(_('Preferenze...'));
+        // Voce unicamente per le preferenze / impostazioni
+        this._settingsItem = new PopupMenu.PopupMenuItem(_('Preferences'));
         this._settingsItem.connect('activate', () => {
             if (Main.panel.closeQuickSettings) {
                 Main.panel.closeQuickSettings();
@@ -284,6 +275,13 @@ const AssistantIndicator = GObject.registerClass(
         }
 
         _updateUiState(state) {
+            // L'icona nella barra in alto appare SOLO quando l'assistente è attivo
+            if (state === 'disabled' || state === 'unavailable') {
+                this.visible = false;
+                return;
+            }
+            this.visible = true;
+
             switch (state) {
                 case 'listening':
                     this._icon.icon_name = null;
@@ -317,25 +315,6 @@ const AssistantIndicator = GObject.registerClass(
                     this._icon.icon_name = 'folder-download-symbolic';
                     this._icon.set_style('color: #e5a50a;');
                     if (this._toggleItem) this._toggleItem.setSensitive(true);
-                    break;
-                case 'disabled':
-                    this._icon.icon_name = null;
-                    this._icon.gicon = this._customGIcon;
-                    this._icon.set_style('color: #e01b24;'); 
-                    if (this._toggleItem) {
-                        this._toggleItem.label.text = _('Enable Assistant');
-                        this._toggleItem.setSensitive(true);
-                    }
-                    break;
-                case 'unavailable':
-                    this._icon.icon_name = null;
-                    this._icon.gicon = this._customGIcon;
-                    this._icon.set_style('color: #e01b24;');
-                    if (this._toggleItem) {
-                        this._toggleItem.label.text = _('Assistant Unavailable');
-                        this._toggleItem.setSensitive(false);
-                    }
-                    if (this._downloadItem) this._downloadItem.visible = false;
                     break;
                 case 'idle':
                 default:
