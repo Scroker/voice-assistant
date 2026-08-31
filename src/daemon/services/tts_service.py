@@ -22,53 +22,117 @@ class BaseTTSProvider:
 
 class PiperTTSProvider(BaseTTSProvider):
     """
-    Piper TTS Provider using local ONNX neural models for fast natural speech.
+    Piper TTS Provider using local ONNX neural models for fast natural human speech.
+    Supports native python piper-tts library and automatic HF model download.
     """
+    DEFAULT_VOICE = "it_IT-paola-medium"
+    HF_REPO = "rhasspy/piper-voices"
+    VOICE_HF_PATHS = {
+        "it_IT-paola-medium": ("it/it_IT/paola/medium/it_IT-paola-medium.onnx", "it/it_IT/paola/medium/it_IT-paola-medium.onnx.json"),
+        "it_IT-riccardo-x_low": ("it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx", "it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx.json"),
+    }
+
     def __init__(self, models_dir: Optional[str] = None):
         self.models_dir = models_dir or os.path.expanduser("~/.local/share/voice-assistant/models/tts")
         os.makedirs(self.models_dir, exist_ok=True)
+        self._loaded_voice = None
+        self._loaded_voice_name = None
+
+    def ensure_voice_downloaded(self, voice_name: str = DEFAULT_VOICE) -> tuple:
+        """Scarica i file .onnx e .onnx.json del modello vocale neurale se non presenti."""
+        if voice_name not in self.VOICE_HF_PATHS:
+            voice_name = self.DEFAULT_VOICE
+
+        onnx_rel, json_rel = self.VOICE_HF_PATHS[voice_name]
+        onnx_local = os.path.join(self.models_dir, f"{voice_name}.onnx")
+        json_local = os.path.join(self.models_dir, f"{voice_name}.onnx.json")
+
+        if os.path.exists(onnx_local) and os.path.exists(json_local) and os.path.getsize(onnx_local) > 0:
+            return onnx_local, json_local
+
+        logger.info(f"[PiperTTS] Scaricamento del modello vocale neurale '{voice_name}' da HuggingFace...")
+        try:
+            from huggingface_hub import hf_hub_download
+            dl_onnx = hf_hub_download(repo_id=self.HF_REPO, filename=onnx_rel, local_dir=self.models_dir)
+            dl_json = hf_hub_download(repo_id=self.HF_REPO, filename=json_rel, local_dir=self.models_dir)
+            
+            shutil.copy2(dl_onnx, onnx_local)
+            shutil.copy2(dl_json, json_local)
+            return onnx_local, json_local
+        except Exception as e:
+            logger.error(f"[PiperTTS] Errore scaricamento modello vocale Piper: {e}")
+            raise e
+
+    def load_voice(self, voice_name: str = DEFAULT_VOICE):
+        if self._loaded_voice and self._loaded_voice_name == voice_name:
+            return self._loaded_voice
+
+        onnx_path, json_path = self.ensure_voice_downloaded(voice_name)
+        try:
+            from piper import PiperVoice
+            voice = PiperVoice.load(onnx_path, config_path=json_path)
+            self._loaded_voice = voice
+            self._loaded_voice_name = voice_name
+            return voice
+        except ImportError:
+            logger.warning("[PiperTTS] Modulo 'piper-tts' non installato in Python.")
+            return None
 
     def synthesize(self, text: str, voice: Optional[str] = None, speed: float = 1.0) -> Optional[bytes]:
         if not text or not text.strip():
             return None
 
-        voice_name = voice or "it_IT-paola-medium"
-        model_path = os.path.join(self.models_dir, f"{voice_name}.onnx")
-        
-        piper_bin = shutil.which("piper")
-        if not piper_bin:
-            logger.warning("[PiperTTS] Eseguibile 'piper' non trovato nel PATH.")
-            return None
+        voice_name = voice or self.DEFAULT_VOICE
 
-        if not os.path.exists(model_path):
-            logger.warning(f"[PiperTTS] Modello '{model_path}' non trovato.")
-            return None
-
-        tmp_wav_path = None
+        # 1. Tentativo con libreria Python nativa 'piper-tts'
         try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
-                tmp_wav_path = tmp_wav.name
-
-            cmd = [
-                piper_bin,
-                "--model", model_path,
-                "--output_file", tmp_wav_path,
-                "--length_scale", str(1.0 / max(0.5, speed))
-            ]
-
-            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            process.communicate(input=text)
-
-            if os.path.exists(tmp_wav_path) and os.path.getsize(tmp_wav_path) > 0:
-                with open(tmp_wav_path, "rb") as f:
-                    audio_bytes = f.read()
-                os.remove(tmp_wav_path)
-                return audio_bytes
-
+            piper_voice = self.load_voice(voice_name)
+            if piper_voice:
+                import wave
+                import io
+                buffer = io.BytesIO()
+                with wave.open(buffer, 'wb') as wav_file:
+                    wav_file.setnchannels(1)
+                    wav_file.setsampwidth(2)
+                    wav_file.setframerate(piper_voice.config.sample_rate)
+                    for chunk in piper_voice.synthesize(text):
+                        if hasattr(chunk, 'audio_int16_bytes') and chunk.audio_int16_bytes:
+                            wav_file.writeframes(chunk.audio_int16_bytes)
+                audio_bytes = buffer.getvalue()
+                if len(audio_bytes) > 44:
+                    return audio_bytes
         except Exception as e:
-            logger.error(f"[PiperTTS] Errore sintesi vocale: {e}")
-            if tmp_wav_path and os.path.exists(tmp_wav_path):
-                os.remove(tmp_wav_path)
+            logger.error(f"[PiperTTS] Errore sintesi nativa Python: {e}")
+
+        # 2. Tentativo con eseguibile binario 'piper' se presente nel PATH
+        piper_bin = shutil.which("piper")
+        if piper_bin:
+            onnx_path = os.path.join(self.models_dir, f"{voice_name}.onnx")
+            if os.path.exists(onnx_path):
+                tmp_wav_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
+                        tmp_wav_path = tmp_wav.name
+
+                    cmd = [
+                        piper_bin,
+                        "--model", onnx_path,
+                        "--output_file", tmp_wav_path,
+                        "--length_scale", str(1.0 / max(0.5, speed))
+                    ]
+
+                    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    process.communicate(input=text)
+
+                    if os.path.exists(tmp_wav_path) and os.path.getsize(tmp_wav_path) > 0:
+                        with open(tmp_wav_path, "rb") as f:
+                            audio_bytes = f.read()
+                        os.remove(tmp_wav_path)
+                        return audio_bytes
+                except Exception as e:
+                    logger.error(f"[PiperTTS] Errore sintesi CLI piper: {e}")
+                    if tmp_wav_path and os.path.exists(tmp_wav_path):
+                        os.remove(tmp_wav_path)
 
         return None
 

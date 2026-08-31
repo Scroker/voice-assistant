@@ -4,3 +4,4 @@ sounddevice
 faster-whisper
 huggingface-hub
 llama-cpp-python
+piper-tts
