@@ -460,18 +460,15 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             return installed;
         };
 
+        let activeModelGroupRows = [];
         renderModelList = () => {
             downloadButtons.clear();
-            // Svuota il gruppo delle righe
-            modelsGroupContainer.replace_rows ? modelsGroupContainer.replace_rows([]) : null;
-            // Per Adw.PreferencesGroup rimuoviamo i figli se non c'è replace_rows
-            // In GTK4 Adw.PreferencesGroup gestisce i figli interni tramite add/remove.
-            // Creiamo un nuovo PreferencesGroup per sostituire pulito
-            clampGroup.set_child(null);
-            const newGroup = new Adw.PreferencesGroup({
-                title: _('Modelli Disponibili')
-            });
-            clampGroup.set_child(newGroup);
+            for (const r of activeModelGroupRows) {
+                try {
+                    modelsGroupContainer.remove(r);
+                } catch (e) {}
+            }
+            activeModelGroupRows = [];
 
             const installedSet = getInstalledModelIds();
             const currentProvider = pendingProvider;
@@ -501,7 +498,8 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     title: _('Nessun modello trovato'),
                     subtitle: _('Prova a modificare i filtri o il termine di ricerca.')
                 });
-                newGroup.add(emptyRow);
+                modelsGroupContainer.add(emptyRow);
+                activeModelGroupRows.push(emptyRow);
                 return;
             }
 
@@ -543,7 +541,6 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     pendingProvider = m.provider;
                     pendingModel = m.id;
                     updateApplyButtons();
-                    renderModelList();
                 };
 
                 let currentDownloadBtn = null;
@@ -579,16 +576,25 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                                         p.wait_check_finish(res);
                                     } catch (err) {}
                                     downloadingProgress.delete(modelKey);
-                                    renderModelList();
-                                    if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
+                                    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                                        renderModelList();
+                                        if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
+                                        return GLib.SOURCE_REMOVE;
+                                    });
                                 });
                             } catch (e) {
                                 downloadingProgress.delete(modelKey);
-                                renderModelList();
+                                GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                                    renderModelList();
+                                    return GLib.SOURCE_REMOVE;
+                                });
                             }
                         } else {
                             downloadingProgress.delete(modelKey);
-                            renderModelList();
+                            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                                renderModelList();
+                                return GLib.SOURCE_REMOVE;
+                            });
                         }
                     };
 
@@ -629,10 +635,8 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 });
 
                 checkBtn.connect('toggled', () => {
-                    if (checkBtn.active && !isCurrent) {
-                        if (isInstalled) {
-                            selectModel();
-                        }
+                    if (checkBtn.active && isInstalled) {
+                        selectModel();
                     }
                 });
 
@@ -670,13 +674,19 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                                 } catch (err) {
                                     GLib.spawn_command_line_sync(`rm -rf "${targetDir}"`);
                                 }
-                                renderModelList();
-                                if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
+                                GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                                    renderModelList();
+                                    if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
+                                    return GLib.SOURCE_REMOVE;
+                                });
                             });
                         } catch (e) {
                             GLib.spawn_command_line_sync(`rm -rf "${targetDir}"`);
-                            renderModelList();
-                            if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
+                            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                                renderModelList();
+                                if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
+                                return GLib.SOURCE_REMOVE;
+                            });
                         }
                     });
 
@@ -699,7 +709,8 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     row.add_suffix(box);
                 }
 
-                newGroup.add(row);
+                modelsGroupContainer.add(row);
+                activeModelGroupRows.push(row);
             });
         };
 
