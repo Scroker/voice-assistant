@@ -26,7 +26,7 @@ prefs_ui_target = custom_target('compile-prefs-blueprint',
   command: [blueprint_compiler, 'compile', '--output', '@OUTPUT@', '@INPUT@']
 )
 
-custom_target('voice-assistant-gresource',
+gresource_target = custom_target('voice-assistant-gresource',
   input: 'schemas/org.gnome.shell.extensions.voice-assistant.gresource.xml',
   output: 'org.gnome.shell.extensions.voice-assistant.gresource',
   depends: prefs_ui_target,
