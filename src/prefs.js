@@ -128,21 +128,6 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         const wakewordRow = builder.get_object('wakeword_row');
         settings.bind('wakeword', wakewordRow, 'text', Gio.SettingsBindFlags.DEFAULT);
 
-        const indicatorModeRow = builder.get_object('indicator_mode_row');
-        let currentMode = settings.get_string('indicator-mode') || 'panel';
-        if (currentMode === 'quicksettings') {
-            indicatorModeRow.selected = 1;
-        } else if (currentMode === 'both') {
-            indicatorModeRow.selected = 2;
-        } else {
-            indicatorModeRow.selected = 0;
-        }
-        indicatorModeRow.connect('notify::selected', () => {
-            let modes = ['panel', 'quicksettings', 'both'];
-            let newMode = modes[indicatorModeRow.selected] || 'panel';
-            settings.set_string('indicator-mode', newMode);
-        });
-
 
         // ==========================================
         // 2. MOTORE VOCALE (STT) E DOWNLOAD STATE

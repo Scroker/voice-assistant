@@ -345,9 +345,6 @@ export default class VoiceAssistantExtension extends Extension {
         this._connectToDaemon();
 
         this._syncIndicators();
-        this._modeSignalId = this._settings.connect('changed::indicator-mode', () => {
-            this._syncIndicators();
-        });
 
         Main.wm.addKeybinding(
             'toggle-shortcut',
@@ -363,35 +360,16 @@ export default class VoiceAssistantExtension extends Extension {
     }
 
     _syncIndicators() {
-        let mode = this._settings.get_string('indicator-mode') || 'panel';
-
-        // Top Panel Indicator
-        if (mode === 'panel' || mode === 'both') {
-            if (!this._indicator) {
-                this._indicator = new AssistantIndicator(this);
-                Main.panel.addToStatusArea(this.uuid, this._indicator);
-            }
-        } else {
-            if (this._indicator) {
-                this._indicator.destroy();
-                this._indicator = null;
-            }
+        // Top Panel Indicator (mostrato dinamicamente quando l'assistente è attivo)
+        if (!this._indicator) {
+            this._indicator = new AssistantIndicator(this);
+            Main.panel.addToStatusArea(this.uuid, this._indicator);
         }
 
-        // Quick Settings Indicator
-        if (mode === 'quicksettings' || mode === 'both') {
-            if (!this._quickIndicator) {
-                this._quickIndicator = new VoiceAssistantSystemIndicator(this);
-                Main.panel.statusArea.quickSettings.addExternalIndicator(this._quickIndicator);
-            }
-        } else {
-            if (this._quickIndicator) {
-                if (this._quickIndicator.quickSettingsItems) {
-                    this._quickIndicator.quickSettingsItems.forEach(item => item.destroy());
-                }
-                this._quickIndicator.destroy();
-                this._quickIndicator = null;
-            }
+        // Quick Settings Indicator (interruttore sempre presente nei Quick Settings)
+        if (!this._quickIndicator) {
+            this._quickIndicator = new VoiceAssistantSystemIndicator(this);
+            Main.panel.statusArea.quickSettings.addExternalIndicator(this._quickIndicator);
         }
 
         this._updateUiState(this._lastState);
@@ -492,11 +470,6 @@ export default class VoiceAssistantExtension extends Extension {
     }
 
     disable() {
-        if (this._modeSignalId) {
-            this._settings.disconnect(this._modeSignalId);
-            this._modeSignalId = null;
-        }
-
         if (this._watchId) {
             Gio.bus_unwatch_name(this._watchId);
             this._watchId = 0;
