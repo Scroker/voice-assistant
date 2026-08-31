@@ -201,12 +201,14 @@ const AssistantIndicator = GObject.registerClass(
                             
                             // Ascolto del progresso di download
                             this._progressSignal = this._dbusProxy.connectSignal('DownloadProgress',
-                                (proxy, senderName, [percent]) => {
+                                (proxy, senderName, [pName, mName, percent]) => {
                                     if (this._downloadItem) {
-                                        let provider = this._settings.get_string('stt-provider');
-                                        let model = this._settings.get_string('stt-model');
-                                        this._downloadItem.label.text = _(`Scaricamento ${provider} (${model}): ${percent}%`);
-                                        this._downloadItem.visible = true;
+                                        if (percent >= 0 && percent < 100) {
+                                            this._downloadItem.label.text = _(`Scaricamento ${pName} (${mName}): ${percent}%`);
+                                            this._downloadItem.visible = true;
+                                        } else {
+                                            this._downloadItem.visible = false;
+                                        }
                                     }
                                 });
                         }

@@ -287,10 +287,7 @@ class VoiceAssistant(object):
             else:
                 self._downloading_models.pop(key, None)
                 
-            try:
-                self.DownloadProgress(local_provider_name, local_model_name, percent)
-            except Exception:
-                pass
+            self.emit_download_progress(local_provider_name, local_model_name, percent)
                 
             if notif:
                 if getattr(notif, '_is_closed', False):
@@ -346,6 +343,15 @@ class VoiceAssistant(object):
     @dbus_signal
     def DownloadProgress(self, provider: str, model_name: str, percent: int):
         pass
+
+    def emit_download_progress(self, provider: str, model_name: str, percent: int):
+        def _emit():
+            try:
+                self.DownloadProgress(provider, model_name, percent)
+            except Exception as e:
+                print(f"Error emitting DownloadProgress signal: {e}")
+            return False
+        GLib.idle_add(_emit)
 
     def _create_stream(self):
         if self._stream is None:
@@ -415,10 +421,7 @@ class VoiceAssistant(object):
         def _download_thread():
             key = f"{provider}:{model_name}"
             self._downloading_models[key] = 0
-            try:
-                self.DownloadProgress(provider, model_name, 0)
-            except Exception:
-                pass
+            self.emit_download_progress(provider, model_name, 0)
 
             print(f"[D-Bus] Avvio scaricamento modello: provider={provider}, model={model_name}")
             self._inhibitor.inhibit(f"Scaricamento modello {model_name} in corso")
@@ -437,10 +440,7 @@ class VoiceAssistant(object):
 
             def progress_cb(percent: int):
                 self._downloading_models[key] = percent
-                try:
-                    self.DownloadProgress(provider, model_name, percent)
-                except Exception:
-                    pass
+                self.emit_download_progress(provider, model_name, percent)
                 if notif:
                     if getattr(notif, '_is_closed', False):
                         notif.id = 0
@@ -460,10 +460,7 @@ class VoiceAssistant(object):
                 )
                 print(f"[D-Bus] Scaricamento completato: {provider} ({model_name})")
                 self._downloading_models.pop(key, None)
-                try:
-                    self.DownloadProgress(provider, model_name, 100)
-                except Exception:
-                    pass
+                self.emit_download_progress(provider, model_name, 100)
                 if notif:
                     notif.set_timeout(notify2.EXPIRES_NEVER)
                     notif.update("Voice Assistant", f"Modello {model_name} scaricato con successo!", "emblem-ok-symbolic")
@@ -472,10 +469,7 @@ class VoiceAssistant(object):
             except Exception as e:
                 print(f"[D-Bus] Errore scaricamento modello {model_name}: {e}")
                 self._downloading_models.pop(key, None)
-                try:
-                    self.DownloadProgress(provider, model_name, -1)
-                except Exception:
-                    pass
+                self.emit_download_progress(provider, model_name, -1)
                 if notif:
                     notif.set_timeout(notify2.EXPIRES_NEVER)
                     notif.update("Voice Assistant", f"Errore scaricamento {model_name}: {e}", "dialog-error-symbolic")

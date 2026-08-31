@@ -175,7 +175,8 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 Gio.DBusSignalFlags.NONE,
                 (connection, senderName, objectPath, interfaceName, signalName, parameters) => {
                     try {
-                        let [pName, mName, percent] = parameters.unpack();
+                        let unpacked = parameters.deepUnpack ? parameters.deepUnpack() : parameters.unpack();
+                        let [pName, mName, percent] = unpacked;
                         let key = `${pName}:${mName}`;
                         if (percent >= 0 && percent < 100) {
                             downloadingProgress.set(key, percent);
