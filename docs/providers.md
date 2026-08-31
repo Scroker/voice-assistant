@@ -4,16 +4,42 @@
 
 ---
 
+## Pipeline Audio e Architettura Provider
+
+```mermaid
+graph TD
+    subgraph AudioCapture ["Cattura Audio (sounddevice)"]
+        mic["Microfono (PCM 16kHz Mono Int16)"] -->|Chunk 0.5s| callback["audio_callback()"]
+        callback -->|Enqueue| queue["queue.Queue<br/>(Thread-Safe)"]
+    end
+
+    subgraph AudioLoop ["Main Audio Loop (_audio_loop Thread)"]
+        queue -->|Dequeue| loop["_audio_loop()"]
+        loop -->|Wakeword Monitor| vosk_small["Vosk small-it (Fisso)"]
+        
+        loop -->|Se Listening| provider_router{"STT Provider Attivo"}
+        provider_router -->|Streaming| vosk_prov["VoskProvider"]
+        provider_router -->|Batch Buffer| whisper_prov["WhisperProvider"]
+    end
+
+    subgraph Execution ["Elaborazione STT"]
+        vosk_prov -->|process_chunk| result1["Testo Parziale / Finale"]
+        whisper_prov -->|flush_and_transcribe| result2["Testo Finale"]
+    end
+```
+
+---
+
 ## Interfaccia Astratta (`providers/base.py`)
 
-Ogni provider deve estendere `STTProvider`:
+Ogni provider estende la classe astratta `STTProvider`:
 
 ```python
 import abc
 
 class STTProvider(abc.ABC):
     @abc.abstractmethod
-    def __init__(self, model: str, hardware: str, extra: dict):
+    def __init__(self, model: str, hardware: str, extra: dict, progress_callback=None):
         """Inizializza il provider, scaricando il modello se necessario."""
         pass
 
@@ -46,7 +72,7 @@ class STTProvider(abc.ABC):
 def get_provider(provider_name, model, hardware, extra, progress_callback=None) -> STTProvider
 ```
 
-Il parametro `progress_callback` è una funzione `(percent: int) -> None` che il provider chiama durante il download del modello.
+Il parametro `progress_callback` è una funzione thread-safe `(percent: int) -> None` che il provider chiama durante il download del modello per emettere il segnale D-Bus `DownloadProgress`.
 
 ---
 
@@ -86,7 +112,7 @@ Il riconoscimento è **in tempo reale**: il testo appare progressivamente mentre
 
 ### Recovery da Corruzione
 
-Se un modello esiste ma non è valido (`Model()` lancia un'eccezione), la cartella viene rimossa automaticamente e il download viene rieseguito.
+Se un modello esiste ma non è valido (`Model()` lancia un'eccezione), la cartella viene rimossa automaticamente e il download viene rieseguito in modo trasparente.
 
 ---
 
@@ -102,37 +128,33 @@ Se un modello esiste ma non è valido (`Model()` lancia un'eccezione), la cartel
 
 ### Funzionamento
 
-A differenza di Vosk, Whisper **non supporta streaming**. I chunk audio vengono accumulati in un `bytearray`. La trascrizione avviene solo quando `flush_and_transcribe()` viene invocato, tipicamente dopo 2 secondi di silenzio (rilevato nel `_audio_loop()` di `main.py` con soglia RMS > 500).
+A differenza di Vosk, Whisper **non supporta streaming nativo**. I chunk audio vengono accumulati in un `bytearray`. La trascrizione avviene solo quando `flush_and_transcribe()` viene invocato, tipicamente dopo 2 secondi di silenzio (rilevato nel `_audio_loop()` di `main.py` con soglia RMS > 500).
 
 ```
-Audio chunks → bytearray → flush_and_transcribe() → float32 normalizzato → model.transcribe()
+Audio chunks (int16) → bytearray → flush_and_transcribe() → float32 normalizzato (-1.0 to 1.0) → model.transcribe()
 ```
 
 ### Taglie dei Modelli
 
-| Taglia | Dimensione approssimativa | VRAM (CUDA) |
-|---|---|---|
-| `tiny` | ~75 MB | ~1 GB |
-| `base` | ~140 MB | ~1 GB |
-| `small` | ~466 MB | ~2 GB |
-| `medium` | ~1.5 GB | ~5 GB |
-| `large-v3` | ~3.1 GB | ~10 GB |
+| Taglia | Dimensione approssimativa | VRAM (CUDA) | Compute Type (CPU / CUDA) |
+|---|---|---|---|
+| `tiny` | ~75 MB | ~1 GB | `int8` / `float16` |
+| `base` | ~140 MB | ~1 GB | `int8` / `float16` |
+| `small` | ~466 MB | ~2 GB | `int8` / `float16` |
+| `medium` | ~1.5 GB | ~5 GB | `int8` / `float16` |
+| `large-v3` | ~3.1 GB | ~10 GB | `int8` / `float16` |
 
-### Tracking del Progresso di Download
+### Tracking del Progresso di Download (Thread-Safe File Growth Monitoring)
 
-Whisper usa `tqdm` per le progress bar. Il provider intercetta queste barre tramite:
+Per evitare l'inaffidabilità del parsing di `tqdm` su stderr (che falliva durante download concorrenti o senza TTY), `WhisperProvider` utilizza un monitoraggio thread-safe indipendente della crescita delle dimensioni dei file sul filesystem.
 
-1. **`GlobalTqdmRedirector`**: un wrapper su `sys.stderr` che cattura l'output di tqdm e ne estrae la dimensione scaricata tramite regex
-2. **Monkey-patch di `tqdm`**: forza l'uso del redirector globale e disabilita il disable automatico
-3. **Variabili globali su `sys`**: `sys._va_progress_cb`, `sys._va_model_size`, `sys._va_dl_state` — necessarie perché i thread worker di HuggingFace non ereditano `contextvars`
-
-### Migrazione Vecchi Modelli
-
-All'avvio, il provider cerca automaticamente vecchie cartelle HuggingFace (formato `models--Systran--faster-whisper-<size>/snapshots/<hash>/`) e le migra nella struttura pulita `whisper-<size>/`.
+Un thread di monitoraggio dedicato misura in tempo reale la dimensione accumulata della cartella di destinazione del modello rispetto alla dimensione attesa e notifica il `progress_callback` isolando gli stati di ciascun modello in parallelo.
 
 ---
 
-## Aggiungere un Nuovo Provider
+## Aggiungere un Nuovo Provider STT
+
+Per aggiungere un nuovo motore STT (es. Piper, Coqui, Llama-STT):
 
 1. **Creare il file** `providers/nuovo_provider.py`:
 
@@ -141,11 +163,12 @@ from .base import STTProvider
 
 class NuovoProvider(STTProvider):
     def __init__(self, model: str, hardware: str, extra: dict, progress_callback=None):
-        # Scaricare/caricare il modello
+        super().__init__(model, hardware, extra, progress_callback)
+        # Inizializzare/scaricare il modello
         pass
 
     def process_chunk(self, data: bytes) -> tuple[str, str]:
-        # Processare il chunk audio
+        # Processare il chunk audio PCM int16 mono 16kHz
         return "", ""
 
     def flush_and_transcribe(self) -> str:
@@ -155,7 +178,7 @@ class NuovoProvider(STTProvider):
         pass
 ```
 
-2. **Registrare nella factory** (`providers/__init__.py`):
+2. **Registrare il provider nella Factory** (`providers/__init__.py`):
 
 ```python
 from .nuovo_provider import NuovoProvider
@@ -166,22 +189,21 @@ def get_provider(provider_name, model, hardware, extra, progress_callback=None):
         return NuovoProvider(model, hardware, extra, progress_callback)
 ```
 
-3. **Aggiungere la UI** in `prefs.js`:
-   - Aggiungere l'opzione nella `providerList` / `providerIds`
-   - Creare un nuovo `Adw.PreferencesGroup` con le opzioni specifiche
-   - Gestire la visibilità nella funzione `onProviderChanged()`
+3. **Aggiungere l'opzione in UI (`data/ui/prefs.blp` & `src/prefs.js`)**:
+   - In `data/ui/prefs.blp`, aggiungere la nuova voce nel widget `Adw.ComboRow` del provider.
+   - In `src/prefs.js`, collegare l'ID del provider ed eventuali opzioni di configurazione aggiuntive.
 
-4. **Aggiornare il GSchema**: se servono nuove chiavi, aggiungerle a `org.gnome.shell.extensions.voice-assistant.gschema.xml` e aggiungere un handler in `main.py:on_settings_changed()`.
+4. **Schema GSettings**: Se il nuovo provider introduce impostazioni specifiche, aggiungere la chiave in `data/schemas/org.gnome.shell.extensions.voice-assistant.gschema.xml` e collegarla in `main.py:on_settings_changed()`.
 
 ---
 
-## Formato Audio
+## Formato Audio Standard
 
-Tutti i provider ricevono audio nel formato:
+Tutti i provider ricevono audio nel seguente formato fisso:
 
 | Proprietà | Valore |
 |---|---|
-| **Sample rate** | 16000 Hz |
+| **Sample rate** | 16000 Hz (16 kHz) |
 | **Canali** | 1 (mono) |
 | **Formato** | PCM int16 (little-endian) |
-| **Block size** | 8000 frames (0.5 secondi) |
+| **Block size** | 8000 frames (0.5 secondi per chunk) |

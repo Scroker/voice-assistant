@@ -1,200 +1,128 @@
 # Guida Sviluppatori
 
-> Setup dell'ambiente di sviluppo, comandi utili, workflow di debug e convenzioni del progetto.
+> Setup dell'ambiente di sviluppo, comandi utili, workflow di debug, insidie note (gotchas) e convenzioni del progetto.
 
 ---
 
 ## Prerequisiti di Sistema
 
-| Pacchetto | Scopo |
-|---|---|
-| `meson` + `ninja-build` | Build system |
-| `blueprint-compiler` | Compilatore interfacce UI Blueprint (.blp → .ui) |
-| `python3`, `python3-venv` | Runtime del daemon |
-| `glib-compile-schemas` | Compilazione GSettings |
-| `glib-compile-resources` | Compilazione GResource (icone, UI, D-Bus XML, servizi) |
-| `gettext` | Localizzazione |
-| `python3-gi` (PyGObject) | Accesso a GLib/Gio dal daemon |
-| `libportaudio2` | Backend di `sounddevice` |
+### Installazione Dipendenze di Sistema
 
-### Dipendenze Python (installate automaticamente dal venv)
+#### Fedora / RHEL
+```bash
+sudo dnf install meson ninja-build blueprint-compiler python3 python3-devel python3-gobject portaudio-devel gettext
+```
 
-| Pacchetto | Versione | Scopo |
-|---|---|---|
-| `dasbus` | any | Binding D-Bus ad alto livello |
-| `vosk` | any | Riconoscimento vocale offline (Kaldi) |
-| `sounddevice` | any | Cattura audio dal microfono |
-| `notify2` | any | Notifiche desktop |
-| `faster-whisper` | any | *(Opzionale)* Backend Whisper con CTranslate2 |
+#### Ubuntu / Debian
+```bash
+sudo apt install meson ninja-build blueprint-compiler python3 python3-venv python3-gi libportaudio2 gettext
+```
+
+#### Arch Linux
+```bash
+sudo pacman -S meson ninja blueprint-compiler python python-gobject portaudio gettext
+```
 
 ---
 
-## Setup Ambiente
+## Setup Ambiente e Workflow di Build
+
+### 1. Clonazione e Build Iniziale
 
 ```bash
 # Clone del repository
 git clone https://github.com/mkswap/voice-assistant.git
 cd voice-assistant
 
-# Build e installazione locale
+# Configura l'ambiente Meson nella directory 'build'
 meson setup build --prefix=$HOME/.local
-meson install -C build
 
-# Riavviare la sessione GNOME (necessario su Wayland)
-# Oppure Alt+F2 → 'r' su X11
+# Compila (Blueprint -> UI, GResource, Schemi) ed installa
+meson install -C build
 
 # Abilitare l'estensione
 gnome-extensions enable voice-assistant@mkswap.github.io
 ```
 
-### Generazione del Pacchetto ZIP installabile
+### 2. Generazione del Pacchetto ZIP per la Distribuzione
 
-Per pacchettizzare l'estensione in un file `.zip` pronto per la distribuzione o l'installazione su altri sistemi:
+Per impacchettare l'estensione per la distribuzione o l'installazione su altri sistemi via **Extension Manager**:
 
 ```bash
-# Genera build/voice-assistant@mkswap.github.io.shell-extension.zip
+# Compila ed impacchetta in build/voice-assistant@mkswap.github.io.shell-extension.zip
 meson compile -C build zip
 ```
 
 ---
 
-## Workflow di Sviluppo
+## Technical Gotchas e Scelte Architetturali Note
+
+### 1. ALSA / Pipewire Process Name Fix (`start.sh`)
+Quando il daemon Python si registra come client audio Pipewire/PulseAudio, il server audio mostra il nome dell'eseguibile Python generico (`python3`). Per far apparire l'applicazione correttamente come **"Voice Assistant"** nelle impostazioni audio di sistema di GNOME, `start.sh` crea un symlink o una copia del binario eseguibile chiamata `VoiceAssistant` ed esegue `exec VoiceAssistant main.py`.
+
+### 2. Blueprint & GResource Multi-Directory Resolution
+`blueprint-compiler` genera il file `prefs.ui` all'interno della directory di build (`build/data/prefs.ui`). In `data/meson.build`, `glib-compile-resources` viene eseguito con i flag:
+`--sourcedir=meson.current_source_dir()` e `--sourcedir=meson.current_build_dir()`. Questo permette a GResource di trovare sia i file sorgente in `data/` che i file compilati in `build/data/`.
+
+### 3. Thread-Safety in PyGObject e Python Daemon
+GLib richiede che le modifiche allo stato dell'applicazione o all'emissione dei segnali D-Bus avvengano nel Main Thread. Quando i worker thread in background (es. cattura audio `_audio_loop` o download dei modelli) completano un'operazione, la mutazione dello stato deve sempre essere delegata con:
+```python
+GLib.idle_add(self._update_state, new_state)
+```
+
+### 4. Tracking dei Download dei Modelli
+L'intercettazione dei log da `tqdm` / `sys.stderr` causava blocchi e inaccuratezze (es. stallo al 3%) durante download concorrenti. Il sistema utilizza invece un monitoraggio thread-safe indipendente della crescita delle dimensioni dei file sul filesystem, isolando ciascun modello scaricato.
+
+---
+
+## Workflow di Sviluppo Iterativo
 
 ### Modifiche all'Interfaccia Preferenze (`data/ui/prefs.blp`)
 
-L'interfaccia preferenze è scritta in **Blueprint**. Non modificare manualmente file XML `.ui`.
+L'interfaccia delle preferenze è scritta in **Blueprint**. Non modificare file XML `.ui` direttamente in `data/ui/`.
 
 ```bash
-# Modifica il file Blueprint
-nano data/ui/prefs.blp
-
 # Ricompila ed installa l'estensione
 meson install -C build
-```
-
-### Modifiche all'Estensione GNOME (`src/extension.js`, `src/prefs.js`)
-
-```bash
-# Dopo ogni modifica, reinstallare e riavviare GNOME Shell
-meson install -C build
-
-# Se modifichi lo schema GSettings:
-glib-compile-schemas ~/.local/share/gnome-shell/extensions/voice-assistant@mkswap.github.io/schemas/
-
-# Vedere i log dell'estensione in tempo reale
-journalctl -f -o cat /usr/bin/gnome-shell
 ```
 
 ### Modifiche al Daemon Python (`src/daemon/`)
 
 ```bash
-# Riavviare il daemon dopo le modifiche
+# Reinstalla e riavvia il servizio systemd utente
 meson install -C build
 systemctl --user restart voice-assistant.service
 
-# Oppure, per sviluppo iterativo, eseguire direttamente:
-cd src/daemon
-source venv/bin/activate
-python main.py
-
-# Log del daemon
+# Seguire i log del daemon in tempo reale
 journalctl --user -u voice-assistant -f
 ```
 
----
+### Modifiche allo Schema GSettings
 
-## Struttura del Repository
-
-```
-voice-assistant@mkswap.github.io/
-├── meson.build                              # Build config root
-├── stylesheet.css                           # Stili CSS per l'indicatore GNOME Shell
-├── README.md                                # Documentazione utente
-├── LICENSE                                  # GPLv3
-├── data/
-│   ├── meson.build                          # Build rules per assets e Blueprint
-│   ├── metadata.json.in                     # Metadata dell'estensione GNOME
-│   ├── dbus/
-│   │   └── org.local.VoiceAssistant.xml     # Introspezione D-Bus XML
-│   ├── services/
-│   │   ├── voice-assistant.service.in       # Template servizio Systemd
-│   │   └── org.local.VoiceAssistant.service.in # Template attivazione D-Bus
-│   ├── ui/
-│   │   └── prefs.blp                        # Interfaccia preferenze in Blueprint
-│   ├── icons/
-│   │   ├── mic-1-symbolic.svg               # Icona microfono
-│   │   └── vocal-assistant-symbolic.svg     # Icona principale dell'assistente
-│   └── schemas/
-│       ├── ...gschema.xml                   # Schema GSettings
-│       └── ...gresource.xml                 # Manifest GResource
-├── src/
-│   ├── meson.build                          # Build rules per sorgenti
-│   ├── extension.js                         # Estensione GNOME Shell
-│   ├── prefs.js                             # Logic & Binding del pannello preferenze
-│   └── daemon/
-│       ├── main.py                          # Entry point del daemon
-│       ├── start.sh                         # Script di avvio (systemd)
-│       ├── requirements.txt                 # Dipendenze pip
-│       └── providers/
-│           ├── __init__.py                  # Factory dei provider
-│           ├── base.py                      # Classe base astratta
-│           ├── vosk_provider.py             # Implementazione Vosk
-│           └── whisper_provider.py          # Implementazione Whisper
-├── po/
-│   ├── meson.build                          # Build rules traduzioni
-│   ├── LINGUAS                              # Lingue supportate (it)
-│   ├── POTFILES.in                          # File sorgente da tradurre
-│   └── it.po                                # Traduzione italiana
-├── docs/
-│   ├── architecture.md                      # Architettura del sistema
-│   ├── gsettings.md                         # Reference GSettings
-│   ├── dbus.md                              # Reference D-Bus
-│   ├── providers.md                         # Guida ai provider STT
-│   └── development.md                       # Questa guida
-└── build/                                   # Directory di build (generata)
-```
-
----
-
-## Debug Comune
-
-### Il daemon non si avvia
+Dopo aver modificato `data/schemas/org.gnome.shell.extensions.voice-assistant.gschema.xml`:
 
 ```bash
-# Controllare lo stato
-systemctl --user status voice-assistant.service
-
-# Controllare se start.sh è eseguibile
-ls -la ~/.local/share/gnome-shell/extensions/voice-assistant@mkswap.github.io/daemon/start.sh
-
-# Provare l'avvio manuale
-~/.local/share/gnome-shell/extensions/voice-assistant@mkswap.github.io/daemon/start.sh
-```
-
-### Il microfono non funziona
-
-```bash
-# Verificare che sounddevice veda i device
-python3 -c "import sounddevice; print(sounddevice.query_devices())"
-
-# Controllare che Pipewire/PulseAudio sia in esecuzione
-pactl info
+# Ricompila ed installa
+meson install -C build
 ```
 
 ---
 
-## Convenzioni di Codice
+## Localizzazione (i18n con Gettext)
 
-### UI e Stile (Blueprint & CSS)
-- Tutta la struttura delle preferenze va definita in `data/ui/prefs.blp`.
-- `prefs.js` deve contenere solo la logica dei segnali, i binding GSettings ed il popolamento dinamico delle liste.
-- Gli stili grafici dell'estensione vanno aggiunti in `stylesheet.css`.
+Le stringhe traducibili sono estratte da `extension.js`, `prefs.js` e `prefs.blp`.
 
-### Python (Daemon)
-- Thread-safety: l'accesso allo stato avviene sempre tramite `GLib.idle_add()` per il main thread.
-- I download operano in thread dedicati per isolare ciascuna operazione.
+```bash
+# Aggiornare il template POT nella directory di build
+cd build
+meson compile voice-assistant-pot
 
-### JavaScript (Estensione GNOME)
-- Seguire le convenzioni GJS / GNOME Shell.
-- I log usano il prefisso `[VoiceAssistant]`.
-- Le stringhe traducibili usano `_()`.
+# Aggiornare il file PO della traduzione italiana
+cd ../po
+msgmerge -U it.po voice-assistant.pot
+```
+
+Per aggiungere una nuova lingua (es. Francese `fr`):
+1. Aggiungere `fr` a `po/LINGUAS`.
+2. Eseguire `msginit -i po/voice-assistant.pot -o po/fr.po --locale=fr`.
+3. Tradurre le stringhe con Poedit o editor di testo.

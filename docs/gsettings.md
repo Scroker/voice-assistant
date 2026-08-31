@@ -4,51 +4,132 @@
 > Path: `/org/gnome/shell/extensions/voice-assistant/`  
 > File: `data/schemas/org.gnome.shell.extensions.voice-assistant.gschema.xml`
 
-Questo è il canale di configurazione condiviso tra la UI delle preferenze (`prefs.js`), l'estensione GNOME Shell (`extension.js`) e il demone Python (`main.py`).
+GSettings è il bus di configurazione persistente condiviso tra l'interfaccia delle preferenze (`prefs.js`), l'estensione GNOME Shell (`extension.js`) e il daemon Python (`main.py`). Ogni modifica ad una chiave viene salvata nel database dconf e notificata istantaneamente a tutti i componenti iscritti al segnale `changed::`.
+
+```mermaid
+graph TD
+    UI["Preferences UI (prefs.js + prefs.blp)"] -->|gsettings set| dconf[(dconf Database)]
+    dconf -->|changed::signal| ShellExt["GNOME Extension (extension.js)"]
+    dconf -->|changed::signal| Daemon["Python Daemon (main.py)"]
+
+    ShellExt -->|Legge toggle-shortcut| Keybinds["Main.wm.addKeybinding"]
+    Daemon -->|Legge wakeword, stt-*| AudioLoop["_audio_loop & STTProvider"]
+```
 
 ---
 
-## Chiavi
+## Tabelle di Riferimento Chiavi
 
 ### `wakeword` — `string`
-- **Default**: `'assistente'`
-- **Descrizione**: Parola chiave che attiva il riconoscimento vocale completo.
+
+| Proprietà | Valore |
+|---|---|
+| **Tipo** | `s` (stringa) |
+| **Default** | `'assistente'` |
+| **Descrizione** | La parola chiave che attiva il riconoscimento vocale completo |
+| **Consumata da** | `main.py` (comparazione case-insensitive nel filtro Vosk small-it) |
+| **Comportamento** | Aggiornamento **istantaneo** in memoria nel main loop del daemon |
 
 ### `stt-provider` — `string`
-- **Default**: `'vosk'`
-- **Valori validi**: `'vosk'`, `'whisper'`
-- **Descrizione**: Motore STT per il riconoscimento vocale.
+
+| Proprietà | Valore |
+|---|---|
+| **Tipo** | `s` (stringa) |
+| **Default** | `'vosk'` |
+| **Valori validi** | `'vosk'`, `'whisper'` |
+| **Descrizione** | Motore STT per il riconoscimento vocale delle frasi complete |
+| **Consumata da** | `main.py` → `providers/__init__.py:get_provider()` |
+| **Comportamento** | Triggera reload **debounced** (500ms) del provider STT |
 
 ### `stt-model` — `string`
-- **Default**: `'vosk-model-small-it-0.22'`
-- **Descrizione**: Modello selezionato per il provider corrente.
+
+| Proprietà | Valore |
+|---|---|
+| **Tipo** | `s` (stringa) |
+| **Default** | `'vosk-model-small-it-0.22'` |
+| **Valori tipici** | Vosk: `vosk-model-small-it-0.22`, `vosk-model-it-0.22` |
+| | Whisper: `tiny`, `base`, `small`, `medium`, `large-v3` |
+| **Descrizione** | Nome/taglia del modello da caricare ed utilizzare |
+| **Consumata da** | Costruttore del provider (`VoskProvider` / `WhisperProvider`) |
+| **Comportamento** | Triggera reload debounced (500ms) del provider STT |
 
 ### `stt-hardware` — `string`
-- **Default**: `'cpu'`
-- **Valori validi**: `'cpu'`, `'cuda'`
-- **Descrizione**: Dispositivo di esecuzione dell'inferenza.
+
+| Proprietà | Valore |
+|---|---|
+| **Tipo** | `s` (stringa) |
+| **Default** | `'cpu'` |
+| **Valori validi** | `'cpu'`, `'cuda'` |
+| **Descrizione** | Dispositivo di esecuzione dell'inferenza |
+| **Consumata da** | `WhisperProvider` (scelta del tipo di calcolo float16 vs int8) |
+| **Comportamento** | Triggera reload debounced (500ms) del provider STT |
+
+### `stt-extra` — `string`
+
+| Proprietà | Valore |
+|---|---|
+| **Tipo** | `s` (stringa JSON) |
+| **Default** | `'{}'` |
+| **Descrizione** | Parametri accessori passati al provider in formato JSON |
+| **Consumata da** | Costruttore del provider (parametro `extra`) |
+| **Comportamento** | Triggera reload debounced (500ms) del provider STT |
 
 ### `enabled` — `boolean`
-- **Default**: `true`
-- **Descrizione**: Controlla se l'assistente è abilitato o disattivato.
+
+| Proprietà | Valore |
+|---|---|
+| **Tipo** | `b` (booleano) |
+| **Default** | `true` |
+| **Descrizione** | Abilita o disabilita globalmente l'ascolto del microfono |
+| **Consumata da** | `main.py` (governa transizioni `disabled ↔ idle`) ed `extension.js` |
+| **Comportamento** | Aggiornamento **istantaneo** senza reload del modello |
 
 ### `models-dir` — `string`
-- **Default**: `''`
-- **Descrizione**: Cartella personalizzata per il salvataggio dei modelli STT.
 
-### `toggle-shortcut` — `array of strings` (`as`)
-- **Default**: `['<Super>v']`
-- **Descrizione**: Scorciatoia da tastiera nativa GNOME per attivare/disattivare manualmente l'ascolto dell'assistente.
-- **Consumata da**: `extension.js` via `Main.wm.addKeybinding()`.
+| Proprietà | Valore |
+|---|---|
+| **Tipo** | `s` (stringa percorso) |
+| **Default** | `''` (vuoto per percorso default `~/.local/share/voice-assistant/models`) |
+| **Descrizione** | Cartella personalizzata per il salvataggio dei modelli STT |
+| **Consumata da** | `prefs.js`, `main.py`, `VoskProvider`, `WhisperProvider` |
+| **Comportamento** | Triggera reload debounced del provider |
+
+### `toggle-shortcut` — `array of strings`
+
+| Proprietà | Valore |
+|---|---|
+| **Tipo** | `as` (array di stringhe) |
+| **Default** | `['<Super>v']` |
+| **Descrizione** | Combinazione di tasti per attivare/disattivare l'ascolto via tastiera |
+| **Consumata da** | `extension.js` via `Main.wm.addKeybinding()` |
+| **Comportamento** | Re-registrazione istantanea della shortcut in GNOME Shell |
 
 ---
 
-## Lettura/Scrittura da CLI
+## Gestione CLI da Terminale
 
 ```bash
-# Leggi tutte le chiavi
+# Elenca tutte le impostazioni correnti
 gsettings list-recursively org.gnome.shell.extensions.voice-assistant
 
-# Cambia scorciatoia da tastiera
+# Modifica la wakeword
+gsettings set org.gnome.shell.extensions.voice-assistant wakeword "computer"
+
+# Cambia il provider a Whisper con modello base
+gsettings set org.gnome.shell.extensions.voice-assistant stt-provider "whisper"
+gsettings set org.gnome.shell.extensions.voice-assistant stt-model "base"
+
+# Modifica la scorciatoia da tastiera nativa
 gsettings set org.gnome.shell.extensions.voice-assistant toggle-shortcut "['<Super><Shift>v']"
+
+# Ripristina tutte le impostazioni ai valori di fabbrica
+gsettings reset-recursively org.gnome.shell.extensions.voice-assistant
 ```
+
+---
+
+## Gotchas e Note per gli Sviluppatori
+
+1. **Schema compilato obbligatorio**: GNOME Shell non legge file XML `.gschema.xml` non compilati. È necessario eseguire `glib-compile-schemas` nella directory `schemas/` dopo ogni modifica.
+2. **Coerenza dei tipi**: In `prefs.js`, i binding a widget GTK/Adwaita devono corrispondere al tipo GSettings (es. `Gio.SettingsBindFlags.DEFAULT` per booleani o stringhe).
+3. **Mancanza di accoppiamento diretto**: `prefs.js` non comunica mai direttamente via codice con `main.py`. Tutta la sincronizzazione dello stato delle opzioni avviene esclusivamente tramite GSettings.

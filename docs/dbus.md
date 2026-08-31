@@ -6,11 +6,38 @@
 > Interface: `org.local.VoiceAssistant`  
 > Introspection File: `data/dbus/org.local.VoiceAssistant.xml`
 
+L'interfaccia D-Bus è il canale di comunicazione primaria per l'orchestrazione dello stato dell'assistente vocale, l'avvio ed annullamento dei download dei modelli STT e il monitoraggio degli eventi in tempo reale tra la GNOME Shell, il pannello delle preferenze ed il daemon Python.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Utente / GNOME Shell
+    participant Ext as extension.js / prefs.js
+    participant Bus as D-Bus Session Bus
+    participant Daemon as main.py (Daemon)
+
+    User->>Ext: Clicca su toggle / Premi <Super>v
+    Ext->>Bus: Call ToggleListening()
+    Bus->>Daemon: Invocazione ToggleListening()
+    Daemon-->>Daemon: Transizione stato (idle <-> disabled)
+    Daemon->>Bus: Emit StateChanged("idle")
+    Bus-->>Ext: Signal StateChanged("idle")
+    Ext-->>User: Aggiorna icona & OSD
+
+    User->>Ext: Seleziona Download Modello
+    Ext->>Bus: Call DownloadModel("whisper", "small")
+    Bus->>Daemon: Invocazione DownloadModel()
+    Daemon-->>Daemon: Avvia Thread Download & File Monitor
+    loop Ogni 1% avanzamento
+        Daemon->>Bus: Emit DownloadProgress("whisper", "small", percent)
+        Bus-->>Ext: Signal DownloadProgress
+        Ext-->>User: Aggiorna ProgressBar UI
+    end
+```
+
 ---
 
-## Introspection XML
-
-L'XML di introspezione è memorizzato in `data/dbus/org.local.VoiceAssistant.xml` e compilato all'interno delle risorse `gresource`.
+## Introspection XML (`data/dbus/org.local.VoiceAssistant.xml`)
 
 ```xml
 <!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
@@ -49,29 +76,74 @@ L'XML di introspezione è memorizzato in `data/dbus/org.local.VoiceAssistant.xml
 
 ---
 
-## Metodi
+## Dettaglio Metodi
 
 ### `ToggleListening() → boolean`
 Alterna lo stato dell'assistente tra `disabled` e `idle`.
+- **Ritorno**: `true` se attivo/in ascolto, `false` se disattivato.
+- **Side effects**: Avvia o arresta lo stream del microfono ed aggiorna la chiave GSettings `enabled`.
 
 ### `GetAvailableModels(provider: string) → string (JSON)`
 Ritorna la lista dei modelli supportati ed installati per il provider specificato (`vosk` o `whisper`).
+- **Input**: `"vosk"` oppure `"whisper"`.
+- **Output JSON**:
+  ```json
+  [
+    {
+      "id": "vosk-model-small-it-0.22",
+      "name": "Italian Small (0.22)",
+      "downloaded": true,
+      "size": "48 MB"
+    }
+  ]
+  ```
 
 ### `GetDownloadingModels() → string (JSON)`
-Ritorna una mappa dei modelli attualmente in fase di download ed il relativo progresso percentuale.
+Ritorna una mappa dei modelli attualmente in fase di scaricamento ed il relativo progresso percentuale.
+- **Output JSON**:
+  ```json
+  {
+    "whisper:small": 45
+  }
+  ```
 
 ### `DownloadModel(provider: string, model: string)`
-Avvia in background lo scaricamento del modello specificato.
+Avvia in un thread dedicato in background lo scaricamento del modello specificato, attivando l'inibitore di sospensione del sistema.
 
 ### `CancelDownload(provider: string, model: string)`
-Annulla il download in corso del modello specificato e rimuove i file parziali dal disco.
+Annulla il download in corso per il modello indicato, sblocca gli inibitori di sospensione e rimuove le cartelle parziali dal disco.
 
 ---
 
-## Segnali
+## Dettaglio Segnali
 
 ### `StateChanged(new_state: string)`
-Emesso ad ogni transizione di stato della state machine (`disabled`, `idle`, `listening`, `processing`, `speaking`, `downloading`).
+Emesso ad ogni transizione di stato del daemon.
+- **Valori possibili**: `"disabled"`, `"idle"`, `"listening"`, `"processing"`, `"speaking"`, `"downloading"`.
 
 ### `DownloadProgress(provider: string, model: string, percent: int)`
-Emesso periodicamente durante lo scaricamento di un modello per aggiornare la percentuale di progresso in tempo reale nella UI.
+Emesso in tempo reale dal thread di monitoraggio durante il download di un modello.
+- **Range**: `percent` compreso tra `0` e `100`.
+
+---
+
+## Test e Invocazione da CLI
+
+```bash
+# Invocare ToggleListening
+gdbus call --session \
+  --dest org.local.VoiceAssistant \
+  --object-path /org/local/VoiceAssistant \
+  --method org.local.VoiceAssistant.ToggleListening
+
+# Ottenere i modelli Vosk installati
+gdbus call --session \
+  --dest org.local.VoiceAssistant \
+  --object-path /org/local/VoiceAssistant \
+  --method org.local.VoiceAssistant.GetAvailableModels "vosk"
+
+# Monitorare i segnali D-Bus in tempo reale
+gdbus monitor --session \
+  --dest org.local.VoiceAssistant \
+  --object-path /org/local/VoiceAssistant
+```
