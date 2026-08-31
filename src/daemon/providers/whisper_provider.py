@@ -56,7 +56,8 @@ def setup_tqdm_patch():
                     try:
                         info['cb'](pct)
                     except Exception as e:
-                        print(f"Errore progress_callback ({tid}): {e}", flush=True)
+                        print(f"Interruzione download callback ({tid}): {e}", flush=True)
+                        raise e
             return n
 
         cls.__init__ = make_init(orig_init)
@@ -67,12 +68,17 @@ setup_tqdm_patch()
 class WhisperProvider(STTProvider):
     MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
     
-    def __init__(self, model_size: str, hardware: str, extra: dict, progress_callback=None, models_dir: str = None):
+    def __init__(self, model_size: str, hardware: str, extra: dict, progress_callback=None, models_dir: str = None, download_only: bool = False):
         if models_dir and len(models_dir.strip()) > 0:
             self.MODELS_DIR = os.path.expanduser(models_dir)
         else:
             self.MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
-        print(f"Inizializzazione WhisperProvider (Modello: {model_size}, HW: {hardware}, dir: {self.MODELS_DIR})...")
+
+        if not download_only:
+            print(f"Inizializzazione WhisperProvider (Modello: {model_size}, HW: {hardware}, dir: {self.MODELS_DIR})...")
+        else:
+            print(f"Scaricamento background modello Whisper '{model_size}'...")
+
         try:
             from faster_whisper import WhisperModel
         except ImportError:
@@ -114,11 +120,18 @@ class WhisperProvider(STTProvider):
                 print(f"Scaricamento modello Whisper '{model_size}' in '{target_dir}'...")
                 download_model(model_size, output_dir=target_dir)
                 
-            self.model = WhisperModel(target_dir, device=device, compute_type=compute_type)
-            print(f"Modello Whisper '{model_folder_name}' caricato con successo da {target_dir}.")
+            if not download_only:
+                self.model = WhisperModel(target_dir, device=device, compute_type=compute_type)
+                print(f"Modello Whisper '{model_folder_name}' caricato con successo da {target_dir}.")
+            else:
+                self.model = None
+                print(f"Modello Whisper '{model_folder_name}' scaricato con successo in {target_dir}.")
         except Exception as e:
             print(f"Errore caricamento modello Whisper: {e}")
             self.model = None
+            if os.path.exists(target_dir) and not os.path.exists(os.path.join(target_dir, "model.bin")):
+                print(f"Rimozione cartella download incompleto per Whisper: {target_dir}")
+                shutil.rmtree(target_dir, ignore_errors=True)
             raise RuntimeError(f"Errore caricamento/download modello Whisper {model_size}: {e}")
         finally:
             if downloads is not None:

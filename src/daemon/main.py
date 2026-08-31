@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
+import os
 import json
 import threading
 import queue
@@ -125,6 +126,7 @@ class VoiceAssistant(object):
         self._listening = False
         self._stream = None
         self._downloading_models = {}
+        self._cancel_requests = set()
         
         self.settings = Gio.Settings.new("org.gnome.shell.extensions.voice-assistant")
         self.wakeword = self.settings.get_string("wakeword")
@@ -133,6 +135,25 @@ class VoiceAssistant(object):
         self.hardware = self.settings.get_string("stt-hardware")
         self.models_dir = self.settings.get_string("models-dir")
         
+        self.language = self.settings.get_string("language")
+        if not self.language or self.language.strip() == "":
+            import locale
+            env_lang = os.environ.get("LANG", "") or os.environ.get("LC_MESSAGES", "")
+            sys_loc = (locale.getdefaultlocale()[0] or "").lower()
+            full_lang = (env_lang or sys_loc).lower()
+            if full_lang.startswith("it"):
+                self.language = "it"
+            elif full_lang.startswith("en"):
+                self.language = "en"
+            else:
+                self.language = "it"
+            try:
+                self.settings.set_string("language", self.language)
+            except Exception:
+                pass
+
+        self.vosk_ww_model = "vosk-model-small-it-0.22" if self.language == "it" else "vosk-model-small-en-us-0.15"
+
         try:
             extra_str = self.settings.get_string("stt-extra")
             self.extra_config = json.loads(extra_str) if extra_str else {}
@@ -141,6 +162,7 @@ class VoiceAssistant(object):
             
         is_enabled = self.settings.get_boolean("enabled")
         
+        self.settings.connect("changed::language", self.on_settings_changed)
         self.settings.connect("changed::wakeword", self.on_settings_changed)
         self.settings.connect("changed::stt-provider", self.on_settings_changed)
         self.settings.connect("changed::stt-model", self.on_settings_changed)
@@ -166,10 +188,10 @@ class VoiceAssistant(object):
                         self.DownloadProgress(pct)
                     except Exception:
                         pass
-                self.ww_provider = VoskProvider("vosk-model-small-it-0.22", "cpu", {}, progress_callback=progress_cb, models_dir=self.models_dir)
+                self.ww_provider = VoskProvider(self.vosk_ww_model, "cpu", {}, progress_callback=progress_cb, models_dir=self.models_dir)
                 self.ww_model = self.ww_provider.model
                 self.ww_recognizer = KaldiRecognizer(self.ww_model, 16000)
-                print("Motore Wake Word (Vosk) inizializzato con successo.")
+                print(f"Motore Wake Word (Vosk: {self.vosk_ww_model}) inizializzato con successo.")
             except Exception as e:
                 print(f"Errore inizializzazione Wake Word: {e}")
                 self.ww_recognizer = None
@@ -243,6 +265,18 @@ class VoiceAssistant(object):
             notif.show()
         return False
 
+    def _has_installed_models(self) -> bool:
+        target_dir = getattr(self, 'models_dir', '')
+        if not target_dir or target_dir.strip() == "":
+            target_dir = os.path.expanduser("~/.local/share/voice-assistant/models")
+        if not os.path.exists(target_dir):
+            return False
+        try:
+            entries = [e for e in os.listdir(target_dir) if not e.startswith('.')]
+            return len(entries) > 0
+        except Exception:
+            return False
+
     def load_provider(self, load_id):
         # Usiamo variabili locali per il thread per evitare conflitti se l'utente cambia modello durante il download
         local_provider_name = self.provider_name
@@ -250,12 +284,19 @@ class VoiceAssistant(object):
         local_hardware = self.hardware
         local_extra = self.extra_config
         local_models_dir = getattr(self, 'models_dir', '')
+        key_str = f"{local_provider_name}:{local_model_name}"
         model_key = (local_provider_name, local_model_name)
+        if hasattr(self, '_cancel_requests'):
+            self._cancel_requests.discard(key_str)
         
         print(f"Caricamento del provider STT '{local_provider_name}'...")
         
         if load_id == getattr(self, '_load_id', 0):
-            GLib.idle_add(self.set_state, "downloading")
+            # Mostra l'icona di download sul pannello principale dell'estensione SOLO al primo avvio quando non c'è alcun modello installato
+            if not self._has_installed_models():
+                GLib.idle_add(self.set_state, "downloading")
+            if key_str not in self._downloading_models:
+                self._downloading_models[key_str] = 0
             
         if not hasattr(self, '_active_notifs'):
             self._active_notifs = {}
@@ -280,8 +321,11 @@ class VoiceAssistant(object):
             GLib.idle_add(self._show_notification, notif)
 
         def progress_cb(percent: int):
-            is_active = (local_provider_name == getattr(self, 'provider_name', '')) and (local_model_name == getattr(self, 'model_name', ''))
             key = f"{local_provider_name}:{local_model_name}"
+            if hasattr(self, '_cancel_requests') and key in self._cancel_requests:
+                raise InterruptedError("Scaricamento annullato dall'utente")
+
+            is_active = (local_provider_name == getattr(self, 'provider_name', '')) and (local_model_name == getattr(self, 'model_name', ''))
             if percent >= 0 and percent < 100:
                 self._downloading_models[key] = percent
             else:
@@ -317,9 +361,11 @@ class VoiceAssistant(object):
                 notif._is_closed = False
                 GLib.idle_add(self._show_notification, notif)
                 
+            self._downloading_models.pop(key_str, None)
+            
             # Cleanup della notifica dalla cache
-            if model_key in getattr(self, '_active_notifs', {}):
-                self._active_notifs.pop(model_key, None)
+            if (local_provider_name, local_model_name) in getattr(self, '_active_notifs', {}):
+                self._active_notifs.pop((local_provider_name, local_model_name), None)
                 
             # Se l'ID corrisponde a quello attuale, applichiamo il provider
             if load_id == getattr(self, '_load_id', 0):
@@ -329,12 +375,24 @@ class VoiceAssistant(object):
             else:
                 print(f"Download di {local_provider_name} ({local_model_name}) completato in background, ma l'utente ha selezionato un altro modello nel frattempo.")
         except Exception as e:
-            print(f"Errore critico caricamento provider STT: {e}")
+            is_cancelled = hasattr(self, '_cancel_requests') and key_str in self._cancel_requests
+            if hasattr(self, '_cancel_requests'):
+                self._cancel_requests.discard(key_str)
+            self._downloading_models.pop(key_str, None)
+            self.emit_download_progress(local_provider_name, local_model_name, -1)
+
+            if is_cancelled:
+                self._cleanup_partial_download(local_provider_name, local_model_name)
+
+            print(f"Errore caricamento provider STT: {e}")
             if notif:
-                notif.update("Voice Assistant", f"Errore caricamento: {e}", "dialog-error-symbolic")
+                msg = f"Scaricamento di {local_model_name} annullato" if is_cancelled else f"Errore caricamento: {e}"
+                icon = "dialog-warning-symbolic" if is_cancelled else "dialog-error-symbolic"
+                notif.update("Voice Assistant", msg, icon)
                 GLib.idle_add(self._show_notification, notif)
             if load_id == getattr(self, '_load_id', 0):
-                GLib.idle_add(self.set_state, "disabled")
+                is_enabled = self.settings.get_boolean("enabled")
+                GLib.idle_add(self.set_state, "idle" if is_enabled else "disabled")
 
     @dbus_signal
     def StateChanged(self, new_state: str):
@@ -420,6 +478,8 @@ class VoiceAssistant(object):
         """Avvia lo scaricamento di un modello in background via D-Bus senza cambiare il modello in uso."""
         def _download_thread():
             key = f"{provider}:{model_name}"
+            if hasattr(self, '_cancel_requests'):
+                self._cancel_requests.discard(key)
             self._downloading_models[key] = 0
             self.emit_download_progress(provider, model_name, 0)
 
@@ -439,6 +499,9 @@ class VoiceAssistant(object):
                 print(f"Avviso: impossibile creare notifica per download: {e}")
 
             def progress_cb(percent: int):
+                if hasattr(self, '_cancel_requests') and key in self._cancel_requests:
+                    raise InterruptedError("Scaricamento annullato dall'utente")
+
                 self._downloading_models[key] = percent
                 self.emit_download_progress(provider, model_name, percent)
                 if notif:
@@ -456,7 +519,8 @@ class VoiceAssistant(object):
                     self.hardware,
                     self.extra_config,
                     progress_cb,
-                    models_dir=self.models_dir
+                    models_dir=self.models_dir,
+                    download_only=True
                 )
                 print(f"[D-Bus] Scaricamento completato: {provider} ({model_name})")
                 self._downloading_models.pop(key, None)
@@ -467,17 +531,72 @@ class VoiceAssistant(object):
                     notif._is_closed = False
                     GLib.idle_add(self._show_notification, notif)
             except Exception as e:
-                print(f"[D-Bus] Errore scaricamento modello {model_name}: {e}")
+                is_cancelled = hasattr(self, '_cancel_requests') and key in self._cancel_requests
+                if hasattr(self, '_cancel_requests'):
+                    self._cancel_requests.discard(key)
                 self._downloading_models.pop(key, None)
                 self.emit_download_progress(provider, model_name, -1)
+
+                if is_cancelled:
+                    self._cleanup_partial_download(provider, model_name)
+
+                print(f"[D-Bus] Scaricamento modello {model_name} terminato: {e}")
                 if notif:
-                    notif.set_timeout(notify2.EXPIRES_NEVER)
-                    notif.update("Voice Assistant", f"Errore scaricamento {model_name}: {e}", "dialog-error-symbolic")
+                    msg = f"Scaricamento di {model_name} annullato" if is_cancelled else f"Errore scaricamento {model_name}: {e}"
+                    icon = "dialog-warning-symbolic" if is_cancelled else "dialog-error-symbolic"
+                    notif.set_timeout(5000)
+                    notif.update("Voice Assistant", msg, icon)
                     GLib.idle_add(self._show_notification, notif)
             finally:
                 self._inhibitor.uninhibit()
 
         threading.Thread(target=_download_thread, daemon=True).start()
+        return True
+
+    def _cleanup_partial_download(self, provider: str, model_name: str):
+        try:
+            target_dir = getattr(self, 'models_dir', '') or os.path.expanduser("~/.local/share/voice-assistant/models")
+            possible_folders = [
+                os.path.join(target_dir, model_name),
+                os.path.join(target_dir, f"vosk-model-{model_name}"),
+                os.path.join(target_dir, f"whisper-{model_name}"),
+            ]
+            possible_zips = [
+                os.path.join(target_dir, f"{model_name}.zip"),
+                os.path.join(target_dir, f"vosk-model-{model_name}.zip")
+            ]
+            import shutil
+            for folder in possible_folders:
+                if os.path.exists(folder):
+                    print(f"[Cleanup] Rimozione cartella incompleta per annullamento: {folder}")
+                    shutil.rmtree(folder, ignore_errors=True)
+            for zip_file in possible_zips:
+                if os.path.exists(zip_file):
+                    print(f"[Cleanup] Rimozione file zip incompleto per annullamento: {zip_file}")
+                    try: os.remove(zip_file)
+                    except: pass
+        except Exception as clean_err:
+            print(f"Errore pulizia download annullato: {clean_err}")
+
+    def CancelDownload(self, provider: str, model_name: str) -> bool:
+        """Annulla lo scaricamento di un modello in corso."""
+        key = f"{provider}:{model_name}"
+        print(f"[D-Bus] Richiesta annullamento scaricamento per {key}")
+        if not hasattr(self, '_cancel_requests'):
+            self._cancel_requests = set()
+        self._cancel_requests.add(key)
+        self._downloading_models.pop(key, None)
+        self.emit_download_progress(provider, model_name, -1)
+        
+        self._cleanup_partial_download(provider, model_name)
+        
+        try:
+            notif = notify2.Notification("Voice Assistant", f"Scaricamento di {model_name} annullato", "dialog-warning-symbolic")
+            notif.set_timeout(4000)
+            GLib.idle_add(self._show_notification, notif)
+        except Exception as e:
+            print(f"Errore notifica annullamento: {e}")
+
         return True
 
     def trigger_assistant(self):

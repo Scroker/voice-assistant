@@ -2,11 +2,11 @@ from .base import STTProvider
 from .vosk_provider import VoskProvider
 from .whisper_provider import WhisperProvider
 
-def get_provider(provider_name: str, model: str, hardware: str, extra: dict, progress_callback=None, models_dir=None) -> STTProvider:
+def get_provider(provider_name: str, model: str, hardware: str, extra: dict, progress_callback=None, models_dir=None, download_only=False) -> STTProvider:
     if provider_name == "vosk":
-        return VoskProvider(model, hardware, extra, progress_callback, models_dir=models_dir)
+        return VoskProvider(model, hardware, extra, progress_callback, models_dir=models_dir, download_only=download_only)
     elif provider_name == "whisper":
-        return WhisperProvider(model, hardware, extra, progress_callback, models_dir=models_dir)
+        return WhisperProvider(model, hardware, extra, progress_callback, models_dir=models_dir, download_only=download_only)
     else:
         raise ValueError(f"Provider STT non supportato: {provider_name}")
 

@@ -88,11 +88,11 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
                     return `${bytes} B`;
                 }
-            } catch (e) {}
+            } catch (e) { }
             return '?';
         };
 
-        let refreshCacheGroup = () => {};
+        let refreshCacheGroup = () => { };
 
         // ==========================================
         // 1. PAGINA GENERALI
@@ -111,6 +111,22 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         });
         settings.bind('enabled', enableSwitchRow, 'active', Gio.SettingsBindFlags.DEFAULT);
         generalGroup.add(enableSwitchRow);
+
+        const langRow = new Adw.ComboRow({
+            title: _('Lingua dell\'Assistente'),
+            subtitle: _('Seleziona la lingua principale per il riconoscimento e la risposta'),
+            model: Gtk.StringList.new([_('Italiano (it)'), _('Inglese (en)')])
+        });
+
+        let currentLang = settings.get_string('language') || 'it';
+        langRow.selected = (currentLang === 'en') ? 1 : 0;
+
+        langRow.connect('notify::selected', () => {
+            let newLang = (langRow.selected === 1) ? 'en' : 'it';
+            settings.set_string('language', newLang);
+            if (typeof renderModelList === 'function') renderModelList();
+        });
+        generalGroup.add(langRow);
 
         const wakewordRow = new Adw.EntryRow({
             title: _('Wakeword'),
@@ -138,32 +154,41 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
         const downloadingProgress = new Map();
         const downloadButtons = new Map();
-        let renderModelList = () => {};
+        let renderModelList = () => { };
 
-        // Query initial downloading models from daemon
-        try {
-            Gio.DBus.session.call(
-                'org.local.VoiceAssistant',
-                '/org/local/VoiceAssistant',
-                'org.local.VoiceAssistant',
-                'GetDownloadingModels',
-                null,
-                new GLib.VariantType('(s)'),
-                Gio.DBusCallFlags.NONE,
-                -1,
-                null,
-                (source, res) => {
-                    try {
-                        let [jsonStr] = source.call_finish(res).unpack();
-                        let obj = JSON.parse(jsonStr);
-                        for (let k in obj) {
-                            downloadingProgress.set(k, obj[k]);
-                        }
-                        if (typeof renderModelList === 'function') renderModelList();
-                    } catch (e) {}
-                }
-            );
-        } catch (e) {}
+        // Helper per interrogare i modelli attualmente in fase di download dal demone D-Bus
+        const queryDownloadingModels = (callback) => {
+            try {
+                Gio.DBus.session.call(
+                    'org.local.VoiceAssistant',
+                    '/org/local/VoiceAssistant',
+                    'org.local.VoiceAssistant',
+                    'GetDownloadingModels',
+                    null,
+                    new GLib.VariantType('(s)'),
+                    Gio.DBusCallFlags.NONE,
+                    -1,
+                    null,
+                    (source, res) => {
+                        try {
+                            let [jsonStr] = source.call_finish(res).unpack();
+                            let obj = JSON.parse(jsonStr);
+                            downloadingProgress.clear();
+                            for (let k in obj) {
+                                downloadingProgress.set(k, obj[k]);
+                            }
+                        } catch (e) { }
+                        if (typeof callback === 'function') callback();
+                    }
+                );
+            } catch (e) {
+                if (typeof callback === 'function') callback();
+            }
+        };
+
+        queryDownloadingModels(() => {
+            if (typeof renderModelList === 'function') renderModelList();
+        });
 
         try {
             Gio.DBus.session.signal_subscribe(
@@ -206,7 +231,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     }
                 }
             );
-        } catch (e) {}
+        } catch (e) { }
 
         const sttPage = new Adw.PreferencesPage();
         const sttMainGroup = new Adw.PreferencesGroup({
@@ -377,9 +402,8 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         let firstToggle = null;
         const filters = [
             { id: 'all', label: _('Tutti') },
-            { id: 'vosk', label: _('Vosk') },
-            { id: 'whisper', label: _('Whisper') },
-            { id: 'installed', label: _('Installati') }
+            { id: 'installed', label: _('Installati') },
+            { id: 'downloading', label: _('Scaricamento') }
         ];
 
         filters.forEach(f => {
@@ -446,7 +470,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                         }
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
             return installed;
         };
 
@@ -456,7 +480,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             for (const r of activeModelGroupRows) {
                 try {
                     modelsGroupContainer.remove(r);
-                } catch (e) {}
+                } catch (e) { }
             }
             activeModelGroupRows = [];
 
@@ -468,12 +492,13 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             const query = searchEntry.text.trim().toLowerCase();
 
             const filteredModels = allModels.filter(m => {
-                // Filtro categoria
-                if (activeFilter === 'vosk' && m.provider !== 'vosk') return false;
-                if (activeFilter === 'whisper' && m.provider !== 'whisper') return false;
-                
-                let isInstalled = installedSet.has(m.id) || installedSet.has(`${m.provider}-${m.id}`) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`));
+                let modelKey = `${m.provider}:${m.id}`;
+                let isDownloading = downloadingProgress.has(modelKey);
+                let isInstalled = !isDownloading && (installedSet.has(m.id) || installedSet.has(`${m.provider}-${m.id}`) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`)));
+
+                // Filtro per stato: installati, in download, tutti
                 if (activeFilter === 'installed' && !isInstalled) return false;
+                if (activeFilter === 'downloading' && !isDownloading) return false;
 
                 // Filtro testo di ricerca
                 if (query.length > 0) {
@@ -493,7 +518,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 return;
             }
 
-            let modelFirstRadio = null;
+            const modelGroupLeader = new Gtk.CheckButton();
 
             filteredModels.forEach(m => {
                 let isCurrent = (currentProvider === m.provider && currentModel === m.id);
@@ -508,26 +533,24 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     activatable: true
                 });
 
-                const checkBtn = new Gtk.CheckButton({
-                    valign: Gtk.Align.CENTER,
-                    margin_end: 12,
-                    sensitive: isInstalled
-                });
+                let checkBtn = null;
+                if (isInstalled) {
+                    checkBtn = new Gtk.CheckButton({
+                        valign: Gtk.Align.CENTER,
+                        margin_end: 12
+                    });
 
-                if (!modelFirstRadio) {
-                    modelFirstRadio = checkBtn;
-                } else {
-                    checkBtn.set_group(modelFirstRadio);
+                    checkBtn.set_group(modelGroupLeader);
+
+                    if (isCurrent) {
+                        checkBtn.active = true;
+                    }
+
+                    row.add_prefix(checkBtn);
                 }
-
-                if (isCurrent) {
-                    checkBtn.active = true;
-                }
-
-                row.add_prefix(checkBtn);
 
                 const selectModel = () => {
-                    checkBtn.active = true;
+                    if (checkBtn) checkBtn.active = true;
                     pendingProvider = m.provider;
                     pendingModel = m.id;
                     updateApplyButtons();
@@ -557,7 +580,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                                 proc.wait_check_async(null, (p, res) => {
                                     try {
                                         p.wait_check_finish(res);
-                                    } catch (err) {}
+                                    } catch (err) { }
                                     downloadingProgress.delete(modelKey);
                                     GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                                         renderModelList();
@@ -617,11 +640,13 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     }
                 });
 
-                checkBtn.connect('toggled', () => {
-                    if (checkBtn.active && isInstalled) {
-                        selectModel();
-                    }
-                });
+                if (checkBtn) {
+                    checkBtn.connect('toggled', () => {
+                        if (checkBtn.active && isInstalled) {
+                            selectModel();
+                        }
+                    });
+                }
 
                 if (isDownloading) {
                     const progressBar = new Gtk.ProgressBar({
@@ -634,16 +659,66 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
                     downloadButtons.set(modelKey, { progressBar });
 
+                    const cancelBtn = Gtk.Button.new_from_icon_name('process-stop-symbolic');
+                    cancelBtn.valign = Gtk.Align.CENTER;
+                    cancelBtn.add_css_class('flat');
+                    cancelBtn.add_css_class('error');
+                    cancelBtn.tooltip_text = _('Annulla scaricamento');
+
+                    cancelBtn.connect('clicked', () => {
+                        cancelBtn.sensitive = false;
+                        window.add_toast(new Adw.Toast({
+                            title: _(`Scaricamento di ${m.name} annullato`)
+                        }));
+                        try {
+                            Gio.DBus.session.call(
+                                'org.local.VoiceAssistant',
+                                '/org/local/VoiceAssistant',
+                                'org.local.VoiceAssistant',
+                                'CancelDownload',
+                                new GLib.Variant('(ss)', [m.provider, m.id]),
+                                null,
+                                Gio.DBusCallFlags.NONE,
+                                -1,
+                                null,
+                                (conn, res) => {
+                                    try {
+                                        conn.call_finish(res);
+                                    } catch (e) { }
+                                }
+                            );
+                        } catch (e) {
+                            console.error('Errore chiamata CancelDownload:', e);
+                        }
+                        downloadingProgress.delete(modelKey);
+                        downloadButtons.delete(modelKey);
+                        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                            renderModelList();
+                            return GLib.SOURCE_REMOVE;
+                        });
+                    });
+
                     const box = new Gtk.Box({ spacing: 6, valign: Gtk.Align.CENTER });
                     box.append(progressBar);
+                    box.append(cancelBtn);
                     row.add_suffix(box);
                 } else if (isInstalled) {
                     const deleteBtn = Gtk.Button.new_from_icon_name('user-trash-symbolic');
                     deleteBtn.valign = Gtk.Align.CENTER;
                     deleteBtn.add_css_class('flat');
+
+                    let activeLang = settings.get_string('language') || 'it';
+                    let isRequiredVoskModel = (m.provider === 'vosk') && (
+                        (activeLang === 'it' && m.id === 'vosk-model-small-it-0.22') ||
+                        (activeLang !== 'it' && m.id === 'vosk-model-small-en-us-0.15')
+                    );
+
                     if (isCurrent) {
                         deleteBtn.sensitive = false;
                         deleteBtn.tooltip_text = _('Impossibile eliminare il modello attualmente in uso');
+                    } else if (isRequiredVoskModel) {
+                        deleteBtn.sensitive = false;
+                        deleteBtn.tooltip_text = _('Modello Vosk necessario per il rilevamento della wakeword');
                     } else {
                         deleteBtn.sensitive = true;
                         deleteBtn.add_css_class('error');
@@ -743,9 +818,9 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                                 }
                             }
                         }
-                    } catch (err) {}
+                    } catch (err) { }
                 });
-            } catch (err) {}
+            } catch (err) { }
         };
 
         const fetchVoskModels = () => {
@@ -1253,13 +1328,13 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                         }
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             refreshCacheGroup();
             renderModelList();
             window.add_toast(new Adw.Toast({
-                title: countRemoved > 0 
-                    ? _('Modelli inutilizzati eliminati con successo!') 
+                title: countRemoved > 0
+                    ? _('Modelli inutilizzati eliminati con successo!')
                     : _('Nessun modello inutilizzato da eliminare.')
             }));
         });
@@ -1271,7 +1346,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             for (const r of activeCacheRows) {
                 try {
                     cacheGroup.remove(r);
-                } catch (e) {}
+                } catch (e) { }
             }
             activeCacheRows = [];
 
@@ -1295,7 +1370,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                         }
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             let unusedCount = downloadedModels.filter(m => m !== activeFolderName).length;
             cleanUnusedBtn.sensitive = (unusedCount > 0);
@@ -1500,7 +1575,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                         let cmd = ['systemctl', '--user', 'restart', 'voice-assistant.service'];
                         let proc = new Gio.Subprocess({ argv: cmd, flags: Gio.SubprocessFlags.NONE });
                         proc.init(null);
-                    } catch (e) {}
+                    } catch (e) { }
 
                     updateApplyButtons();
                     renderModelList();
@@ -1535,7 +1610,9 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
         // Handler per l'apertura della sotto-pagina del Selettore Modelli
         const openSelector = () => {
-            renderModelList();
+            queryDownloadingModels(() => {
+                renderModelList();
+            });
             contentNavigationView.push(modelSelectorPage);
             splitView.set_show_content(true);
         };
@@ -1549,7 +1626,13 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             const index = pageRows.indexOf(row);
             if (index >= 0 && index < pages.length) {
                 const selectedPage = pages[index];
-                
+
+                if (selectedPage.id === 'stt') {
+                    queryDownloadingModels(() => {
+                        renderModelList();
+                    });
+                }
+
                 // Se eravamo dentro la sottopagina Selettore Modelli e l'utente ha cambiato scheda sidebar
                 if (contentNavigationView.get_visible_page() === modelSelectorPage) {
                     contentNavigationView.pop();

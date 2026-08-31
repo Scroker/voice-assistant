@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.voice-assistant" path="/org/gnome/shell/extensions/voice-assistant/">
+    <key name="language" type="s">
+      <default>''</default>
+      <summary>Lingua dell'assistente</summary>
+      <description>Lingua principale dell'assistente (es. it, en). Se vuoto, viene rilevata automaticamente dal sistema.</description>
+    </key>
     <key name="wakeword" type="s">
       <default>'assistente'</default>
       <summary>Wakeword per l'assistente</summary>

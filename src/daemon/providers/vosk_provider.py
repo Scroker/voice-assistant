@@ -23,12 +23,11 @@ class VoskProvider(STTProvider):
         "large-en": "vosk-model-en-us-0.22",
     }
 
-    def __init__(self, model_name: str, hardware: str, extra: dict, progress_callback=None, models_dir: str = None):
+    def __init__(self, model_name: str, hardware: str, extra: dict, progress_callback=None, models_dir: str = None, download_only: bool = False):
         if models_dir and len(models_dir.strip()) > 0:
             self.MODELS_DIR = os.path.expanduser(models_dir)
         else:
             self.MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
-        print(f"Inizializzazione VoskProvider con modello '{model_name}' (dir: {self.MODELS_DIR})...")
         
         target_name = self.MODEL_MAPPINGS.get(model_name, model_name)
         if not target_name.startswith("vosk-model-"):
@@ -40,9 +39,17 @@ class VoskProvider(STTProvider):
         if not os.path.isdir(model_path) and os.path.isdir(old_model_path):
             print(f"Modello trovato nella vecchia posizione ({old_model_path}), uso quello.")
             model_path = old_model_path
-            
-        self.model = self._load_or_download_model(target_name, model_path, progress_callback)
-        self.recognizer = KaldiRecognizer(self.model, 16000)
+
+        if download_only:
+            print(f"Scaricamento background modello Vosk '{model_name}'...")
+            if not (os.path.exists(model_path) and os.path.isdir(model_path)):
+                self._download_model(target_name, model_path, progress_callback)
+            self.model = None
+            self.recognizer = None
+        else:
+            print(f"Inizializzazione VoskProvider con modello '{model_name}' (dir: {self.MODELS_DIR})...")
+            self.model = self._load_or_download_model(target_name, model_path, progress_callback)
+            self.recognizer = KaldiRecognizer(self.model, 16000)
 
     def _load_or_download_model(self, target_name: str, model_path: str, progress_callback=None):
         if os.path.exists(model_path) and os.path.isdir(model_path):
