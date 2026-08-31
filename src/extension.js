@@ -243,6 +243,9 @@ const AssistantIndicator = GObject.registerClass(
             this._extension = extension;
 
             this._customGIcon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg');
+            this._brainIcon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/brain-augmented-symbolic.svg');
+            this._downloadIcon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/folder-download-symbolic.svg');
+
             this._icon = new St.Icon({
                 gicon: this._customGIcon,
                 style_class: 'system-status-icon voice-assistant-indicator',
@@ -268,35 +271,30 @@ const AssistantIndicator = GObject.registerClass(
             }
             this.visible = true;
 
+            this._icon.icon_name = null;
             switch (state) {
                 case 'listening':
-                    this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style('color: #3584e4;'); // Blu GNOME
                     break;
                 case 'processing':
-                    this._icon.gicon = null;
-                    this._icon.icon_name = 'brain-augmented-symbolic';
+                    this._icon.gicon = this._brainIcon;
                     this._icon.set_style('color: #e5a50a;'); // Giallo/Arancio GNOME
                     break;
                 case 'speaking':
-                    this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style('color: #2ec27e;'); // Verde GNOME
                     break;
                 case 'downloading':
-                    this._icon.gicon = null;
-                    this._icon.icon_name = 'folder-download-symbolic';
+                    this._icon.gicon = this._downloadIcon;
                     this._icon.set_style('color: #e5a50a;');
                     break;
                 case 'unavailable':
-                    this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style('color: #e01b24;'); // Rosso GNOME
                     break;
                 case 'idle':
                 default:
-                    this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style(null);
                     break;

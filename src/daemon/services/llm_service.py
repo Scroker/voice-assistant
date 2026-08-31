@@ -129,7 +129,7 @@ class LLMServiceManager:
         if self.settings_observer:
             mode = self.settings_observer.get("llm-mode", mode)
             endpoint = self.settings_observer.get("llm-endpoint", endpoint)
-            model_name = self.settings_observer.get("llm-model-name", model_name)
+            model_name = self.settings_observer.get("llm-model", model_name)
             temperature = self.settings_observer.get("llm-temperature", temperature)
             system_prompt = self.settings_observer.get("llm-system-prompt", system_prompt)
 
