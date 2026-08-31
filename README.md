@@ -24,25 +24,33 @@ Un'estensione per GNOME Shell che integra un assistente vocale **completamente l
 | `python3-gi` (PyGObject) | Qualsiasi |
 | `libportaudio2` | Qualsiasi |
 
-## 🚀 Installazione
+## 🚀 Compilazione, Test e Installazione
 
 ```bash
 # Clona il repository
-git clone https://github.com/mkswap/voice-assistant.git
+git clone https://github.com/Scroker/voice-assistant.git
 cd voice-assistant
 
-# Configura e installa
+# Configura l'ambiente Meson
 meson setup build --prefix=$HOME/.local
+
+# Compila l'estensione
+meson compile -C build
+
+# Esegui la suite di test automatizzati (opzionale)
+meson test -C build
+
+# Installa l'estensione
 meson install -C build
 ```
 
 Riavvia la sessione GNOME (log out/in su Wayland, oppure `Alt+F2` → `r` su X11), poi abilita l'estensione:
 
 ```bash
-gnome-extensions enable voice-assistant@mkswap.github.io
+gnome-extensions enable voice-assistant@scroker.github.io
 ```
 
-Il daemon Python viene avviato automaticamente come servizio systemd utente. I modelli vengono scaricati automaticamente al primo utilizzo.
+Il daemon Python viene avviato automaticamente via D-Bus activation. I modelli vengono scaricati automaticamente al primo utilizzo.
 
 ### 📦 Creazione pacchetto ZIP
 
@@ -77,7 +85,7 @@ graph LR
 ## 📁 Struttura del Progetto
 
 ```
-voice-assistant@mkswap.github.io/
+voice-assistant@scroker.github.io/
 ├── meson.build              # Build system root
 ├── stylesheet.css           # Stili CSS per l'indicatore GNOME Shell
 ├── src/

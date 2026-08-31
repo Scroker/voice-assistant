@@ -291,7 +291,7 @@ Il progetto usa Meson + Ninja integrato con `blueprint-compiler`.
 ### Directory di installazione
 
 ```
-~/.local/share/gnome-shell/extensions/voice-assistant@mkswap.github.io/
+~/.local/share/gnome-shell/extensions/voice-assistant@scroker.github.io/
 ├── metadata.json
 ├── extension.js
 ├── prefs.js

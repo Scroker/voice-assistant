@@ -1,3 +1,4 @@
 i18n.gettext('voice-assistant',
-  preset: 'glib'
+  preset: 'glib',
+  install_dir: join_paths(extensiondir, 'locale')
 )

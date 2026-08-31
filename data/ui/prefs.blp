@@ -5,14 +5,14 @@ Adw.NavigationSplitView split_view {
   min-sidebar-width: 260;
 
   sidebar: Adw.NavigationPage sidebar_page {
-    title: _("Preferenze");
+    title: _("Preferences");
     styles ["sidebar"]
 
     child: Adw.ToolbarView {
       [top]
       Adw.HeaderBar {
         title-widget: Adw.WindowTitle {
-          title: _("Preferenze");
+          title: _("Preferences");
         };
       }
 
@@ -25,7 +25,7 @@ Adw.NavigationSplitView split_view {
           styles ["navigation-sidebar"]
 
           Adw.ActionRow row_general {
-            title: _("Generali");
+            title: _("General");
             activatable: true;
 
             [prefix]
@@ -36,7 +36,7 @@ Adw.NavigationSplitView split_view {
           }
 
           Adw.ActionRow row_stt {
-            title: _("Motore Vocale (STT)");
+            title: _("Speech Engine (STT)");
             activatable: true;
 
             [prefix]
@@ -47,7 +47,7 @@ Adw.NavigationSplitView split_view {
           }
 
           Adw.ActionRow row_llm {
-            title: _("Intelligenza Artificiale (LLM)");
+            title: _("Artificial Intelligence (LLM)");
             activatable: true;
 
             [prefix]
@@ -58,7 +58,7 @@ Adw.NavigationSplitView split_view {
           }
 
           Adw.ActionRow row_tts {
-            title: _("Sintesi Vocale (TTS)");
+            title: _("Text-to-Speech (TTS)");
             activatable: true;
 
             [prefix]
@@ -69,7 +69,7 @@ Adw.NavigationSplitView split_view {
           }
 
           Adw.ActionRow row_mcp {
-            title: _("Strumenti (MCP)");
+            title: _("Tools (MCP)");
             activatable: true;
 
             [prefix]
@@ -80,7 +80,7 @@ Adw.NavigationSplitView split_view {
           }
 
           Adw.ActionRow row_models {
-            title: _("Archiviazione e Modelli");
+            title: _("Storage and Models");
             activatable: true;
 
             [prefix]
@@ -91,7 +91,7 @@ Adw.NavigationSplitView split_view {
           }
 
           Adw.ActionRow row_about {
-            title: _("Informazioni");
+            title: _("About");
             activatable: true;
 
             [prefix]
@@ -106,17 +106,17 @@ Adw.NavigationSplitView split_view {
   };
 
   content: Adw.NavigationPage content_wrapper_page {
-    title: _("Contenuto");
+    title: _("Content");
 
     child: Adw.NavigationView content_navigation_view {
       Adw.NavigationPage main_content_nav_page {
-        title: _("Generali");
+        title: _("General");
 
         child: Adw.ToolbarView content_toolbar_view {
           [top]
           Adw.HeaderBar content_header_bar {
             title-widget: Adw.WindowTitle content_title {
-              title: _("Generali");
+              title: _("General");
             };
           }
 
@@ -129,24 +129,24 @@ Adw.NavigationSplitView split_view {
               vexpand: true;
               hexpand: true;
 
-              // 1. PAGINA GENERALI
+              // 1. GENERAL PAGE
               Adw.PreferencesPage general_page {
                 Adw.PreferencesGroup {
-                  title: _("Assistente Vocale");
-                  description: _("Configurazioni generali e attivazione dell'assistente.");
+                  title: _("Voice Assistant");
+                  description: _("General configuration and assistant activation.");
 
                   Adw.SwitchRow enable_switch_row {
-                    title: _("Abilita Assistente Vocale");
-                    subtitle: _("Attiva o disattiva l'ascolto in background");
+                    title: _("Enable Voice Assistant");
+                    subtitle: _("Enable or disable background listening");
                   }
 
                   Adw.ComboRow lang_row {
-                    title: _("Lingua dell'Assistente");
-                    subtitle: _("Seleziona la lingua principale per il riconoscimento e la risposta");
+                    title: _("Assistant Language");
+                    subtitle: _("Select the main language for recognition and response");
                     model: Gtk.StringList {
                       strings: [
-                        "Italiano (it)",
-                        "Inglese (en)"
+                        "Italian (it)",
+                        "English (en)"
                       ];
                     };
                   }
@@ -157,15 +157,15 @@ Adw.NavigationSplitView split_view {
                 }
               }
 
-              // 2. PAGINA STT
+              // 2. STT PAGE
               Adw.PreferencesPage stt_page {
                 Adw.PreferencesGroup {
-                  title: _("Motore di Riconoscimento Vocale (STT)");
-                  description: _("Configura il motore e il modello per la trascrizione del parlato in testo.");
+                  title: _("Speech-to-Text Engine (STT)");
+                  description: _("Configure the engine and model for speech-to-text transcription.");
 
                   Adw.ActionRow current_model_row {
-                    title: _("Modello STT In Uso");
-                    subtitle: _("Caricamento informazioni...");
+                    title: _("Active STT Model");
+                    subtitle: _("Loading information...");
                     activatable: true;
 
                     [prefix]
@@ -184,12 +184,12 @@ Adw.NavigationSplitView split_view {
                 }
 
                 Adw.PreferencesGroup whisper_hardware_group {
-                  title: _("Accelerazione Hardware (Whisper)");
-                  description: _("Configura il dispositivo di calcolo per l'esecuzione di Whisper.");
+                  title: _("Hardware Acceleration (Whisper)");
+                  description: _("Configure the compute device for Whisper execution.");
 
                   Adw.ActionRow hw_cpu_row {
-                    title: _("CPU (Compatibile con tutti i sistemi)");
-                    subtitle: _("Esecuzione standard tramite processore");
+                    title: _("CPU (Compatible with all systems)");
+                    subtitle: _("Standard execution via CPU");
                     activatable: true;
 
                     [prefix]
@@ -200,8 +200,8 @@ Adw.NavigationSplitView split_view {
                   }
 
                   Adw.ActionRow hw_cuda_row {
-                    title: _("CUDA (GPU Nvidia)");
-                    subtitle: _("Accelerazione hardware tramite scheda video Nvidia");
+                    title: _("CUDA (Nvidia GPU)");
+                    subtitle: _("Hardware acceleration via Nvidia graphics card");
                     activatable: true;
 
                     [prefix]
@@ -214,43 +214,43 @@ Adw.NavigationSplitView split_view {
                 }
               }
 
-              // 3. PAGINA LLM
+              // 3. LLM PAGE
               Adw.PreferencesPage llm_page {
                 Adw.PreferencesGroup {
-                  title: _("Modello di Linguaggio Avanzato (LLM)");
-                  description: _("Configura la connessione al server LLM locale (Ollama / LocalAI) per l'elaborazione delle risposte intelligenti.");
+                  title: _("Large Language Model (LLM)");
+                  description: _("Configure the connection to the local LLM server (Ollama / LocalAI) for intelligent response processing.");
 
                   Adw.SwitchRow llm_enable_row {
-                    title: _("Abilita Risposte LLM");
-                    subtitle: _("Invia trascrizioni vocali all'LLM per generare risposte complesse");
+                    title: _("Enable LLM Responses");
+                    subtitle: _("Send voice transcriptions to the LLM to generate complex responses");
                   }
 
                   Adw.EntryRow llm_url_row {
-                    title: _("URL Server LLM");
+                    title: _("LLM Server URL");
                   }
 
                   Adw.EntryRow llm_model_row {
-                    title: _("Nome Modello");
+                    title: _("Model Name");
                   }
                 }
               }
 
-              // 4. PAGINA TTS
+              // 4. TTS PAGE
               Adw.PreferencesPage tts_page {
                 Adw.PreferencesGroup {
-                  title: _("Sintesi Vocale (Text-To-Speech)");
-                  description: _("Configura il motore vocale per la riproduzione audio delle risposte dell'assistente.");
+                  title: _("Speech Synthesis (Text-To-Speech)");
+                  description: _("Configure the voice engine for audio playback of assistant responses.");
 
                   Adw.SwitchRow tts_enable_row {
-                    title: _("Abilita Sintesi Vocale");
-                    subtitle: _("Riproduci la risposta dell'assistente tramite altoparlante");
+                    title: _("Enable Speech Synthesis");
+                    subtitle: _("Play assistant response through speakers");
                   }
 
                   Adw.ComboRow tts_engine_row {
-                    title: _("Motore TTS");
+                    title: _("TTS Engine");
                     model: Gtk.StringList {
                       strings: [
-                        "Piper (Locale)",
+                        "Piper (Local)",
                         "eSpeak NG"
                       ];
                     };
@@ -258,33 +258,33 @@ Adw.NavigationSplitView split_view {
                 }
               }
 
-              // 5. PAGINA MCP
+              // 5. MCP PAGE
               Adw.PreferencesPage mcp_page {
                 Adw.PreferencesGroup {
                   title: _("Model Context Protocol (MCP)");
-                  description: _("Integrazione con strumenti e servizi di sistema.");
+                  description: _("Integration with system tools and services.");
 
                   Adw.ActionRow {
-                    title: _("Stato Integrazione MCP");
-                    subtitle: _("Pronto per l'integrazione tool & function calling");
+                    title: _("MCP Integration Status");
+                    subtitle: _("Ready for tool &amp; function calling integration");
                   }
                 }
               }
 
-              // 6. PAGINA MODELLI / ARCHIVIAZIONE
+              // 6. MODELS / STORAGE PAGE
               Adw.PreferencesPage models_page {
                 Adw.PreferencesGroup {
-                  title: _("Percorso Archiviazione");
-                  description: _("Modifica la cartella locale in cui vengono salvati i modelli scaricati.");
+                  title: _("Storage Location");
+                  description: _("Change the local directory where downloaded models are stored.");
 
                   Adw.ActionRow models_path_row {
-                    title: _("Cartella Modelli");
+                    title: _("Models Directory");
 
                     [suffix]
                     Gtk.Button choose_path_btn {
                       icon-name: "folder-open-symbolic";
                       valign: center;
-                      tooltip-text: _("Seleziona cartella");
+                      tooltip-text: _("Select directory");
                       styles ["flat"]
                     }
 
@@ -292,18 +292,18 @@ Adw.NavigationSplitView split_view {
                     Gtk.Button reset_path_btn {
                       icon-name: "edit-clear-symbolic";
                       valign: center;
-                      tooltip-text: _("Ripristina percorso predefinito");
+                      tooltip-text: _("Reset to default path");
                       styles ["flat"]
                     }
                   }
                 }
 
                 Adw.PreferencesGroup cache_group {
-                  title: _("Gestione Cache e Modelli Scaricati");
+                  title: _("Cache &amp; Downloaded Models Management");
 
                   [header-suffix]
                   Gtk.Button clean_unused_btn {
-                    label: _("Elimina Inutilizzati");
+                    label: _("Remove Unused");
                     valign: center;
                     styles ["flat", "error"]
 
@@ -315,29 +315,29 @@ Adw.NavigationSplitView split_view {
                 }
               }
 
-              // 7. PAGINA INFORMAZIONI
+              // 7. ABOUT PAGE
               Adw.PreferencesPage about_page {
                 Adw.PreferencesGroup {
                   title: _("Voice Assistant");
 
                   Adw.ActionRow {
                     title: _("Voice Assistant GNOME Extension");
-                    subtitle: _("Assistente vocale offline e integrato per GNOME Shell");
+                    subtitle: _("Offline and integrated voice assistant for GNOME Shell");
                   }
 
                   Adw.ActionRow {
-                    title: _("Versione");
+                    title: _("Version");
                     subtitle: "1.0.0";
                   }
 
                   Adw.ActionRow {
-                    title: _("Servizio D-Bus Backend");
+                    title: _("Backend D-Bus Service");
                     subtitle: "org.local.VoiceAssistant";
                   }
 
                   Adw.ActionRow doc_row {
-                    title: _("Codice Sorgente e Documentazione");
-                    subtitle: "https://github.com/mkswap/voice-assistant";
+                    title: _("Source Code &amp; Documentation");
+                    subtitle: "https://github.com/Scroker/voice-assistant";
 
                     [suffix]
                     Gtk.Button doc_btn {
@@ -350,27 +350,17 @@ Adw.NavigationSplitView split_view {
               }
             };
           };
-
-          [bottom]
-          Gtk.ActionBar content_action_bar {
-            [center]
-            Gtk.Button apply_btn {
-              label: _("Applica Modifiche");
-              valign: center;
-              halign: center;
-              styles ["suggested-action", "pill"]
-            }
-          }
         };
       }
 
-      // SOTTO-PAGINA SELETTORE MODELLI
+      // MODEL SELECTOR SUB-PAGE
       Adw.NavigationPage model_selector_page {
         child: Adw.ToolbarView selector_toolbar_view {
           [top]
           Adw.HeaderBar selector_header_bar {
-            title-widget: Adw.WindowTitle {
-              title: _("Seleziona Modello STT");
+            title-widget: Adw.ViewSwitcher selector_view_switcher {
+              stack: selector_view_stack;
+              policy: wide;
             };
           }
 
@@ -389,67 +379,53 @@ Adw.NavigationSplitView split_view {
               Adw.Clamp {
                 maximum-size: 600;
 
-                Gtk.Box {
-                  orientation: horizontal;
-                  spacing: 6;
-
-                  Gtk.SearchEntry search_entry {
-                    placeholder-text: _("Cerca per nome, lingua (it, en), dimensione o provider...");
-                    hexpand: true;
-                  }
-
-                  Gtk.ToggleButton filter_toggle_btn {
-                    icon-name: "filter-symbolic";
-                    tooltip-text: _("Mostra/Nascondi Filtri");
-                    valign: center;
-                  }
-                }
-              }
-
-              Gtk.Box filter_box {
-                orientation: horizontal;
-                spacing: 0;
-                halign: center;
-                margin-top: 4;
-                margin-bottom: 8;
-                visible: false;
-                styles ["linked"]
-
-                Gtk.ToggleButton filter_btn_all {
-                  label: _("Tutti");
-                  active: true;
-                }
-
-                Gtk.ToggleButton filter_btn_installed {
-                  label: _("Installati");
-                  group: filter_btn_all;
-                }
-
-                Gtk.ToggleButton filter_btn_downloading {
-                  label: _("Scaricamento");
-                  group: filter_btn_all;
+                Gtk.SearchEntry search_entry {
+                  placeholder-text: _("Search by name, language (it, en), size or provider...");
+                  hexpand: true;
                 }
               }
 
               Adw.Clamp {
                 maximum-size: 800;
 
-                Adw.PreferencesGroup models_group_container {
-                  title: _("Modelli Disponibili");
+                Adw.ViewStack selector_view_stack {
+                  Adw.ViewStackPage page_all {
+                    name: "all";
+                    title: _("All");
+                    icon-name: "emblem-documents-symbolic";
+
+                    child: Adw.PreferencesGroup models_group_all {
+                      title: _("Available Models");
+                    };
+                  }
+
+                  Adw.ViewStackPage page_installed {
+                    name: "installed";
+                    title: _("Installed");
+                    icon-name: "folder-download-symbolic";
+
+                    child: Adw.PreferencesGroup models_group_installed {
+                      title: _("Installed Models");
+                    };
+                  }
+
+                  Adw.ViewStackPage page_downloading {
+                    name: "downloading";
+                    title: _("Downloading");
+                    icon-name: "system-run-symbolic";
+
+                    child: Adw.PreferencesGroup models_group_downloading {
+                      title: _("Downloading Models");
+                    };
+                  }
                 }
               }
             };
           };
 
           [bottom]
-          Gtk.ActionBar selector_action_bar {
-            [center]
-            Gtk.Button selector_apply_btn {
-              label: _("Applica Modifiche");
-              valign: center;
-              halign: center;
-              styles ["suggested-action", "pill"]
-            }
+          Adw.ViewSwitcherBar selector_view_switcher_bar {
+            stack: selector_view_stack;
           }
         };
       }

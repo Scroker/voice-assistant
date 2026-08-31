@@ -1,6 +1,6 @@
 # Guida Sviluppatori
 
-> Setup dell'ambiente di sviluppo, comandi utili, workflow di debug, insidie note (gotchas) e convenzioni del progetto.
+> Setup dell'ambiente di sviluppo, comandi di build con Meson, suite di test automatizzati, workflow di debug e convenzioni del progetto.
 
 ---
 
@@ -25,53 +25,87 @@ sudo pacman -S meson ninja blueprint-compiler python python-gobject portaudio ge
 
 ---
 
-## Setup Ambiente e Workflow di Build
+## Setup Ambiente e Workflow di Build con Meson
 
-### 1. Clonazione e Build Iniziale
+### 1. Clonazione e Configurazione Iniziale
 
 ```bash
 # Clone del repository
-git clone https://github.com/mkswap/voice-assistant.git
+git clone https://github.com/Scroker/voice-assistant.git
 cd voice-assistant
 
 # Configura l'ambiente Meson nella directory 'build'
 meson setup build --prefix=$HOME/.local
-
-# Compila (Blueprint -> UI, GResource, Schemi) ed installa
-meson install -C build
-
-# Abilitare l'estensione
-gnome-extensions enable voice-assistant@mkswap.github.io
 ```
 
-### 2. Generazione del Pacchetto ZIP per la Distribuzione
+### 2. Compilazione, Test ed Installazione
+
+```bash
+# Compila le risorse (Blueprint -> UI, GResource, Schemi GSettings)
+meson compile -C build
+
+# Esegue la suite completa di Unit Test automatizzati
+meson test -C build
+
+# Installa l'estensione e i servizi nella home utente (~/.local)
+meson install -C build
+
+# Abilita l'estensione in GNOME Shell
+gnome-extensions enable voice-assistant@scroker.github.io
+```
+
+### 3. Generazione del Pacchetto ZIP per la Distribuzione
 
 Per impacchettare l'estensione per la distribuzione o l'installazione su altri sistemi via **Extension Manager**:
 
 ```bash
-# Compila ed impacchetta in build/voice-assistant@mkswap.github.io.shell-extension.zip
+# Compila ed impacchetta in build/voice-assistant@scroker.github.io.shell-extension.zip
 meson compile -C build zip
 ```
 
 ---
 
+## 🧪 Esecuzione e Struttura dei Test Automatizzati
+
+La suite di test è integrata direttamente in **Meson** ed esegue automaticamente la verifica di sintassi, risorse, provider e gestione thread dei download.
+
+### Comando Rapido per i Test
+```bash
+# Esecuzione standard di tutti i test
+meson test -C build
+
+# Esecuzione in modalità prolissa (mostra l'output dettagliato di ogni test)
+meson test -C build --verbose
+```
+
+### Moduli di Test (`tests/`)
+
+| Test File | Scopo e Verifiche |
+|---|---|
+| `test_js_syntax.py` | Verifica la sintassi JavaScript dei file `src/extension.js` e `src/prefs.js` tramite Node.js e controlla che non vi siano chiamate deprecate a `initGettext()`. |
+| `test_schema_and_resources.py` | Verifica la validità e compilazione dello schema GSettings (`gschema.xml`) e del bundle GResource (`prefs.ui`, icone SVG). |
+| `test_providers.py` | Verifica l'inizializzazione dei provider STT (Vosk, Whisper) ed il recupero dinamico della lista dei modelli online. |
+| `test_download_progress.py` | Verifica la thread-safety e la correttezza del monitoraggio indipendente della percentuale di download dei modelli sul file system. |
+
+---
+
 ## Technical Gotchas e Scelte Architetturali Note
 
-### 1. ALSA / Pipewire Process Name Fix (`start.sh`)
+### 1. D-Bus Activation & Systemd Lifecycle
+Il servizio background `voice-assistant.service` viene avviato **on-demand via D-Bus activation** quando l'estensione GNOME viene abilitata (`Gio.BusNameWatcherFlags.AUTO_START`). Non richiede l'autostart manuale in systemd, risparmiando memoria RAM se l'estensione è disattivata.
+
+### 2. ALSA / Pipewire Process Name Fix (`start.sh`)
 Quando il daemon Python si registra come client audio Pipewire/PulseAudio, il server audio mostra il nome dell'eseguibile Python generico (`python3`). Per far apparire l'applicazione correttamente come **"Voice Assistant"** nelle impostazioni audio di sistema di GNOME, `start.sh` crea un symlink o una copia del binario eseguibile chiamata `VoiceAssistant` ed esegue `exec VoiceAssistant main.py`.
 
-### 2. Blueprint & GResource Multi-Directory Resolution
+### 3. Blueprint & GResource Multi-Directory Resolution
 `blueprint-compiler` genera il file `prefs.ui` all'interno della directory di build (`build/data/prefs.ui`). In `data/meson.build`, `glib-compile-resources` viene eseguito con i flag:
 `--sourcedir=meson.current_source_dir()` e `--sourcedir=meson.current_build_dir()`. Questo permette a GResource di trovare sia i file sorgente in `data/` che i file compilati in `build/data/`.
 
-### 3. Thread-Safety in PyGObject e Python Daemon
+### 4. Thread-Safety in PyGObject e Python Daemon
 GLib richiede che le modifiche allo stato dell'applicazione o all'emissione dei segnali D-Bus avvengano nel Main Thread. Quando i worker thread in background (es. cattura audio `_audio_loop` o download dei modelli) completano un'operazione, la mutazione dello stato deve sempre essere delegata con:
 ```python
 GLib.idle_add(self._update_state, new_state)
 ```
-
-### 4. Tracking dei Download dei Modelli
-L'intercettazione dei log da `tqdm` / `sys.stderr` causava blocchi e inaccuratezze (es. stallo al 3%) durante download concorrenti. Il sistema utilizza invece un monitoraggio thread-safe indipendente della crescita delle dimensioni dei file sul filesystem, isolando ciascun modello scaricato.
 
 ---
 
@@ -82,14 +116,14 @@ L'intercettazione dei log da `tqdm` / `sys.stderr` causava blocchi e inaccuratez
 L'interfaccia delle preferenze è scritta in **Blueprint**. Non modificare file XML `.ui` direttamente in `data/ui/`.
 
 ```bash
-# Ricompila ed installa l'estensione
-meson install -C build
+# Ricompila, testa ed installa l'estensione
+meson compile -C build && meson test -C build && meson install -C build
 ```
 
 ### Modifiche al Daemon Python (`src/daemon/`)
 
 ```bash
-# Reinstalla e riavvia il servizio systemd utente
+# Reinstalla e riavvia il servizio D-Bus / systemd utente
 meson install -C build
 systemctl --user restart voice-assistant.service
 
@@ -97,13 +131,11 @@ systemctl --user restart voice-assistant.service
 journalctl --user -u voice-assistant -f
 ```
 
-### Modifiche allo Schema GSettings
-
-Dopo aver modificato `data/schemas/org.gnome.shell.extensions.voice-assistant.gschema.xml`:
+### Test delle Chiamate D-Bus da Terminale
 
 ```bash
-# Ricompila ed installa
-meson install -C build
+# Invocazione metodo per la lista modelli disponibili
+gdbus call --session --dest org.local.VoiceAssistant --object-path /org/local/VoiceAssistant --method org.local.VoiceAssistant.GetAvailableModels vosk
 ```
 
 ---

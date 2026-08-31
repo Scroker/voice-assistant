@@ -1,16 +1,29 @@
 import os
 import sys
+import glob
 import unittest
 import threading
 import time
+
+# Aggiunge venv site-packages se presente
+venv_sites = glob.glob(os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@scroker.github.io/daemon/venv/lib/python*/site-packages"))
+if venv_sites:
+    sys.path.insert(0, venv_sites[0])
 
 # Aggiunge src/daemon al path di importazione
 daemon_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src", "daemon"))
 if daemon_dir not in sys.path:
     sys.path.insert(0, daemon_dir)
 
-from providers.whisper_provider import WhisperProvider, setup_tqdm_patch
+try:
+    import faster_whisper.utils
+    HAS_FASTER_WHISPER = True
+except ImportError:
+    HAS_FASTER_WHISPER = False
 
+from providers.whisper_provider import setup_tqdm_patch
+
+@unittest.skipUnless(HAS_FASTER_WHISPER, "faster_whisper non installato nell'ambiente di test")
 class TestDownloadProgress(unittest.TestCase):
 
     def setUp(self):
@@ -18,8 +31,6 @@ class TestDownloadProgress(unittest.TestCase):
 
     def test_single_whisper_download_progress_mock(self):
         """Verifica che un singolo download aggiorni la percentuale progressivamente."""
-        import faster_whisper.utils
-
         received_pcts = []
         tid = threading.get_ident()
         sys._va_active_downloads[tid] = {'cb': lambda p: received_pcts.append(p), 'last_pct': -1}
@@ -37,8 +48,6 @@ class TestDownloadProgress(unittest.TestCase):
 
     def test_concurrent_whisper_download_progress_isolation(self):
         """Verifica l'isolamento totale del progresso tra due thread di download concorrenti."""
-        import faster_whisper.utils
-
         pcts_thread1 = []
         pcts_thread2 = []
 
@@ -46,7 +55,6 @@ class TestDownloadProgress(unittest.TestCase):
             tid = threading.get_ident()
             sys._va_active_downloads[tid] = {'cb': lambda p: pcts_thread1.append(p), 'last_pct': -1}
             try:
-                # Simula download di 100 MB per Thread 1 (step da 10 MB = +10%)
                 bar = faster_whisper.utils.disabled_tqdm(total=100 * 1024 * 1024)
                 for _ in range(10):
                     bar.update(10 * 1024 * 1024)
@@ -58,7 +66,6 @@ class TestDownloadProgress(unittest.TestCase):
             tid = threading.get_ident()
             sys._va_active_downloads[tid] = {'cb': lambda p: pcts_thread2.append(p), 'last_pct': -1}
             try:
-                # Simula download di 50 MB per Thread 2 (step da 10 MB = +20%)
                 bar = faster_whisper.utils.disabled_tqdm(total=50 * 1024 * 1024)
                 for _ in range(5):
                     bar.update(10 * 1024 * 1024)
@@ -79,14 +86,11 @@ class TestDownloadProgress(unittest.TestCase):
 
     def test_ignore_small_metadata_files(self):
         """Verifica che file metadati piccoli (< 5MB) vengano ignorati per evitare falsi 100%."""
-        import faster_whisper.utils
-
         received_pcts = []
         tid = threading.get_ident()
         sys._va_active_downloads[tid] = {'cb': lambda p: received_pcts.append(p), 'last_pct': -1}
 
         try:
-            # Simula file piccolo (es. config.json da 2 KB)
             bar = faster_whisper.utils.disabled_tqdm(total=2 * 1024)
             bar.update(2 * 1024)
         finally:

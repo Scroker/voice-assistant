@@ -1,28 +1,385 @@
 # Italian translations for voice-assistant.
-# Copyright (C) 2026
+# Copyright (C) 2026 Giorgio Dramis
 # This file is distributed under the same license as the voice-assistant package.
 #
+#. Voce separata per il progresso di download (nascosta di default)
+#: src/extension.js:190
 msgid ""
 msgstr ""
 "Project-Id-Version: voice-assistant 1.0.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-30 22:00+0200\n"
-"PO-Revision-Date: 2026-08-30 22:00+0200\n"
-"Last-Translator: \n"
+"POT-Creation-Date: 2026-08-31 18:38+0200\n"
+"PO-Revision-Date: 2026-08-31 16:55+0200\n"
+"Last-Translator: Giorgio Dramis\n"
 "Language-Team: Italian\n"
 "Language: it\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-msgid "In ascolto..."
-msgstr "In ascolto..."
+#: build/data/prefs.ui:13 build/data/prefs.ui:23 src/extension.js:197
+msgid "Preferences"
+msgstr "Preferenze"
 
-msgid "Impostazioni Assistente Vocale"
-msgstr "Impostazioni Assistente Vocale"
+# Sidebar & Pages
+#: build/data/prefs.ui:40 build/data/prefs.ui:137 build/data/prefs.ui:144
+#: src/prefs.js:873
+msgid "General"
+msgstr "Generali"
 
+#: build/data/prefs.ui:52 src/prefs.js:874
+msgid "Speech Engine (STT)"
+msgstr "Motore Vocale (STT)"
+
+#: build/data/prefs.ui:64 src/prefs.js:875
+msgid "Artificial Intelligence (LLM)"
+msgstr "Intelligenza Artificiale (LLM)"
+
+#: build/data/prefs.ui:76 src/prefs.js:876
+msgid "Text-to-Speech (TTS)"
+msgstr "Sintesi Vocale (TTS)"
+
+#: build/data/prefs.ui:88 src/prefs.js:877
+msgid "Tools (MCP)"
+msgstr "Strumenti (MCP)"
+
+#: build/data/prefs.ui:100 src/prefs.js:878
+msgid "Storage and Models"
+msgstr "Archiviazione e Modelli"
+
+#: build/data/prefs.ui:112 src/prefs.js:879
+msgid "About"
+msgstr "Informazioni"
+
+#: build/data/prefs.ui:132
+msgid "Content"
+msgstr "Contenuto"
+
+# General Page
+#: build/data/prefs.ui:162 build/data/prefs.ui:384
+msgid "Voice Assistant"
+msgstr "Assistente Vocale"
+
+#: build/data/prefs.ui:163
+msgid "General configuration and assistant activation."
+msgstr "Configurazioni generali e attivazione dell'assistente."
+
+#: build/data/prefs.ui:166
+msgid "Enable Voice Assistant"
+msgstr "Abilita Assistente Vocale"
+
+#: build/data/prefs.ui:167
+msgid "Enable or disable background listening"
+msgstr "Attiva o disattiva l'ascolto in background"
+
+#: build/data/prefs.ui:172
+msgid "Assistant Language"
+msgstr "Lingua dell'Assistente"
+
+#: build/data/prefs.ui:173
+msgid "Select the main language for recognition and response"
+msgstr "Seleziona la lingua principale per il riconoscimento e la risposta"
+
+#: build/data/prefs.ui:184
 msgid "Wakeword"
 msgstr "Wakeword"
 
-msgid "Lingua Modello (es. it, en-us)"
-msgstr "Lingua Modello (es. it, en-us)"
+# STT Page
+#: build/data/prefs.ui:195
+msgid "Speech-to-Text Engine (STT)"
+msgstr "Motore di Riconoscimento Vocale (STT)"
+
+#: build/data/prefs.ui:196
+msgid "Configure the engine and model for speech-to-text transcription."
+msgstr ""
+"Configura il motore e il modello per la trascrizione del parlato in testo."
+
+#: build/data/prefs.ui:199
+msgid "Active STT Model"
+msgstr "Modello STT In Uso"
+
+#: build/data/prefs.ui:200
+msgid "Loading information..."
+msgstr "Caricamento informazioni..."
+
+#: build/data/prefs.ui:223
+msgid "Hardware Acceleration (Whisper)"
+msgstr "Accelerazione Hardware (Whisper)"
+
+#: build/data/prefs.ui:224
+msgid "Configure the compute device for Whisper execution."
+msgstr "Configura il dispositivo di calcolo per l'esecuzione di Whisper."
+
+#: build/data/prefs.ui:227
+msgid "CPU (Compatible with all systems)"
+msgstr "CPU (Compatibile con tutti i sistemi)"
+
+#: build/data/prefs.ui:228
+msgid "Standard execution via CPU"
+msgstr "Esecuzione standard tramite processore"
+
+#: build/data/prefs.ui:240
+msgid "CUDA (Nvidia GPU)"
+msgstr "CUDA (GPU Nvidia)"
+
+#: build/data/prefs.ui:241
+msgid "Hardware acceleration via Nvidia graphics card"
+msgstr "Accelerazione hardware tramite scheda video Nvidia"
+
+# LLM Page
+#: build/data/prefs.ui:260
+msgid "Large Language Model (LLM)"
+msgstr "Modello di Linguaggio Avanzato (LLM)"
+
+#: build/data/prefs.ui:261
+msgid ""
+"Configure the connection to the local LLM server (Ollama / LocalAI) for "
+"intelligent response processing."
+msgstr ""
+"Configura la connessione al server LLM locale (Ollama / LocalAI) per "
+"l'elaborazione delle risposte intelligenti."
+
+#: build/data/prefs.ui:264
+msgid "Enable LLM Responses"
+msgstr "Abilita Risposte LLM"
+
+#: build/data/prefs.ui:265
+msgid "Send voice transcriptions to the LLM to generate complex responses"
+msgstr "Invia trascrizioni vocali all'LLM per generare risposte complesse"
+
+#: build/data/prefs.ui:270
+msgid "LLM Server URL"
+msgstr "URL Server LLM"
+
+#: build/data/prefs.ui:275
+msgid "Model Name"
+msgstr "Nome Modello"
+
+# TTS Page
+#: build/data/prefs.ui:286
+msgid "Speech Synthesis (Text-To-Speech)"
+msgstr "Sintesi Vocale (Text-To-Speech)"
+
+#: build/data/prefs.ui:287
+msgid "Configure the voice engine for audio playback of assistant responses."
+msgstr ""
+"Configura il motore vocale per la riproduzione audio delle risposte "
+"dell'assistente."
+
+#: build/data/prefs.ui:290
+msgid "Enable Speech Synthesis"
+msgstr "Abilita Sintesi Vocale"
+
+#: build/data/prefs.ui:291
+msgid "Play assistant response through speakers"
+msgstr "Riproduci la risposta dell'assistente tramite altoparlante"
+
+#: build/data/prefs.ui:296
+msgid "TTS Engine"
+msgstr "Motore TTS"
+
+# MCP Page
+#: build/data/prefs.ui:313
+msgid "Model Context Protocol (MCP)"
+msgstr "Model Context Protocol (MCP)"
+
+#: build/data/prefs.ui:314
+msgid "Integration with system tools and services."
+msgstr "Integrazione con strumenti e servizi di sistema."
+
+#: build/data/prefs.ui:317
+msgid "MCP Integration Status"
+msgstr "Stato Integrazione MCP"
+
+#: build/data/prefs.ui:318
+#, fuzzy
+msgid "Ready for tool &amp; function calling integration"
+msgstr "Pronto per l'integrazione tool & function calling"
+
+# Storage Page
+#: build/data/prefs.ui:329
+msgid "Storage Location"
+msgstr "Percorso Archiviazione"
+
+#: build/data/prefs.ui:330
+msgid "Change the local directory where downloaded models are stored."
+msgstr ""
+"Modifica la cartella locale in cui vengono salvati i modelli scaricati."
+
+#: build/data/prefs.ui:333
+msgid "Models Directory"
+msgstr "Cartella Modelli"
+
+#: build/data/prefs.ui:338
+msgid "Select directory"
+msgstr "Seleziona cartella"
+
+#: build/data/prefs.ui:348
+msgid "Reset to default path"
+msgstr "Ripristina percorso predefinito"
+
+#: build/data/prefs.ui:360
+#, fuzzy
+msgid "Cache &amp; Downloaded Models Management"
+msgstr "Gestione Cache e Modelli Scaricati"
+
+#: build/data/prefs.ui:363
+msgid "Remove Unused"
+msgstr "Elimina Inutilizzati"
+
+# About Page
+#: build/data/prefs.ui:387
+msgid "Voice Assistant GNOME Extension"
+msgstr "Voice Assistant GNOME Extension"
+
+#: build/data/prefs.ui:388
+msgid "Offline and integrated voice assistant for GNOME Shell"
+msgstr "Assistente vocale offline e integrato per GNOME Shell"
+
+#: build/data/prefs.ui:393
+msgid "Version"
+msgstr "Versione"
+
+#: build/data/prefs.ui:399
+msgid "Backend D-Bus Service"
+msgstr "Servizio D-Bus Backend"
+
+#: build/data/prefs.ui:405
+#, fuzzy
+msgid "Source Code &amp; Documentation"
+msgstr "Codice Sorgente e Documentazione"
+
+#: build/data/prefs.ui:461
+msgid "Search by name, language (it, en), size or provider..."
+msgstr "Cerca per nome, lingua (it, en), dimensione o provider..."
+
+#: build/data/prefs.ui:475
+msgid "All"
+msgstr "Tutti"
+
+#: build/data/prefs.ui:479
+msgid "Available Models"
+msgstr "Modelli Disponibili"
+
+#: build/data/prefs.ui:487
+msgid "Installed"
+msgstr "Installati"
+
+#: build/data/prefs.ui:491
+#, fuzzy
+msgid "Installed Models"
+msgstr "Installati"
+
+#: build/data/prefs.ui:499
+msgid "Downloading"
+msgstr "Scaricamento"
+
+#: build/data/prefs.ui:503
+#, fuzzy
+msgid "Downloading Models"
+msgstr "Scarica modello"
+
+# Menu & Extension Indicator
+#. Costruzione del menu a tendina
+#: src/extension.js:183
+msgid "Enable / Disable"
+msgstr "Attiva / Disattiva"
+
+#: src/extension.js:290
+msgid "In ascolto..."
+msgstr ""
+
+#: src/extension.js:292 src/extension.js:301 src/extension.js:310
+#: src/extension.js:345
+msgid "Disable Assistant"
+msgstr "Disattiva Assistente"
+
+#: src/extension.js:325
+msgid "Enable Assistant"
+msgstr "Attiva Assistente"
+
+#: src/extension.js:334
+msgid "Assistant Unavailable"
+msgstr "Assistente non disponibile"
+
+#: src/prefs.js:346
+msgid "No models found"
+msgstr "Nessun modello trovato"
+
+#: src/prefs.js:347
+#, fuzzy
+msgid "Try changing search query or tab."
+msgstr "Prova a modificare i filtri o il termine di ricerca."
+
+#: src/prefs.js:490
+msgid "Cancel download"
+msgstr "Annulla scaricamento"
+
+#: src/prefs.js:542
+msgid "Cannot delete currently active model"
+msgstr "Impossibile eliminare il modello attualmente in uso"
+
+#: src/prefs.js:545
+msgid "Vosk model required for wakeword detection"
+msgstr "Modello Vosk necessario per il rilevamento della wakeword"
+
+#: src/prefs.js:549
+msgid "Delete model from disk"
+msgstr "Elimina modello dal disco"
+
+#: src/prefs.js:578
+msgid "Download model"
+msgstr "Scarica modello"
+
+#: src/prefs.js:714
+msgid "Select models directory"
+msgstr "Seleziona cartella modelli"
+
+#: src/prefs.js:778
+msgid "Unused models removed successfully!"
+msgstr "Modelli inutilizzati eliminati con successo!"
+
+#: src/prefs.js:779
+msgid "No unused models to remove."
+msgstr "Nessun modello inutilizzato da eliminare."
+
+#: src/prefs.js:820
+msgid "No downloaded models"
+msgstr "Nessun modello scaricato"
+
+#: src/prefs.js:821
+msgid "Models will be downloaded automatically on first use"
+msgstr "I modelli verranno scaricati automaticamente al primo utilizzo"
+
+#: src/prefs.js:841
+msgid "Currently active model"
+msgstr "Modello attualmente in uso"
+
+#~ msgid "Downloading %s (%s): %d%%"
+#~ msgstr "Scaricamento %s (%s): %d%%"
+
+# Actions & Selector
+#~ msgid "Apply Changes"
+#~ msgstr "Applica Modifiche"
+
+#~ msgid "Select STT Model"
+#~ msgstr "Seleziona Modello STT"
+
+#~ msgid "Show/Hide Filters"
+#~ msgstr "Mostra/Nascondi Filtri"
+
+#~ msgid "Changes applied successfully!"
+#~ msgstr "Modifiche applicate con successo!"
+
+#~ msgid "Started downloading %s..."
+#~ msgstr "Avviato scaricamento di %s..."
+
+#~ msgid "Downloading of %s cancelled"
+#~ msgstr "Scaricamento di %s annullato"
+
+#~ msgid "Model %s deleted."
+#~ msgstr "Modello %s eliminato."
+
+#~ msgid "Manage downloaded models in %s"
+#~ msgstr "Gestisci i modelli scaricati in %s"

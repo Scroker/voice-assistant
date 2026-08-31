@@ -21,10 +21,12 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Gdk from 'gi://Gdk';
 import Adw from 'gi://Adw';
-import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import Soup from 'gi://Soup';
+import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 export default class VoiceAssistantPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
+
         // Caricamento e registrazione di GResource ed IconTheme per la finestra delle preferenze
         try {
             const gresourcePath = `${this.path}/org.gnome.shell.extensions.voice-assistant.gresource`;
@@ -48,13 +50,18 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             console.warn('[VoiceAssistant] Impossibile registrare le risorse icona in prefs:', e);
         }
 
+        const _ = this.gettext.bind(this);
         const settings = this.getSettings('org.gnome.shell.extensions.voice-assistant');
 
         // Dimensioni di default per desktop
         window.set_default_size(860, 600);
 
         // Caricamento interfaccia dal file Blueprint (compilato in prefs.ui nelle risorse)
-        const builder = Gtk.Builder.new_from_resource('/org/gnome/shell/extensions/voice-assistant/ui/prefs.ui');
+        // Il dominio gettext DEVE essere impostato PRIMA di caricare il file UI,
+        // altrimenti le stringhe translatable nel .ui non vengono tradotte.
+        const builder = new Gtk.Builder();
+        builder.set_translation_domain(this.metadata['gettext-domain'] || 'voice-assistant');
+        builder.add_from_resource('/org/gnome/shell/extensions/voice-assistant/ui/prefs.ui');
         const splitView = builder.get_object('split_view');
 
         // Breakpoint per supporto responsive mobile (< 600px)
@@ -127,48 +134,6 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         // ==========================================
         let activeProvider = settings.get_string('stt-provider') || 'vosk';
         let activeModel = settings.get_string('stt-model') || 'vosk-model-small-it-0.22';
-        let pendingProvider = activeProvider;
-        let pendingModel = activeModel;
-
-        const applyBtn = builder.get_object('apply_btn');
-        const selectorApplyBtn = builder.get_object('selector_apply_btn');
-        const applyButtons = [applyBtn, selectorApplyBtn];
-
-        const updateApplyButtons = () => {
-            let hasChanges = (pendingProvider !== activeProvider || pendingModel !== activeModel);
-            for (const btn of applyButtons) {
-                if (btn) btn.sensitive = hasChanges;
-            }
-        };
-        updateApplyButtons();
-
-        const handleApplyChanges = () => {
-            if (pendingProvider !== activeProvider || pendingModel !== activeModel) {
-                settings.set_string('stt-provider', pendingProvider);
-                settings.set_string('stt-model', pendingModel);
-                activeProvider = pendingProvider;
-                activeModel = pendingModel;
-
-                updateActiveModelSubtitle();
-
-                try {
-                    let cmd = ['systemctl', '--user', 'restart', 'voice-assistant.service'];
-                    let proc = new Gio.Subprocess({ argv: cmd, flags: Gio.SubprocessFlags.NONE });
-                    proc.init(null);
-                } catch (e) { }
-
-                updateApplyButtons();
-                renderModelList();
-                if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
-
-                window.add_toast(new Adw.Toast({
-                    title: _('Modifiche applicate con successo!')
-                }));
-            }
-        };
-
-        applyBtn.connect('clicked', handleApplyChanges);
-        selectorApplyBtn.connect('clicked', handleApplyChanges);
 
         const downloadingProgress = new Map();
         const downloadButtons = new Map();
@@ -291,15 +256,15 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         // SELETTORE MODELLI (DISPOSIZIONE DINAMICA)
         // ==========================================
         const whisperStaticModels = [
-            { id: 'tiny', provider: 'whisper', name: 'Whisper Tiny', subtitle: 'Whisper • ~75MB • Multilingua', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~75MB' },
-            { id: 'tiny.en', provider: 'whisper', name: 'Whisper Tiny (English)', subtitle: 'Whisper • ~75MB • Solo Inglese', lang: 'en', lang_text: 'English', size_text: '~75MB' },
-            { id: 'base', provider: 'whisper', name: 'Whisper Base (Consigliato)', subtitle: 'Whisper • ~140MB • Multilingua', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~140MB' },
-            { id: 'base.en', provider: 'whisper', name: 'Whisper Base (English)', subtitle: 'Whisper • ~140MB • Solo Inglese', lang: 'en', lang_text: 'English', size_text: '~140MB' },
-            { id: 'small', provider: 'whisper', name: 'Whisper Small', subtitle: 'Whisper • ~466MB • Multilingua', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~466MB' },
-            { id: 'small.en', provider: 'whisper', name: 'Whisper Small (English)', subtitle: 'Whisper • ~466MB • Solo Inglese', lang: 'en', lang_text: 'English', size_text: '~466MB' },
-            { id: 'medium', provider: 'whisper', name: 'Whisper Medium', subtitle: 'Whisper • ~1.5GB • Multilingua', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~1.5GB' },
-            { id: 'medium.en', provider: 'whisper', name: 'Whisper Medium (English)', subtitle: 'Whisper • ~1.5GB • Solo Inglese', lang: 'en', lang_text: 'English', size_text: '~1.5GB' },
-            { id: 'large-v3', provider: 'whisper', name: 'Whisper Large v3', subtitle: 'Whisper • ~3.1GB • Multilingua', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~3.1GB' }
+            { id: 'tiny', provider: 'whisper', name: 'Whisper Tiny', subtitle: 'Whisper • ~75MB • Multilingual', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~75MB' },
+            { id: 'tiny.en', provider: 'whisper', name: 'Whisper Tiny (English)', subtitle: 'Whisper • ~75MB • English Only', lang: 'en', lang_text: 'English', size_text: '~75MB' },
+            { id: 'base', provider: 'whisper', name: 'Whisper Base (Recommended)', subtitle: 'Whisper • ~140MB • Multilingual', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~140MB' },
+            { id: 'base.en', provider: 'whisper', name: 'Whisper Base (English)', subtitle: 'Whisper • ~140MB • English Only', lang: 'en', lang_text: 'English', size_text: '~140MB' },
+            { id: 'small', provider: 'whisper', name: 'Whisper Small', subtitle: 'Whisper • ~466MB • Multilingual', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~466MB' },
+            { id: 'small.en', provider: 'whisper', name: 'Whisper Small (English)', subtitle: 'Whisper • ~466MB • English Only', lang: 'en', lang_text: 'English', size_text: '~466MB' },
+            { id: 'medium', provider: 'whisper', name: 'Whisper Medium', subtitle: 'Whisper • ~1.5GB • Multilingual', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~1.5GB' },
+            { id: 'medium.en', provider: 'whisper', name: 'Whisper Medium (English)', subtitle: 'Whisper • ~1.5GB • English Only', lang: 'en', lang_text: 'English', size_text: '~1.5GB' },
+            { id: 'large-v3', provider: 'whisper', name: 'Whisper Large v3', subtitle: 'Whisper • ~3.1GB • Multilingual', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~3.1GB' }
         ];
 
         let fetchedVoskModels = [
@@ -310,36 +275,34 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         ];
 
         const searchEntry = builder.get_object('search_entry');
-        const filterToggleBtn = builder.get_object('filter_toggle_btn');
-        const filterBox = builder.get_object('filter_box');
-        const filterBtnAll = builder.get_object('filter_btn_all');
-        const filterBtnInstalled = builder.get_object('filter_btn_installed');
-        const filterBtnDownloading = builder.get_object('filter_btn_downloading');
-        const modelsGroupContainer = builder.get_object('models_group_container');
+        const selectorViewStack = builder.get_object('selector_view_stack');
+        const selectorViewSwitcher = builder.get_object('selector_view_switcher');
+        const selectorViewSwitcherBar = builder.get_object('selector_view_switcher_bar');
         const modelSelectorPage = builder.get_object('model_selector_page');
 
-        filterToggleBtn.connect('toggled', () => {
-            filterBox.visible = filterToggleBtn.active;
-        });
+        const modelsGroupAll = builder.get_object('models_group_all');
+        const modelsGroupInstalled = builder.get_object('models_group_installed');
+        const modelsGroupDownloading = builder.get_object('models_group_downloading');
 
-        let activeFilter = 'all';
-        const setFilter = (fId) => {
-            activeFilter = fId;
-            renderModelList();
+        const updateResponsiveSwitcher = () => {
+            let width = window.default_width || window.get_allocated_width();
+            let isNarrow = (width < 650);
+            selectorViewSwitcherBar.reveal = isNarrow;
+            selectorViewSwitcher.visible = !isNarrow;
         };
 
-        filterBtnAll.connect('toggled', () => { if (filterBtnAll.active) setFilter('all'); });
-        filterBtnInstalled.connect('toggled', () => { if (filterBtnInstalled.active) setFilter('installed'); });
-        filterBtnDownloading.connect('toggled', () => { if (filterBtnDownloading.active) setFilter('downloading'); });
+        window.connect('notify::default-width', updateResponsiveSwitcher);
+        updateResponsiveSwitcher();
 
+        selectorViewStack.connect('notify::visible-child-name', () => renderModelList());
         searchEntry.connect('search-changed', () => renderModelList());
 
         let activeModelGroupRows = [];
 
         renderModelList = () => {
-            for (const r of activeModelGroupRows) {
+            for (const item of activeModelGroupRows) {
                 try {
-                    modelsGroupContainer.remove(r);
+                    item.group.remove(item.row);
                 } catch (e) { }
             }
             activeModelGroupRows = [];
@@ -359,14 +322,19 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
             const allModels = [...whisperStaticModels, ...fetchedVoskModels];
             const query = searchEntry.text.trim().toLowerCase();
+            const activeTab = selectorViewStack.visible_child_name || 'all';
+
+            let targetGroup = modelsGroupAll;
+            if (activeTab === 'installed') targetGroup = modelsGroupInstalled;
+            else if (activeTab === 'downloading') targetGroup = modelsGroupDownloading;
 
             const filteredModels = allModels.filter(m => {
                 let modelKey = `${m.provider}:${m.id}`;
                 let isDownloading = downloadingProgress.has(modelKey);
                 let isInstalled = !isDownloading && (installedSet.has(m.id) || installedSet.has(`${m.provider}-${m.id}`) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`)));
 
-                if (activeFilter === 'installed' && !isInstalled) return false;
-                if (activeFilter === 'downloading' && !isDownloading) return false;
+                if (activeTab === 'installed' && !isInstalled) return false;
+                if (activeTab === 'downloading' && !isDownloading) return false;
 
                 if (query.length > 0) {
                     let text = `${m.name} ${m.id} ${m.provider} ${m.lang} ${m.lang_text} ${m.size_text}`.toLowerCase();
@@ -377,18 +345,20 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
             if (filteredModels.length === 0) {
                 const emptyRow = new Adw.ActionRow({
-                    title: _('Nessun modello trovato'),
-                    subtitle: _('Prova a modificare i filtri o il termine di ricerca.')
+                    title: _('No models found'),
+                    subtitle: _('Try changing search query or tab.')
                 });
-                modelsGroupContainer.add(emptyRow);
-                activeModelGroupRows.push(emptyRow);
+                targetGroup.add(emptyRow);
+                activeModelGroupRows.push({ row: emptyRow, group: targetGroup });
                 return;
             }
 
             const modelGroupLeader = new Gtk.CheckButton();
 
             filteredModels.forEach(m => {
-                let isCurrent = (pendingProvider === m.provider && pendingModel === m.id);
+                let currentProvider = settings.get_string('stt-provider') || 'vosk';
+                let currentModel = settings.get_string('stt-model') || 'vosk-model-small-it-0.22';
+                let isCurrent = (currentProvider === m.provider && currentModel === m.id);
                 let modelKey = `${m.provider}:${m.id}`;
                 let isDownloading = downloadingProgress.has(modelKey);
                 let downloadPct = downloadingProgress.get(modelKey) || 0;
@@ -418,9 +388,18 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
                 const selectModel = () => {
                     if (checkBtn) checkBtn.active = true;
-                    pendingProvider = m.provider;
-                    pendingModel = m.id;
-                    updateApplyButtons();
+                    let currP = settings.get_string('stt-provider');
+                    let currM = settings.get_string('stt-model');
+                    if (currP !== m.provider || currM !== m.id) {
+                        settings.set_string('stt-provider', m.provider);
+                        settings.set_string('stt-model', m.id);
+                        updateActiveModelSubtitle();
+                        renderModelList();
+                        if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
+                        window.add_toast(new Adw.Toast({
+                            title: _(`Model ${m.name} activated.`)
+                        }));
+                    }
                 };
 
                 const fallbackLocalDownload = () => {
@@ -448,7 +427,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
                 const startDownload = () => {
                     window.add_toast(new Adw.Toast({
-                        title: _(`Avviato scaricamento di ${m.name}...`)
+                        title: _(`Started downloading ${m.name}...`)
                     }));
 
                     downloadingProgress.set(modelKey, 0);
@@ -510,12 +489,12 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     cancelBtn.valign = Gtk.Align.CENTER;
                     cancelBtn.add_css_class('flat');
                     cancelBtn.add_css_class('error');
-                    cancelBtn.tooltip_text = _('Annulla scaricamento');
+                    cancelBtn.tooltip_text = _('Cancel download');
 
                     cancelBtn.connect('clicked', () => {
                         cancelBtn.sensitive = false;
                         window.add_toast(new Adw.Toast({
-                            title: _(`Scaricamento di ${m.name} annullato`)
+                            title: _(`Downloading of ${m.name} cancelled`)
                         }));
                         try {
                             Gio.DBus.session.call(
@@ -562,14 +541,14 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
                     if (isCurrent) {
                         deleteBtn.sensitive = false;
-                        deleteBtn.tooltip_text = _('Impossibile eliminare il modello attualmente in uso');
+                        deleteBtn.tooltip_text = _('Cannot delete currently active model');
                     } else if (isRequiredVoskModel) {
                         deleteBtn.sensitive = false;
-                        deleteBtn.tooltip_text = _('Modello Vosk necessario per il rilevamento della wakeword');
+                        deleteBtn.tooltip_text = _('Vosk model required for wakeword detection');
                     } else {
                         deleteBtn.sensitive = true;
                         deleteBtn.add_css_class('error');
-                        deleteBtn.tooltip_text = _('Elimina modello dal disco');
+                        deleteBtn.tooltip_text = _('Delete model from disk');
                     }
 
                     deleteBtn.connect('clicked', () => {
@@ -583,7 +562,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                             proc.init(null);
                             proc.wait_async(null, () => {
                                 window.add_toast(new Adw.Toast({
-                                    title: _(`Modello ${m.name} eliminato.`)
+                                    title: _(`Model ${m.name} deleted.`)
                                 }));
                                 renderModelList();
                                 if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
@@ -598,45 +577,92 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     const dlBtn = Gtk.Button.new_from_icon_name('folder-download-symbolic');
                     dlBtn.valign = Gtk.Align.CENTER;
                     dlBtn.add_css_class('flat');
-                    dlBtn.tooltip_text = _('Scarica modello');
+                    dlBtn.tooltip_text = _('Download model');
                     dlBtn.connect('clicked', startDownload);
                     row.add_suffix(dlBtn);
                 }
 
-                modelsGroupContainer.add(row);
-                activeModelGroupRows.push(row);
+                targetGroup.add(row);
+                activeModelGroupRows.push({ row, group: targetGroup });
             });
         };
 
         const fetchVoskModels = () => {
-            try {
-                let message = Soup.Message.new('GET', 'https://alphacephei.com/vosk/models/model-list.json');
-                let session = new Soup.Session();
-                session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (sess, res) => {
-                    try {
-                        let bytes = session.send_and_read_finish(res);
-                        if (bytes) {
-                            let text = new TextDecoder().decode(bytes.get_data());
-                            let json = JSON.parse(text);
-                            if (Array.isArray(json)) {
-                                fetchedVoskModels = json
-                                    .filter(m => m.lang === 'it' || m.lang === 'en' || m.lang === 'en-us')
-                                    .map(m => ({
-                                        id: m.name,
-                                        provider: 'vosk',
-                                        name: `${m.lang_text || m.lang} - ${m.name}`,
-                                        subtitle: `Vosk • ${m.size_text || ''} • ${m.lang_text || m.lang}`,
-                                        lang: m.lang,
-                                        lang_text: m.lang_text,
-                                        size_text: m.size_text,
-                                        url: m.url
-                                    }));
-                                renderModelList();
-                            }
-                        }
-                    } catch (err) { }
+            const processModelsJson = (json) => {
+                if (!Array.isArray(json)) return;
+                let list = json.filter(m => {
+                    let isObsolete = (m.obsolete === 'true' || m.obsolete === true);
+                    return !isObsolete;
+                }).map(m => {
+                    let mId = m.id || m.name;
+                    let sizeStr = m.size_text || m.size || '';
+                    let langStr = m.lang_text || m.lang || '';
+                    let sub = `Vosk • ${sizeStr} • ${langStr}`;
+                    let fullName = m.name || `${langStr} - ${mId}`;
+                    return {
+                        id: mId,
+                        provider: 'vosk',
+                        name: fullName,
+                        subtitle: sub,
+                        lang: m.lang || '',
+                        lang_text: langStr,
+                        size_text: sizeStr,
+                        url: m.url
+                    };
                 });
-            } catch (err) { }
+
+                if (list.length > 0) {
+                    fetchedVoskModels = list;
+                    renderModelList();
+                }
+            };
+
+            const fetchVoskModelsOnline = () => {
+                try {
+                    let message = Soup.Message.new('GET', 'https://alphacephei.com/vosk/models/model-list.json');
+                    let session = new Soup.Session();
+                    session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (sess, res) => {
+                        try {
+                            let bytes = session.send_and_read_finish(res);
+                            if (bytes) {
+                                let text = new TextDecoder().decode(bytes.get_data());
+                                let json = JSON.parse(text);
+                                processModelsJson(json);
+                            }
+                        } catch (err) {
+                            console.error('[VoiceAssistant] Errore parsing modelli Vosk online:', err);
+                        }
+                    });
+                } catch (err) {
+                    console.error('[VoiceAssistant] Errore fetch HTTP modelli Vosk:', err);
+                }
+            };
+
+            try {
+                Gio.DBus.session.call(
+                    'org.local.VoiceAssistant',
+                    '/org/local/VoiceAssistant',
+                    'org.local.VoiceAssistant',
+                    'GetAvailableModels',
+                    new GLib.Variant('(s)', ['vosk']),
+                    null,
+                    Gio.DBusCallFlags.NONE,
+                    -1,
+                    null,
+                    (conn, res) => {
+                        try {
+                            let reply = conn.call_finish(res);
+                            let [jsonStr] = reply.recursiveUnpack();
+                            let json = JSON.parse(jsonStr);
+                            processModelsJson(json);
+                        } catch (e) {
+                            fetchVoskModelsOnline();
+                        }
+                    }
+                );
+            } catch (err) {
+                fetchVoskModelsOnline();
+            }
         };
 
         fetchVoskModels();
@@ -687,7 +713,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
         choosePathBtn.connect('clicked', () => {
             let chooser = new Gtk.FileChooserNative({
-                title: _('Seleziona cartella modelli'),
+                title: _('Select models directory'),
                 action: Gtk.FileChooserAction.SELECT_FOLDER,
                 transient_for: window,
                 modal: true
@@ -751,8 +777,8 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             renderModelList();
             window.add_toast(new Adw.Toast({
                 title: countRemoved > 0
-                    ? _('Modelli inutilizzati eliminati con successo!')
-                    : _('Nessun modello inutilizzato da eliminare.')
+                    ? _('Unused models removed successfully!')
+                    : _('No unused models to remove.')
             }));
         });
 
@@ -767,7 +793,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             activeCacheRows = [];
 
             const currentModelsPath = getModelsPath();
-            cacheGroup.set_description(_(`Gestisci i modelli scaricati in ${formatPathForDisplay(currentModelsPath)}`));
+            cacheGroup.set_description(_(`Manage downloaded models in ${formatPathForDisplay(currentModelsPath)}`));
 
             let currentModel = settings.get_string('stt-model') || '';
             let currentProvider = settings.get_string('stt-provider') || 'vosk';
@@ -793,8 +819,8 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
             if (downloadedModels.length === 0) {
                 const emptyRow = new Adw.ActionRow({
-                    title: _('Nessun modello scaricato'),
-                    subtitle: _('I modelli verranno scaricati automaticamente al primo utilizzo')
+                    title: _('No downloaded models'),
+                    subtitle: _('Models will be downloaded automatically on first use')
                 });
                 cacheGroup.add(emptyRow);
                 activeCacheRows.push(emptyRow);
@@ -814,7 +840,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                         const activeIcon = Gtk.Image.new_from_icon_name('check-plain-symbolic');
                         activeIcon.valign = Gtk.Align.CENTER;
                         activeIcon.add_css_class('accent');
-                        activeIcon.tooltip_text = _('Modello attualmente in uso');
+                        activeIcon.tooltip_text = _('Currently active model');
                         row.add_suffix(activeIcon);
                     }
 
@@ -832,7 +858,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         // ==========================================
         const docBtn = builder.get_object('doc_btn');
         docBtn.connect('clicked', () => {
-            Gio.AppInfo.launch_default_for_uri('https://github.com/mkswap/voice-assistant', null);
+            Gio.AppInfo.launch_default_for_uri('https://github.com/Scroker/voice-assistant', null);
         });
 
 
@@ -846,13 +872,13 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         const stack = builder.get_object('stack');
 
         const pages = [
-            { id: 'general', title: _('Generali'), row: builder.get_object('row_general') },
-            { id: 'stt', title: _('Motore Vocale (STT)'), row: builder.get_object('row_stt') },
-            { id: 'llm', title: _('Intelligenza Artificiale (LLM)'), row: builder.get_object('row_llm') },
-            { id: 'tts', title: _('Sintesi Vocale (TTS)'), row: builder.get_object('row_tts') },
-            { id: 'mcp', title: _('Strumenti (MCP)'), row: builder.get_object('row_mcp') },
-            { id: 'models', title: _('Archiviazione e Modelli'), row: builder.get_object('row_models') },
-            { id: 'about', title: _('Informazioni'), row: builder.get_object('row_about') }
+            { id: 'general_page', page: builder.get_object('general_page'), title: _('General'), row: builder.get_object('row_general') },
+            { id: 'stt_page', page: builder.get_object('stt_page'), title: _('Speech Engine (STT)'), row: builder.get_object('row_stt') },
+            { id: 'llm_page', page: builder.get_object('llm_page'), title: _('Artificial Intelligence (LLM)'), row: builder.get_object('row_llm') },
+            { id: 'tts_page', page: builder.get_object('tts_page'), title: _('Text-to-Speech (TTS)'), row: builder.get_object('row_tts') },
+            { id: 'mcp_page', page: builder.get_object('mcp_page'), title: _('Tools (MCP)'), row: builder.get_object('row_mcp') },
+            { id: 'models_page', page: builder.get_object('models_page'), title: _('Storage and Models'), row: builder.get_object('row_models') },
+            { id: 'about_page', page: builder.get_object('about_page'), title: _('About'), row: builder.get_object('row_about') }
         ];
 
         const openSelector = () => {
@@ -870,7 +896,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             if (!row) return;
             const target = pages.find(p => p.row === row);
             if (target) {
-                if (target.id === 'stt') {
+                if (target.id === 'stt_page') {
                     queryDownloadingModels(() => {
                         renderModelList();
                     });
@@ -880,7 +906,12 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     contentNavigationView.pop();
                 }
 
-                stack.set_visible_child_name(target.id);
+                if (target.page) {
+                    stack.set_visible_child(target.page);
+                } else {
+                    stack.set_visible_child_name(target.id);
+                }
+
                 contentTitle.set_title(target.title);
                 mainContentNavPage.set_title(target.title);
 
@@ -889,6 +920,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         };
 
         sidebarListBox.connect('row-activated', (listbox, row) => selectSidebarPage(row));
+        sidebarListBox.connect('row-selected', (listbox, row) => selectSidebarPage(row));
 
         // Seleziona la prima riga di default
         sidebarListBox.select_row(pages[0].row);

@@ -1,0 +1,38 @@
+# Build & Packaging directories
+/build/
+/_build/
+/dist/
+*.shell-extension.zip
+
+# Compiled Schemas & Resources
+gschemas.compiled
+data/schemas/gschemas.compiled
+*.gresource
+data/ui/prefs.ui
+prefs.ui
+
+# Python Caches & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+src/daemon/venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Translations (Compiled Gettext MO files)
+po/*.gmo
+po/*.mo
+po/voice-assistant.pot
+
+# IDEs & OS temporary files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~

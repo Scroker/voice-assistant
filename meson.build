@@ -3,7 +3,7 @@ project('voice-assistant',
   meson_version: '>= 0.56.0'
 )
 
-uuid = 'voice-assistant@mkswap.github.io'
+uuid = 'voice-assistant@scroker.github.io'
 
 i18n = import('i18n')
 gnome = import('gnome')
@@ -13,8 +13,9 @@ extensiondir = join_paths(get_option('datadir'), 'gnome-shell', 'extensions', uu
 subdir('data')
 subdir('src')
 subdir('po')
+subdir('tests')
 
-install_data('stylesheet.css', install_dir: extensiondir)
+# stylesheet.css is installed via data/meson.build
 
 gnome.post_install(
   glib_compile_schemas: true,
@@ -38,7 +39,7 @@ if gnome_extensions.found()
       'cp -r "@0@"/data/icons "$TMPDIR/" && '.format(src_root) +
       'cp -r "@0@"/data/services "$TMPDIR/" && '.format(src_root) +
       'cp -r "@0@"/data/dbus "$TMPDIR/" && '.format(src_root) +
-      'cp "@0@"/stylesheet.css "$TMPDIR/" && '.format(src_root) +
+      'cp "@0@"/data/stylesheet.css "$TMPDIR/" && '.format(src_root) +
       'cp "@0@"/data/metadata.json "$TMPDIR/" && '.format(build_root) +
       'cp "@0@"/data/org.gnome.shell.extensions.voice-assistant.gresource "$TMPDIR/" && '.format(build_root) +
       'mkdir -p "$TMPDIR/schemas" && cp "@0@"/data/schemas/*.xml "$TMPDIR/schemas/" && glib-compile-schemas "$TMPDIR/schemas/" && '.format(src_root) +

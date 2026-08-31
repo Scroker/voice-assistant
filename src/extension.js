@@ -36,28 +36,35 @@ function setupDaemonServices(extensionDir) {
     let decoder = new TextDecoder();
     let servicesDir = extensionDir.get_child('services');
 
+    // Funzione helper per caricare i template .in da GResource o da disco
+    const loadTemplate = (resourcePath, diskFileName) => {
+        try {
+            let bytes = Gio.resources_lookup_data(resourcePath, Gio.ResourceLookupFlags.NONE);
+            return decoder.decode(bytes.get_data());
+        } catch (e) {
+            let tplFile = servicesDir.get_child(diskFileName);
+            if (tplFile.query_exists(null)) {
+                let [, bytes] = tplFile.load_contents(null);
+                return decoder.decode(bytes);
+            }
+        }
+        throw new Error(`Impossibile trovare il template del servizio: ${diskFileName}`);
+    };
+
     // 1. Install Systemd Service
     let systemdDir = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_config_dir(), 'systemd', 'user']));
     if (!systemdDir.query_exists(null)) {
         systemdDir.make_directory_with_parents(null);
     }
     
-    let systemdContent = `[Unit]\nDescription=Local Voice Assistant Daemon\nAfter=graphical-session.target\n\n[Service]\nType=dbus\nBusName=org.local.VoiceAssistant\nExecStart=${startScript}\nRestart=on-failure\n`;
     try {
-        let bytes = Gio.resources_lookup_data('/org/gnome/shell/extensions/voice-assistant/services/voice-assistant.service.in', Gio.ResourceLookupFlags.NONE);
-        systemdContent = decoder.decode(bytes.get_data()).replace(/@startScript@/g, startScript);
+        let systemdTpl = loadTemplate('/org/gnome/shell/extensions/voice-assistant/services/voice-assistant.service.in', 'voice-assistant.service.in');
+        let systemdContent = systemdTpl.replace(/@startScript@/g, startScript);
+        let systemdService = systemdDir.get_child('voice-assistant.service');
+        systemdService.replace_contents(encoder.encode(systemdContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
     } catch (e) {
-        try {
-            let systemdTpl = servicesDir.get_child('voice-assistant.service.in');
-            if (systemdTpl.query_exists(null)) {
-                let [, bytes] = systemdTpl.load_contents(null);
-                systemdContent = decoder.decode(bytes).replace(/@startScript@/g, startScript);
-            }
-        } catch (err) { }
+        console.error(`[VoiceAssistant] Errore installazione servizio systemd: ${e.message}`);
     }
-
-    let systemdService = systemdDir.get_child('voice-assistant.service');
-    systemdService.replace_contents(encoder.encode(systemdContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
 
     // 2. Install DBus Service
     let dbusDir = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_data_dir(), 'dbus-1', 'services']));
@@ -65,22 +72,14 @@ function setupDaemonServices(extensionDir) {
         dbusDir.make_directory_with_parents(null);
     }
     
-    let dbusContent = `[D-BUS Service]\nName=org.local.VoiceAssistant\nExec=${startScript}\nSystemdService=voice-assistant.service\n`;
     try {
-        let bytes = Gio.resources_lookup_data('/org/gnome/shell/extensions/voice-assistant/services/org.local.VoiceAssistant.service.in', Gio.ResourceLookupFlags.NONE);
-        dbusContent = decoder.decode(bytes.get_data()).replace(/@startScript@/g, startScript);
+        let dbusTpl = loadTemplate('/org/gnome/shell/extensions/voice-assistant/services/org.local.VoiceAssistant.service.in', 'org.local.VoiceAssistant.service.in');
+        let dbusContent = dbusTpl.replace(/@startScript@/g, startScript);
+        let dbusService = dbusDir.get_child('org.local.VoiceAssistant.service');
+        dbusService.replace_contents(encoder.encode(dbusContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
     } catch (e) {
-        try {
-            let dbusTpl = servicesDir.get_child('org.local.VoiceAssistant.service.in');
-            if (dbusTpl.query_exists(null)) {
-                let [, bytes] = dbusTpl.load_contents(null);
-                dbusContent = decoder.decode(bytes).replace(/@startScript@/g, startScript);
-            }
-        } catch (err) { }
+        console.error(`[VoiceAssistant] Errore installazione servizio D-Bus: ${e.message}`);
     }
-
-    let dbusService = dbusDir.get_child('org.local.VoiceAssistant.service');
-    dbusService.replace_contents(encoder.encode(dbusContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
 
     // 3. Reload systemd and start service
     try {
@@ -176,15 +175,12 @@ const AssistantIndicator = GObject.registerClass(
 
             this._settings = this._extension.getSettings('org.gnome.shell.extensions.voice-assistant');
             
-            // Imposta lo stato visivo iniziale leggendo da GSettings
-            let isEnabled = this._settings.get_boolean('enabled');
-            this._updateUiState(isEnabled ? 'idle' : 'disabled');
-
+            // Imposta lo stato visivo iniziale su non disponibile finché il demone non si connette
             this._dbusProxy = null;
             this._signalId = null;
 
             // Costruzione del menu a tendina
-            this._toggleItem = new PopupMenu.PopupMenuItem(_('Attiva / Disattiva'));
+            this._toggleItem = new PopupMenu.PopupMenuItem(_('Enable / Disable'));
             this._toggleItem.connect('activate', () => {
                 this._toggleRecording();
             });
@@ -198,12 +194,13 @@ const AssistantIndicator = GObject.registerClass(
 
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-            this._settingsItem = new PopupMenu.PopupMenuItem(_('Impostazioni'));
+            this._settingsItem = new PopupMenu.PopupMenuItem(_('Preferences'));
             this._settingsItem.connect('activate', () => {
                 this._extension.openPreferences();
             });
             this.menu.addMenuItem(this._settingsItem);
 
+            this._updateUiState('unavailable');
             this._connectToDaemon();
         }
 
@@ -211,7 +208,7 @@ const AssistantIndicator = GObject.registerClass(
             this._watchId = Gio.bus_watch_name(
                 Gio.BusType.SESSION,
                 'org.local.VoiceAssistant',
-                Gio.BusNameWatcherFlags.NONE,
+                Gio.BusNameWatcherFlags.AUTO_START,
                 (connection, name, nameOwner) => {
                     console.log(`[VoiceAssistant] Demone apparso sul bus (${nameOwner})`);
                     new VoiceAssistantProxy(
@@ -221,9 +218,12 @@ const AssistantIndicator = GObject.registerClass(
                         (proxy, error) => {
                             if (error) {
                                 console.error(`[VoiceAssistant] Errore di connessione D-Bus: ${error.message}`);
+                                this._updateUiState('unavailable');
                                 return;
                             }
                             this._dbusProxy = proxy;
+                            let isEnabled = this._settings.get_boolean('enabled');
+                            this._updateUiState(isEnabled ? 'idle' : 'disabled');
 
                             this._stateSignalId = this._dbusProxy.connectSignal(
                                 'StateChanged',
@@ -236,7 +236,7 @@ const AssistantIndicator = GObject.registerClass(
                                 (proxy, senderName, [pName, mName, percent]) => {
                                     if (this._downloadItem) {
                                         if (percent >= 0 && percent < 100) {
-                                            this._downloadItem.label.text = _(`Scaricamento ${pName} (${mName}): ${percent}%`);
+                                            this._downloadItem.label.text = _(`Downloading ${pName} (${mName}): ${percent}%`);
                                             this._downloadItem.visible = true;
                                         } else {
                                             this._downloadItem.visible = false;
@@ -249,6 +249,7 @@ const AssistantIndicator = GObject.registerClass(
                 () => {
                     console.log('[VoiceAssistant] Demone scomparso dal bus');
                     this._dbusProxy = null;
+                    this._updateUiState('unavailable');
                 }
             );
         }
@@ -266,44 +267,84 @@ const AssistantIndicator = GObject.registerClass(
             }
         }
 
+        _showOsd(text) {
+            try {
+                let icon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg');
+                if (Main.osdWindowManager.showAll) {
+                    Main.osdWindowManager.showAll(icon, text, null, null);
+                } else {
+                    Main.osdWindowManager.show(-1, icon, text, null, null);
+                }
+            } catch (e) {
+                console.error(`[VoiceAssistant] Errore OSD: ${e}`);
+            }
+        }
+
         _updateUiState(state) {
             console.log(`[VoiceAssistant] Aggiornamento stato UI: ${state}`);
             switch (state) {
                 case 'listening':
                     this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
-                    this._icon.set_style('color: #e01b24;'); 
-                    if (this._toggleItem) this._toggleItem.label.text = _('Disattiva Assistente');
+                    this._icon.set_style('color: #3584e4;');
+                    this._showOsd(_('In ascolto...'));
+                    if (this._toggleItem) {
+                        this._toggleItem.label.text = _('Disable Assistant');
+                        this._toggleItem.setSensitive(true);
+                    }
                     break;
                 case 'processing':
                     this._icon.gicon = null;
                     this._icon.icon_name = 'brain-augmented-symbolic';
                     this._icon.set_style('color: #e5a50a;');
-                    if (this._toggleItem) this._toggleItem.label.text = _('Disattiva Assistente');
+                    if (this._toggleItem) {
+                        this._toggleItem.label.text = _('Disable Assistant');
+                        this._toggleItem.setSensitive(true);
+                    }
                     break;
                 case 'speaking':
                     this._icon.gicon = null;
                     this._icon.icon_name = 'audio-volume-high-symbolic';
                     this._icon.set_style('color: #3584e4;');
-                    if (this._toggleItem) this._toggleItem.label.text = _('Disattiva Assistente');
+                    if (this._toggleItem) {
+                        this._toggleItem.label.text = _('Disable Assistant');
+                        this._toggleItem.setSensitive(true);
+                    }
                     break;
                 case 'downloading':
                     this._icon.gicon = null;
                     this._icon.icon_name = 'folder-download-symbolic';
                     this._icon.set_style('color: #e5a50a;');
+                    if (this._toggleItem) this._toggleItem.setSensitive(true);
                     break;
                 case 'disabled':
                     this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style('color: #e01b24;'); 
-                    if (this._toggleItem) this._toggleItem.label.text = _('Attiva Assistente');
+                    if (this._toggleItem) {
+                        this._toggleItem.label.text = _('Enable Assistant');
+                        this._toggleItem.setSensitive(true);
+                    }
+                    break;
+                case 'unavailable':
+                    this._icon.icon_name = null;
+                    this._icon.gicon = this._customGIcon;
+                    this._icon.set_style('color: #e01b24;');
+                    if (this._toggleItem) {
+                        this._toggleItem.label.text = _('Assistant Unavailable');
+                        this._toggleItem.setSensitive(false);
+                    }
+                    if (this._downloadItem) this._downloadItem.visible = false;
                     break;
                 case 'idle':
                 default:
                     this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style(null);
-                    if (this._toggleItem) this._toggleItem.label.text = _('Disattiva Assistente');
+                    if (this._toggleItem) {
+                        this._toggleItem.label.text = _('Disable Assistant');
+                        this._toggleItem.setSensitive(true);
+                    }
                     if (this._downloadItem) this._downloadItem.visible = false;
                     break;
             }

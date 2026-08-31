@@ -603,6 +603,9 @@ class VoiceAssistant(object):
         if self._state != "idle":
             return
             
+        import time
+        self._listening_start_time = time.time()
+        self._last_speech_time = None
         GLib.idle_add(self.set_state, "listening")
         print("Ora ti ascolto... Parla!")
         if hasattr(self, 'provider') and self.provider:
@@ -615,8 +618,7 @@ class VoiceAssistant(object):
         import time
         import numpy as np
         
-        silence_timeout = 2.0  # Secondi di silenzio per far scattare Whisper
-        last_speech_time = None
+        silence_timeout = 2.0  # Secondi di silenzio per far scattare la trascrizione
 
         try:
             while True:
@@ -636,7 +638,6 @@ class VoiceAssistant(object):
                             if wakeword_lower in text:
                                 print(f"\n--- Wakeword '{self.wakeword}' rilevata (da risultato finale)! ---")
                                 self.trigger_assistant()
-                                last_speech_time = time.time()
                         else:
                             partial_json = self.ww_recognizer.PartialResult()
                             partial = json.loads(partial_json)
@@ -644,33 +645,43 @@ class VoiceAssistant(object):
                             if wakeword_lower in partial_text:
                                 print(f"\n--- Wakeword '{self.wakeword}' rilevata! ---")
                                 self.trigger_assistant()
-                                last_speech_time = time.time()
                 elif self._state == "listening":
                     if not hasattr(self, 'provider') or not self.provider:
                         continue
 
                     text, partial_text = self.provider.process_chunk(data)
+                    now = time.time()
+
+                    if not hasattr(self, '_listening_start_time') or self._listening_start_time is None:
+                        self._listening_start_time = now
                     
-                    # Vosk ritorna il testo completato in tempo reale
                     if text:
                         self._process_text(text)
-                        last_speech_time = None
+                        self._listening_start_time = None
+                        self._last_speech_time = None
                         GLib.idle_add(self.set_state, "idle")
                     else:
-                        # Logica di silenzio manuale per Whisper (che non supporta streaming reale)
                         audio_np = np.frombuffer(data, np.int16)
-                        # Calcolo approssimativo del volume
                         volume = np.abs(audio_np.astype(float)).mean()
-                        
-                        if volume > 500: # Soglia RMS approssimativa per il parlato
-                            last_speech_time = time.time()
-                            
-                        if last_speech_time and (time.time() - last_speech_time) > silence_timeout:
-                            print("Rilevato silenzio, procedo con la trascrizione (se Whisper)...")
+
+                        if volume > 300 or len(partial_text.strip()) > 0:
+                            self._last_speech_time = now
+
+                        if getattr(self, '_last_speech_time', None) and (now - self._last_speech_time) > silence_timeout:
+                            print("Rilevato silenzio dopo il parlato, procedo con la trascrizione...")
                             batch_text = self.provider.flush_and_transcribe()
                             if batch_text:
                                 self._process_text(batch_text)
-                            last_speech_time = None
+                            self._listening_start_time = None
+                            self._last_speech_time = None
+                            GLib.idle_add(self.set_state, "idle")
+                        elif (now - self._listening_start_time) > 6.0:
+                            print("Timeout ascolto raggiunto, fine acquisizione.")
+                            batch_text = self.provider.flush_and_transcribe()
+                            if batch_text:
+                                self._process_text(batch_text)
+                            self._listening_start_time = None
+                            self._last_speech_time = None
                             GLib.idle_add(self.set_state, "idle")
 
         except Exception as e:

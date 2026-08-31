@@ -2,6 +2,10 @@ install_data('schemas/org.gnome.shell.extensions.voice-assistant.gschema.xml',
   install_dir: join_paths(extensiondir, 'schemas')
 )
 
+install_data('stylesheet.css',
+  install_dir: extensiondir
+)
+
 install_data('schemas/org.gnome.shell.extensions.voice-assistant.gschema.xml',
   install_dir: join_paths(get_option('datadir'), 'glib-2.0', 'schemas')
 )

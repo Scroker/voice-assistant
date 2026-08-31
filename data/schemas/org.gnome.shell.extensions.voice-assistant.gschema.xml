@@ -41,6 +41,16 @@
       <summary>Cartella salvataggio modelli</summary>
       <description>La cartella in cui vengono salvati e cercati i modelli STT.</description>
     </key>
+    <key name="llm-enabled" type="b">
+      <default>true</default>
+      <summary>Abilitazione risposte LLM</summary>
+      <description>Se vero, l'assistente utilizzerà l'LLM per generare le risposte.</description>
+    </key>
+    <key name="llm-url" type="s">
+      <default>'http://localhost:11434'</default>
+      <summary>URL Server LLM</summary>
+      <description>L'URL dell'API del server LLM locale o remoto.</description>
+    </key>
     <key name="llm-provider" type="s">
       <default>'ollama'</default>
       <summary>Provider LLM</summary>
@@ -65,6 +75,11 @@
       <default>0.7</default>
       <summary>Temperatura LLM</summary>
       <description>Parametro di creatività delle risposte (da 0.0 a 1.0).</description>
+    </key>
+    <key name="tts-engine" type="s">
+      <default>'piper'</default>
+      <summary>Motore TTS</summary>
+      <description>Il motore di sintesi vocale (piper, espeak).</description>
     </key>
     <key name="tts-provider" type="s">
       <default>'piper'</default>
