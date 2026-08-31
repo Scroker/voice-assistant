@@ -1544,13 +1544,9 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         openModelSelectorBtn.connect('clicked', openSelector);
 
         // Selezione riga sidebar -> Mostra pagina nel contenuto (e torna al livello principale se in sotto-pagina)
-        let lastSelectedSidebarIndex = -1;
-        sidebarListBox.connect('row-selected', (listbox, row) => {
+        const selectSidebarPage = (row) => {
             if (!row) return;
             const index = pageRows.indexOf(row);
-            if (index === lastSelectedSidebarIndex) return;
-            lastSelectedSidebarIndex = index;
-
             if (index >= 0 && index < pages.length) {
                 const selectedPage = pages[index];
                 
@@ -1566,10 +1562,13 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 // In modalità mobile/collassata, passa alla vista di dettaglio
                 splitView.set_show_content(true);
             }
-        });
+        };
+
+        sidebarListBox.connect('row-activated', (listbox, row) => selectSidebarPage(row));
 
         // Seleziona la prima riga di default
         sidebarListBox.select_row(pageRows[0]);
+        selectSidebarPage(pageRows[0]);
 
         // Imposta Adw.NavigationSplitView come contenuto root della finestra
         window.set_content(splitView);
