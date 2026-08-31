@@ -29,6 +29,7 @@ import notify2
 
 from audio.player import AudioPlayer
 from services.tts_service import TTSServiceManager
+from services.llm_service import LLMServiceManager
 from core.pipeline import PipelineController
 from core.state import StateMachine
 
@@ -203,7 +204,7 @@ class VoiceAssistant(object):
         
         threading.Thread(target=_load_ww, daemon=True).start()
             
-        # Inizializza Audio Player, TTS e Pipeline Controller
+        # Inizializza Audio Player, TTS, LLM Service e Pipeline Controller
         self.audio_player = AudioPlayer()
         self.audio_player.start()
 
@@ -211,9 +212,12 @@ class VoiceAssistant(object):
             audio_player=self.audio_player
         )
 
+        self.llm_service = LLMServiceManager()
+
         self.pipeline_controller = PipelineController(
             state_machine=StateMachine(),
             audio_player=self.audio_player,
+            llm_streamer=lambda prompt: self.llm_service.stream_tokens(prompt),
             tts_engine=lambda text: self.tts_manager.speak(text)
         )
 
