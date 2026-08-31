@@ -3,6 +3,7 @@
   "name": "Linux Voice Assistant MCP",
   "description": "Trigger e interfaccia per l'assistente vocale locale",
   "gettext-domain": "voice-assistant",
+  "settings-schema": "org.gnome.shell.extensions.voice-assistant",
   "shell-version": [
     "50"
   ],

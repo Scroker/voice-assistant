@@ -377,7 +377,7 @@ export default class VoiceAssistantExtension extends Extension {
         Main.panel.addToStatusArea(this.uuid, this._indicator);
 
         // Scorciatoia da tastiera nativa per attivare/disattivare l'ascolto
-        this._settings = this.getSettings();
+        this._settings = this.getSettings('org.gnome.shell.extensions.voice-assistant');
         Main.wm.addKeybinding(
             'toggle-shortcut',
             this._settings,

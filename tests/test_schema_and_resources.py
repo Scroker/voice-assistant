@@ -24,7 +24,7 @@ class TestSchemaAndResources(unittest.TestCase):
         with open(meta_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        required_keys = ["uuid", "name", "description", "gettext-domain", "shell-version"]
+        required_keys = ["uuid", "name", "description", "gettext-domain", "settings-schema", "shell-version"]
         for key in required_keys:
             self.assertIn(key, data, f"Chiave mancante in metadata.json.in: {key}")
 
