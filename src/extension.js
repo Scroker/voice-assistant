@@ -230,10 +230,7 @@ class VoiceAssistantSystemIndicator extends QuickSettings.SystemIndicator {
     }
 
     destroy() {
-        if (this._toggle) {
-            this._toggle.destroy();
-            this._toggle = null;
-        }
+        this._toggle = null;
         super.destroy();
     }
 });
@@ -467,9 +464,6 @@ export default class VoiceAssistantExtension extends Extension {
         }
 
         if (this._quickIndicator) {
-            if (this._quickIndicator.quickSettingsItems) {
-                this._quickIndicator.quickSettingsItems.forEach(item => item.destroy());
-            }
             this._quickIndicator.destroy();
             this._quickIndicator = null;
         }
