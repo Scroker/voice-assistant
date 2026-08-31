@@ -8,16 +8,18 @@ cd "$DIR"
 
 echo "Avvio script del demone..."
 
-# Se il virtual environment non esiste, creiamolo
+# Gestione virtual environment
 if [ ! -d "venv" ]; then
     echo "Il virtual environment non esiste. Creazione in corso..."
     python3 -m venv --system-site-packages venv
-    source venv/bin/activate
-    echo "Installazione dipendenze..."
+fi
+
+source venv/bin/activate
+
+# Verifica se mancano dipendenze da requirements.txt
+if ! python3 -c "import sounddevice, dasbus, vosk" &>/dev/null; then
+    echo "Installazione/Aggiornamento dipendenze da requirements.txt..."
     pip install -r requirements.txt
-else
-    echo "Virtual environment trovato, attivazione..."
-    source venv/bin/activate
 fi
 
 echo "Avvio del main.py..."
