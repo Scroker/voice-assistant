@@ -208,13 +208,6 @@ class VoiceAssistant(object):
         self.audio_player = AudioPlayer()
         self.audio_player.start()
 
-    def get(self, key: str, default: Any = None) -> Any:
-        try:
-            val = self.settings.get_value(key)
-            return val.unpack() if val is not None else default
-        except Exception:
-            return default
-
         self.tts_manager = TTSServiceManager(
             audio_player=self.audio_player
         )
@@ -239,6 +232,13 @@ class VoiceAssistant(object):
         self._audio_thread.start()
         
         self.set_state("idle" if is_enabled else "disabled")
+
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            val = self.settings.get_value(key)
+            return val.unpack() if val is not None else default
+        except Exception:
+            return default
 
     def _schedule_reload(self):
         if getattr(self, '_reload_timer', None):
