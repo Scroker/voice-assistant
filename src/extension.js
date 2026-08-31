@@ -264,8 +264,8 @@ const AssistantIndicator = GObject.registerClass(
         }
 
         _updateUiState(state) {
-            // L'icona nella barra in alto appare SOLO quando l'assistente è attivo (non disabled o unavailable)
-            if (state === 'disabled' || state === 'unavailable') {
+            // L'icona sparisce solo quando l'assistente è disattivato ('disabled')
+            if (state === 'disabled') {
                 this.visible = false;
                 return;
             }
@@ -291,6 +291,11 @@ const AssistantIndicator = GObject.registerClass(
                     this._icon.gicon = null;
                     this._icon.icon_name = 'folder-download-symbolic';
                     this._icon.set_style('color: #e5a50a;');
+                    break;
+                case 'unavailable':
+                    this._icon.icon_name = null;
+                    this._icon.gicon = this._customGIcon;
+                    this._icon.set_style('color: #e01b24;'); // Rosso GNOME
                     break;
                 case 'idle':
                 default:
