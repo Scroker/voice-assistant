@@ -37,7 +37,7 @@ class TestServicesLLM(unittest.TestCase):
     def test_openai_compatible_streaming(self, mock_urlopen):
         """Verifica che lo streaming nel formato OpenAI SSE delta venga decodificato correttamente."""
         settings_observer = MagicMock()
-        settings_observer.get.side_effect = lambda k, d=None: "http://localhost:1234/v1/chat/completions" if k == "llm-endpoint" else d
+        settings_observer.get.side_effect = lambda k, d=None: "http://localhost:1234/v1/chat/completions" if k == "llm-endpoint" else ("ollama" if k == "llm-mode" else d)
 
         mock_response = MagicMock()
         mock_response.__enter__.return_value = [
@@ -51,6 +51,18 @@ class TestServicesLLM(unittest.TestCase):
         tokens = list(manager.stream_tokens("Dimmi qualcosa"))
 
         self.assertEqual(tokens, ["Ecco ", "la risposta."])
+
+    @patch('services.llm_service.LocalGGUFProvider.stream_tokens')
+    def test_local_gguf_provider(self, mock_stream):
+        """Verifica che la modalità locale GGUF richiami il provider in-daemon."""
+        mock_stream.return_value = iter(["Risposta ", "locale."])
+        settings_observer = MagicMock()
+        settings_observer.get.side_effect = lambda k, d=None: "local" if k == "llm-mode" else d
+
+        manager = LLMServiceManager(settings_observer=settings_observer)
+        tokens = list(manager.stream_tokens("Ciao"))
+
+        self.assertEqual(tokens, ["Risposta ", "locale."])
 
 if __name__ == '__main__':
     unittest.main()
