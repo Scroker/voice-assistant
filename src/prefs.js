@@ -1544,13 +1544,17 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         openModelSelectorBtn.connect('clicked', openSelector);
 
         // Selezione riga sidebar -> Mostra pagina nel contenuto (e torna al livello principale se in sotto-pagina)
+        let lastSelectedSidebarIndex = -1;
         sidebarListBox.connect('row-selected', (listbox, row) => {
             if (!row) return;
             const index = pageRows.indexOf(row);
+            if (index === lastSelectedSidebarIndex) return;
+            lastSelectedSidebarIndex = index;
+
             if (index >= 0 && index < pages.length) {
                 const selectedPage = pages[index];
                 
-                // Se eravamo dentro la sottopagina Selettore Modelli, torniamo alla pagina principale
+                // Se eravamo dentro la sottopagina Selettore Modelli e l'utente ha cambiato scheda sidebar
                 if (contentNavigationView.get_visible_page() === modelSelectorPage) {
                     contentNavigationView.pop();
                 }
