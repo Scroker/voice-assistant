@@ -28,7 +28,10 @@ class TestServicesLLM(unittest.TestCase):
         ]
         mock_urlopen.return_value = mock_response
 
-        manager = LLMServiceManager()
+        settings_observer = MagicMock()
+        settings_observer.get.side_effect = lambda k, d=None: "ollama" if k == "llm-mode" else d
+
+        manager = LLMServiceManager(settings_observer=settings_observer)
         tokens = list(manager.stream_tokens("Ciao"))
 
         self.assertEqual(tokens, ["Ciao! ", "Sono il tuo assistente."])

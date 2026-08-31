@@ -64,9 +64,27 @@ class LocalGGUFProvider:
         except ImportError:
             logger.error("[LocalGGUF] Il modulo 'llama-cpp-python' non è ancora installato.")
             raise RuntimeError("Installa 'llama-cpp-python' per eseguire i modelli GGUF direttamente nel demone.")
+        except Exception as e:
+            logger.error(f"[LocalGGUF] Errore inizializzazione llama-cpp: {e}")
+            raise e
+
+    def is_model_present(self, filename: str = DEFAULT_MODEL_FILE) -> bool:
+        """Verifica se il file GGUF è già presente sul disco locale."""
+        model_path = os.path.join(self.models_dir, filename)
+        return os.path.exists(model_path) and os.path.getsize(model_path) > 50000000
 
     def stream_tokens(self, prompt: str, system_prompt: str = "") -> Generator[str, None, None]:
-        llm = self.load_model()
+        if not self.is_model_present():
+            logger.info("[LocalGGUF] Primo avvio: il modello GGUF non è presente. Avvio download...")
+            yield "Sto scaricando il modello di intelligenza artificiale locale per la prima volta. Attendere prego."
+
+        try:
+            llm = self.load_model()
+        except Exception as e:
+            logger.error(f"[LocalGGUF] Impossibile caricare il modello: {e}")
+            yield "Errore nel caricamento del modello locale. Verifica l'installazione delle dipendenze."
+            return
+
         formatted_prompt = f"<|system|>\n{system_prompt}<|end|>\n<|user|>\n{prompt}<|end|>\n<|assistant|>\n"
         
         response_stream = llm.create_completion(
