@@ -1,0 +1,458 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.NavigationSplitView split_view {
+  min-sidebar-width: 260;
+
+  sidebar: Adw.NavigationPage sidebar_page {
+    title: _("Preferenze");
+    styles ["sidebar"]
+
+    child: Adw.ToolbarView {
+      [top]
+      Adw.HeaderBar {
+        title-widget: Adw.WindowTitle {
+          title: _("Preferenze");
+        };
+      }
+
+      content: Gtk.ScrolledWindow {
+        hscrollbar-policy: never;
+        vexpand: true;
+
+        child: Gtk.ListBox sidebar_list_box {
+          selection-mode: single;
+          styles ["navigation-sidebar"]
+
+          Adw.ActionRow row_general {
+            title: _("Generali");
+            activatable: true;
+
+            [prefix]
+            Gtk.Image {
+              icon-name: "preferences-system-symbolic";
+              margin-end: 12;
+            }
+          }
+
+          Adw.ActionRow row_stt {
+            title: _("Motore Vocale (STT)");
+            activatable: true;
+
+            [prefix]
+            Gtk.Image {
+              icon-name: "audio-input-microphone-symbolic";
+              margin-end: 12;
+            }
+          }
+
+          Adw.ActionRow row_llm {
+            title: _("Intelligenza Artificiale (LLM)");
+            activatable: true;
+
+            [prefix]
+            Gtk.Image {
+              icon-name: "brain-augemnted-symbolic";
+              margin-end: 12;
+            }
+          }
+
+          Adw.ActionRow row_tts {
+            title: _("Sintesi Vocale (TTS)");
+            activatable: true;
+
+            [prefix]
+            Gtk.Image {
+              icon-name: "audio-volume-high-symbolic";
+              margin-end: 12;
+            }
+          }
+
+          Adw.ActionRow row_mcp {
+            title: _("Strumenti (MCP)");
+            activatable: true;
+
+            [prefix]
+            Gtk.Image {
+              icon-name: "system-run-symbolic";
+              margin-end: 12;
+            }
+          }
+
+          Adw.ActionRow row_models {
+            title: _("Archiviazione e Modelli");
+            activatable: true;
+
+            [prefix]
+            Gtk.Image {
+              icon-name: "drive-harddisk-symbolic";
+              margin-end: 12;
+            }
+          }
+
+          Adw.ActionRow row_about {
+            title: _("Informazioni");
+            activatable: true;
+
+            [prefix]
+            Gtk.Image {
+              icon-name: "help-about-symbolic";
+              margin-end: 12;
+            }
+          }
+        };
+      };
+    };
+  };
+
+  content: Adw.NavigationPage content_wrapper_page {
+    title: _("Contenuto");
+
+    child: Adw.NavigationView content_navigation_view {
+      Adw.NavigationPage main_content_nav_page {
+        title: _("Generali");
+
+        child: Adw.ToolbarView content_toolbar_view {
+          [top]
+          Adw.HeaderBar content_header_bar {
+            title-widget: Adw.WindowTitle content_title {
+              title: _("Generali");
+            };
+          }
+
+          content: Gtk.ScrolledWindow {
+            hscrollbar-policy: never;
+            vexpand: true;
+
+            child: Gtk.Stack stack {
+              transition-type: crossfade;
+              vexpand: true;
+              hexpand: true;
+
+              // 1. PAGINA GENERALI
+              Adw.PreferencesPage general_page {
+                Adw.PreferencesGroup {
+                  title: _("Assistente Vocale");
+                  description: _("Configurazioni generali e attivazione dell'assistente.");
+
+                  Adw.SwitchRow enable_switch_row {
+                    title: _("Abilita Assistente Vocale");
+                    subtitle: _("Attiva o disattiva l'ascolto in background");
+                  }
+
+                  Adw.ComboRow lang_row {
+                    title: _("Lingua dell'Assistente");
+                    subtitle: _("Seleziona la lingua principale per il riconoscimento e la risposta");
+                    model: Gtk.StringList {
+                      strings: [
+                        "Italiano (it)",
+                        "Inglese (en)"
+                      ];
+                    };
+                  }
+
+                  Adw.EntryRow wakeword_row {
+                    title: _("Wakeword");
+                  }
+                }
+              }
+
+              // 2. PAGINA STT
+              Adw.PreferencesPage stt_page {
+                Adw.PreferencesGroup {
+                  title: _("Motore di Riconoscimento Vocale (STT)");
+                  description: _("Configura il motore e il modello per la trascrizione del parlato in testo.");
+
+                  Adw.ActionRow current_model_row {
+                    title: _("Modello STT In Uso");
+                    subtitle: _("Caricamento informazioni...");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.Image {
+                      icon-name: "audio-input-microphone-symbolic";
+                      margin-end: 12;
+                    }
+
+                    [suffix]
+                    Gtk.Button open_model_selector_btn {
+                      icon-name: "go-next-symbolic";
+                      valign: center;
+                      styles ["flat"]
+                    }
+                  }
+                }
+
+                Adw.PreferencesGroup whisper_hardware_group {
+                  title: _("Accelerazione Hardware (Whisper)");
+                  description: _("Configura il dispositivo di calcolo per l'esecuzione di Whisper.");
+
+                  Adw.ActionRow hw_cpu_row {
+                    title: _("CPU (Compatibile con tutti i sistemi)");
+                    subtitle: _("Esecuzione standard tramite processore");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton hw_cpu_radio {
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow hw_cuda_row {
+                    title: _("CUDA (GPU Nvidia)");
+                    subtitle: _("Accelerazione hardware tramite scheda video Nvidia");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton hw_cuda_radio {
+                      group: hw_cpu_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+                }
+              }
+
+              // 3. PAGINA LLM
+              Adw.PreferencesPage llm_page {
+                Adw.PreferencesGroup {
+                  title: _("Modello di Linguaggio Avanzato (LLM)");
+                  description: _("Configura la connessione al server LLM locale (Ollama / LocalAI) per l'elaborazione delle risposte intelligenti.");
+
+                  Adw.SwitchRow llm_enable_row {
+                    title: _("Abilita Risposte LLM");
+                    subtitle: _("Invia trascrizioni vocali all'LLM per generare risposte complesse");
+                  }
+
+                  Adw.EntryRow llm_url_row {
+                    title: _("URL Server LLM");
+                  }
+
+                  Adw.EntryRow llm_model_row {
+                    title: _("Nome Modello");
+                  }
+                }
+              }
+
+              // 4. PAGINA TTS
+              Adw.PreferencesPage tts_page {
+                Adw.PreferencesGroup {
+                  title: _("Sintesi Vocale (Text-To-Speech)");
+                  description: _("Configura il motore vocale per la riproduzione audio delle risposte dell'assistente.");
+
+                  Adw.SwitchRow tts_enable_row {
+                    title: _("Abilita Sintesi Vocale");
+                    subtitle: _("Riproduci la risposta dell'assistente tramite altoparlante");
+                  }
+
+                  Adw.ComboRow tts_engine_row {
+                    title: _("Motore TTS");
+                    model: Gtk.StringList {
+                      strings: [
+                        "Piper (Locale)",
+                        "eSpeak NG"
+                      ];
+                    };
+                  }
+                }
+              }
+
+              // 5. PAGINA MCP
+              Adw.PreferencesPage mcp_page {
+                Adw.PreferencesGroup {
+                  title: _("Model Context Protocol (MCP)");
+                  description: _("Integrazione con strumenti e servizi di sistema.");
+
+                  Adw.ActionRow {
+                    title: _("Stato Integrazione MCP");
+                    subtitle: _("Pronto per l'integrazione tool & function calling");
+                  }
+                }
+              }
+
+              // 6. PAGINA MODELLI / ARCHIVIAZIONE
+              Adw.PreferencesPage models_page {
+                Adw.PreferencesGroup {
+                  title: _("Percorso Archiviazione");
+                  description: _("Modifica la cartella locale in cui vengono salvati i modelli scaricati.");
+
+                  Adw.ActionRow models_path_row {
+                    title: _("Cartella Modelli");
+
+                    [suffix]
+                    Gtk.Button choose_path_btn {
+                      icon-name: "folder-open-symbolic";
+                      valign: center;
+                      tooltip-text: _("Seleziona cartella");
+                      styles ["flat"]
+                    }
+
+                    [suffix]
+                    Gtk.Button reset_path_btn {
+                      icon-name: "edit-clear-symbolic";
+                      valign: center;
+                      tooltip-text: _("Ripristina percorso predefinito");
+                      styles ["flat"]
+                    }
+                  }
+                }
+
+                Adw.PreferencesGroup cache_group {
+                  title: _("Gestione Cache e Modelli Scaricati");
+
+                  [header-suffix]
+                  Gtk.Button clean_unused_btn {
+                    label: _("Elimina Inutilizzati");
+                    valign: center;
+                    styles ["flat", "error"]
+
+                    [prefix]
+                    Gtk.Image {
+                      icon-name: "user-trash-symbolic";
+                    }
+                  }
+                }
+              }
+
+              // 7. PAGINA INFORMAZIONI
+              Adw.PreferencesPage about_page {
+                Adw.PreferencesGroup {
+                  title: _("Voice Assistant");
+
+                  Adw.ActionRow {
+                    title: _("Voice Assistant GNOME Extension");
+                    subtitle: _("Assistente vocale offline e integrato per GNOME Shell");
+                  }
+
+                  Adw.ActionRow {
+                    title: _("Versione");
+                    subtitle: "1.0.0";
+                  }
+
+                  Adw.ActionRow {
+                    title: _("Servizio D-Bus Backend");
+                    subtitle: "org.local.VoiceAssistant";
+                  }
+
+                  Adw.ActionRow doc_row {
+                    title: _("Codice Sorgente e Documentazione");
+                    subtitle: "https://github.com/mkswap/voice-assistant";
+
+                    [suffix]
+                    Gtk.Button doc_btn {
+                      icon-name: "web-browser-symbolic";
+                      valign: center;
+                      styles ["flat"]
+                    }
+                  }
+                }
+              }
+            };
+          };
+
+          [bottom]
+          Gtk.ActionBar content_action_bar {
+            [center]
+            Gtk.Button apply_btn {
+              label: _("Applica Modifiche");
+              valign: center;
+              halign: center;
+              styles ["suggested-action", "pill"]
+            }
+          }
+        };
+      }
+
+      // SOTTO-PAGINA SELETTORE MODELLI
+      Adw.NavigationPage model_selector_page {
+        child: Adw.ToolbarView selector_toolbar_view {
+          [top]
+          Adw.HeaderBar selector_header_bar {
+            title-widget: Adw.WindowTitle {
+              title: _("Seleziona Modello STT");
+            };
+          }
+
+          content: Gtk.ScrolledWindow {
+            hscrollbar-policy: never;
+            vexpand: true;
+
+            child: Gtk.Box selector_content_box {
+              orientation: vertical;
+              spacing: 12;
+              margin-top: 12;
+              margin-bottom: 12;
+              margin-start: 12;
+              margin-end: 12;
+
+              Adw.Clamp {
+                maximum-size: 600;
+
+                Gtk.Box {
+                  orientation: horizontal;
+                  spacing: 6;
+
+                  Gtk.SearchEntry search_entry {
+                    placeholder-text: _("Cerca per nome, lingua (it, en), dimensione o provider...");
+                    hexpand: true;
+                  }
+
+                  Gtk.ToggleButton filter_toggle_btn {
+                    icon-name: "filter-symbolic";
+                    tooltip-text: _("Mostra/Nascondi Filtri");
+                    valign: center;
+                  }
+                }
+              }
+
+              Gtk.Box filter_box {
+                orientation: horizontal;
+                spacing: 0;
+                halign: center;
+                margin-top: 4;
+                margin-bottom: 8;
+                visible: false;
+                styles ["linked"]
+
+                Gtk.ToggleButton filter_btn_all {
+                  label: _("Tutti");
+                  active: true;
+                }
+
+                Gtk.ToggleButton filter_btn_installed {
+                  label: _("Installati");
+                  group: filter_btn_all;
+                }
+
+                Gtk.ToggleButton filter_btn_downloading {
+                  label: _("Scaricamento");
+                  group: filter_btn_all;
+                }
+              }
+
+              Adw.Clamp {
+                maximum-size: 800;
+
+                Adw.PreferencesGroup models_group_container {
+                  title: _("Modelli Disponibili");
+                }
+              }
+            };
+          };
+
+          [bottom]
+          Gtk.ActionBar selector_action_bar {
+            [center]
+            Gtk.Button selector_apply_btn {
+              label: _("Applica Modifiche");
+              valign: center;
+              halign: center;
+              styles ["suggested-action", "pill"]
+            }
+          }
+        };
+      }
+    };
+  };
+}

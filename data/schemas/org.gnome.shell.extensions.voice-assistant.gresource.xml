@@ -17,5 +17,6 @@
     <file preprocess="xml-stripblanks">icons/user-trash-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/vocal-assistant-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/web-browser-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">ui/prefs.ui</file>
   </gresource>
 </gresources>
