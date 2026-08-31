@@ -4,40 +4,65 @@ import threading
 import numpy as np
 from .base import STTProvider
 
-# Setup global monkey patch for HuggingFace's tqdm download progress bars
-try:
-    import huggingface_hub.file_download
-    if not hasattr(huggingface_hub.file_download.tqdm, '_va_patched'):
-        _va_active_downloads = {}
-        sys._va_active_downloads = _va_active_downloads
-        
-        orig_init = huggingface_hub.file_download.tqdm.__init__
-        orig_update = huggingface_hub.file_download.tqdm.update
+def setup_tqdm_patch():
+    if getattr(sys, '_va_patched', False):
+        return
+    sys._va_active_downloads = {}
+    sys._va_patched = True
 
-        def patched_init(self, *args, **kwargs):
-            orig_init(self, *args, **kwargs)
-            self._va_tid = threading.get_ident()
+    targets = []
+    try:
+        import tqdm.std
+        targets.append(tqdm.std.tqdm)
+    except Exception:
+        pass
+    try:
+        import huggingface_hub.file_download
+        targets.append(huggingface_hub.file_download.tqdm)
+    except Exception:
+        pass
+    try:
+        import faster_whisper.utils
+        targets.append(faster_whisper.utils.disabled_tqdm)
+    except Exception:
+        pass
+
+    for cls in targets:
+        orig_init = cls.__init__
+
+        def make_init(o_init):
+            def patched_init(self, *args, **kwargs):
+                try:
+                    o_init(self, *args, **kwargs)
+                except Exception:
+                    pass
+                self._va_tid = threading.get_ident()
+                if not hasattr(self, 'n'):
+                    self.n = 0
+            return patched_init
 
         def patched_update(self, n=1):
-            res = orig_update(self, n)
+            if not hasattr(self, 'n'):
+                self.n = 0
+            self.n += n
             tid = getattr(self, '_va_tid', threading.get_ident())
             downloads = getattr(sys, '_va_active_downloads', {})
-            if tid in downloads and self.total and self.total > 5 * 1024 * 1024:
+            total = getattr(self, 'total', None)
+            if tid in downloads and total and total > 5 * 1024 * 1024:
                 info = downloads[tid]
-                pct = min(99, max(0, int((self.n / self.total) * 100)))
+                pct = min(99, max(0, int((self.n / total) * 100)))
                 if pct > info['last_pct']:
                     info['last_pct'] = pct
                     try:
                         info['cb'](pct)
                     except Exception as e:
                         print(f"Errore progress_callback ({tid}): {e}", flush=True)
-            return res
+            return n
 
-        huggingface_hub.file_download.tqdm.__init__ = patched_init
-        huggingface_hub.file_download.tqdm.update = patched_update
-        huggingface_hub.file_download.tqdm._va_patched = True
-except Exception as e:
-    print(f"Avviso: impossibile applicare patch a huggingface_hub tqdm: {e}")
+        cls.__init__ = make_init(orig_init)
+        cls.update = patched_update
+
+setup_tqdm_patch()
 
 class WhisperProvider(STTProvider):
     MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
