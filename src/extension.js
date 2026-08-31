@@ -31,6 +31,8 @@ import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/
 function setupDaemonServices(extensionDir) {
     let startScript = extensionDir.get_child('daemon').get_child('start.sh').get_path();
     let encoder = new TextEncoder();
+    let decoder = new TextDecoder();
+    let servicesDir = extensionDir.get_child('services');
 
     // 1. Install Systemd Service
     let systemdDir = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_config_dir(), 'systemd', 'user']));
@@ -38,17 +40,16 @@ function setupDaemonServices(extensionDir) {
         systemdDir.make_directory_with_parents(null);
     }
     
-    let systemdService = systemdDir.get_child('voice-assistant.service');
-    let systemdContent = `[Unit]
-Description=Local Voice Assistant Daemon
-After=graphical-session.target
+    let systemdContent = `[Unit]\nDescription=Local Voice Assistant Daemon\nAfter=graphical-session.target\n\n[Service]\nType=dbus\nBusName=org.local.VoiceAssistant\nExecStart=${startScript}\nRestart=on-failure\n`;
+    try {
+        let systemdTpl = servicesDir.get_child('voice-assistant.service.in');
+        if (systemdTpl.query_exists(null)) {
+            let [, bytes] = systemdTpl.load_contents(null);
+            systemdContent = decoder.decode(bytes).replace(/@startScript@/g, startScript);
+        }
+    } catch (e) { }
 
-[Service]
-Type=dbus
-BusName=org.local.VoiceAssistant
-ExecStart=${startScript}
-Restart=on-failure
-`;
+    let systemdService = systemdDir.get_child('voice-assistant.service');
     systemdService.replace_contents(encoder.encode(systemdContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
 
     // 2. Install DBus Service
@@ -57,12 +58,16 @@ Restart=on-failure
         dbusDir.make_directory_with_parents(null);
     }
     
+    let dbusContent = `[D-BUS Service]\nName=org.local.VoiceAssistant\nExec=${startScript}\nSystemdService=voice-assistant.service\n`;
+    try {
+        let dbusTpl = servicesDir.get_child('org.local.VoiceAssistant.service.in');
+        if (dbusTpl.query_exists(null)) {
+            let [, bytes] = dbusTpl.load_contents(null);
+            dbusContent = decoder.decode(bytes).replace(/@startScript@/g, startScript);
+        }
+    } catch (e) { }
+
     let dbusService = dbusDir.get_child('org.local.VoiceAssistant.service');
-    let dbusContent = `[D-BUS Service]
-Name=org.local.VoiceAssistant
-Exec=${startScript}
-SystemdService=voice-assistant.service
-`;
     dbusService.replace_contents(encoder.encode(dbusContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
 
     // 3. Reload systemd and start service

@@ -10,6 +10,10 @@ install_subdir('icons',
   install_dir: extensiondir
 )
 
+install_subdir('services',
+  install_dir: extensiondir
+)
+
 blueprint_compiler = find_program('blueprint-compiler', required: true)
 
 prefs_ui_target = custom_target('compile-prefs-blueprint',

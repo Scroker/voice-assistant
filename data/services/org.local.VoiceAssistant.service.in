@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.local.VoiceAssistant
+Exec=@startScript@
+SystemdService=voice-assistant.service
