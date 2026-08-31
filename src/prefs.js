@@ -637,44 +637,44 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     const box = new Gtk.Box({ spacing: 6, valign: Gtk.Align.CENTER });
                     box.append(progressBar);
                     row.add_suffix(box);
-                } else if (isInstalled && isCurrent) {
-                    const activeIcon = Gtk.Image.new_from_icon_name('check-plain-symbolic');
-                    activeIcon.valign = Gtk.Align.CENTER;
-                    activeIcon.add_css_class('accent');
-                    activeIcon.tooltip_text = _('Modello attualmente in uso');
-                    row.add_suffix(activeIcon);
-                } else if (isInstalled && !isCurrent) {
+                } else if (isInstalled) {
                     const deleteBtn = Gtk.Button.new_from_icon_name('user-trash-symbolic');
                     deleteBtn.valign = Gtk.Align.CENTER;
                     deleteBtn.add_css_class('flat');
-                    deleteBtn.add_css_class('error');
-                    deleteBtn.tooltip_text = _('Elimina modello dal disco');
-                    deleteBtn.connect('clicked', () => {
-                        let modelsPath = getModelsPath();
-                        let targetDir = (m.provider === 'whisper') ? `${modelsPath}/whisper-${m.id}` : `${modelsPath}/${m.id}`;
-                        let folderFile = Gio.File.new_for_path(targetDir);
-                        try {
-                            folderFile.delete_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
-                                try {
-                                    f.delete_finish(res);
-                                } catch (err) {
-                                    GLib.spawn_command_line_sync(`rm -rf "${targetDir}"`);
-                                }
+                    if (isCurrent) {
+                        deleteBtn.sensitive = false;
+                        deleteBtn.tooltip_text = _('Impossibile eliminare il modello attualmente in uso');
+                    } else {
+                        deleteBtn.sensitive = true;
+                        deleteBtn.add_css_class('error');
+                        deleteBtn.tooltip_text = _('Elimina modello dal disco');
+                        deleteBtn.connect('clicked', () => {
+                            let modelsPath = getModelsPath();
+                            let targetDir = (m.provider === 'whisper') ? `${modelsPath}/whisper-${m.id}` : `${modelsPath}/${m.id}`;
+                            let folderFile = Gio.File.new_for_path(targetDir);
+                            try {
+                                folderFile.delete_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
+                                    try {
+                                        f.delete_finish(res);
+                                    } catch (err) {
+                                        GLib.spawn_command_line_sync(`rm -rf "${targetDir}"`);
+                                    }
+                                    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                                        renderModelList();
+                                        if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
+                                        return GLib.SOURCE_REMOVE;
+                                    });
+                                });
+                            } catch (e) {
+                                GLib.spawn_command_line_sync(`rm -rf "${targetDir}"`);
                                 GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                                     renderModelList();
                                     if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
                                     return GLib.SOURCE_REMOVE;
                                 });
-                            });
-                        } catch (e) {
-                            GLib.spawn_command_line_sync(`rm -rf "${targetDir}"`);
-                            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                                renderModelList();
-                                if (typeof refreshCacheGroup === 'function') refreshCacheGroup();
-                                return GLib.SOURCE_REMOVE;
-                            });
-                        }
-                    });
+                            }
+                        });
+                    }
 
                     row.add_suffix(deleteBtn);
                 } else if (!isInstalled) {
