@@ -85,19 +85,30 @@ class LocalGGUFProvider:
             yield "Errore nel caricamento del modello locale. Verifica l'installazione delle dipendenze."
             return
 
-        formatted_prompt = f"<|system|>\n{system_prompt}<|end|>\n<|user|>\n{prompt}<|end|>\n<|assistant|>\n"
-        
-        response_stream = llm.create_completion(
-            prompt=formatted_prompt,
-            max_tokens=512,
-            stop=["<|end|>", "<|user|>", "</s>"],
-            stream=True
-        )
+        sys_prompt = system_prompt or "Sei un assistente vocale italiano rapido e conciso. Rispondi in massimo 2 frasi brevi e dirette. Non divagare mai."
+        messages = [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": prompt}
+        ]
 
-        for chunk in response_stream:
-            text = chunk.get("choices", [{}])[0].get("text", "")
-            if text:
-                yield text
+        try:
+            response_stream = llm.create_chat_completion(
+                messages=messages,
+                max_tokens=100,
+                temperature=0.3,
+                stream=True
+            )
+
+            for chunk in response_stream:
+                choices = chunk.get("choices", [])
+                if choices:
+                    delta = choices[0].get("delta", {})
+                    token = delta.get("content", "")
+                    if token:
+                        yield token
+        except Exception as e:
+            logger.error(f"[LocalGGUF] Errore durante create_chat_completion: {e}")
+            yield "Errore nella generazione della risposta."
 
 
 class LLMServiceManager:
@@ -113,7 +124,7 @@ class LLMServiceManager:
         endpoint = "http://localhost:11434/api/generate"
         model_name = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
         temperature = 0.3
-        system_prompt = "Sei un assistente vocale italiano conciso e utile. Rispondi sempre in italiano con frasi brevi e naturali, senza formattazione speciale se non necessaria."
+        system_prompt = "Sei un assistente vocale italiano rapido e conciso. Rispondi in massimo 2 frasi brevi e dirette alla domanda. Non divagare mai."
 
         if self.settings_observer:
             mode = self.settings_observer.get("llm-mode", mode)
