@@ -21,124 +21,9 @@ class WhisperProvider(STTProvider):
         device = "cuda" if hardware == "cuda" else "cpu"
         compute_type = "float16" if device == "cuda" else "int8"
         
-        import sys
-        import re
-        import threading
-        
-        if not hasattr(sys, '_va_downloads'):
-            sys._va_downloads = {}
-
         model_folder_name = f"whisper-{model_size}" if not model_size.startswith("whisper-") else model_size
         target_dir = os.path.join(self.MODELS_DIR, model_folder_name)
 
-        thread_id = threading.get_ident()
-        if progress_callback:
-            sys._va_downloads[thread_id] = {
-                'model_size': model_size,
-                'cb': progress_callback,
-                'target_dir': target_dir,
-                'state': {'pct': -1}
-            }
-
-        class GlobalTqdmRedirector:
-            def __init__(self, original_stderr):
-                self.original_stderr = original_stderr
-                self.pattern_size = re.compile(r'([\d.]+)\s*([kMGT]?B)(?!/s)', re.IGNORECASE)
-
-            def write(self, buf):
-                self.original_stderr.write(buf.replace('\r', '\n'))
-                downloads = getattr(sys, '_va_downloads', {})
-                if not downloads:
-                    return
-
-                current_tid = threading.get_ident()
-                matching_infos = []
-                if current_tid in downloads:
-                    matching_infos.append(downloads[current_tid])
-                elif len(downloads) == 1:
-                    matching_infos.append(next(iter(downloads.values())))
-                else:
-                    matching_infos = list(downloads.values())
-
-                sizes = {
-                    "tiny": 75, "tiny.en": 75,
-                    "base": 140, "base.en": 140,
-                    "small": 466, "small.en": 466,
-                    "medium": 1500, "medium.en": 1500,
-                    "large-v1": 3100, "large-v2": 3100,
-                    "large-v3": 3100, "large": 3100
-                }
-
-                for info in matching_infos:
-                    ms = info.get('model_size', '')
-                    cb = info.get('cb')
-                    tdir = info.get('target_dir')
-                    state = info.get('state')
-                    if not (ms and cb and state):
-                        continue
-
-                    clean_ms = ms.replace("whisper-", "").strip()
-                    total_mb = sizes.get(clean_ms, sizes.get(ms, 140))
-                    percent = None
-
-                    # 1. Calcola la percentuale dai MB realmente trasferiti (es. "28.1MB", ignorando "47.2kB/s")
-                    match_size = self.pattern_size.search(buf)
-                    if match_size:
-                        val = float(match_size.group(1))
-                        unit = match_size.group(2).upper()
-                        
-                        if unit == "B": dl_mb = val / (1024 * 1024)
-                        elif unit == "KB": dl_mb = val / 1024
-                        elif unit == "MB": dl_mb = val
-                        elif unit == "GB": dl_mb = val * 1024
-                        else: dl_mb = val
-                        
-                        percent = min(99, max(0, int((dl_mb / total_mb) * 100)))
-
-                    # 2. Fallback: dimensione cartella su disco (es. file già decompressi/spostati)
-                    if percent is None and tdir and os.path.isdir(tdir):
-                        try:
-                            total_bytes = sum(
-                                os.path.getsize(os.path.join(r, f))
-                                for r, _, files in os.walk(tdir)
-                                for f in files
-                            )
-                            dl_mb = total_bytes / (1024 * 1024)
-                            percent = min(99, max(0, int((dl_mb / total_mb) * 100)))
-                        except Exception:
-                            percent = None
-
-                    if percent is not None and percent > state['pct']:
-                        state['pct'] = percent
-                        try:
-                            cb(percent)
-                        except Exception as e:
-                            print(f"Errore callback progresso ({ms}): {e}", flush=True)
-
-            def flush(self):
-                self.original_stderr.flush()
-
-        # Installiamo il redirector globale una sola volta
-        if not hasattr(sys.stderr, '_is_global_redirector'):
-            sys.stderr = GlobalTqdmRedirector(sys.stderr)
-            sys.stderr._is_global_redirector = True
-        
-        # Monkey-patch tqdm per forzare l'uso del nostro stderr
-        try:
-            import tqdm
-            if not hasattr(tqdm.tqdm, '_is_patched_for_voice_assistant'):
-                original_init = tqdm.tqdm.__init__
-                def patched_init(self, *args, **kwargs):
-                    kwargs['file'] = sys.stderr
-                    kwargs['disable'] = False
-                    kwargs['ncols'] = 100
-                    original_init(self, *args, **kwargs)
-                tqdm.tqdm.__init__ = patched_init
-                tqdm.tqdm._is_patched_for_voice_assistant = True
-        except Exception:
-            pass
-
-        
         from faster_whisper import WhisperModel, download_model
         import shutil
 
@@ -157,6 +42,46 @@ class WhisperProvider(STTProvider):
                         shutil.rmtree(old_hf_dir, ignore_errors=True)
                         break
 
+        stop_event = threading.Event()
+        monitor_thread = None
+
+        if progress_callback and not (os.path.isdir(target_dir) and os.path.exists(os.path.join(target_dir, "model.bin"))):
+            def monitor_progress():
+                sizes = {
+                    "tiny": 75, "tiny.en": 75,
+                    "base": 140, "base.en": 140,
+                    "small": 466, "small.en": 466,
+                    "medium": 1500, "medium.en": 1500,
+                    "large-v1": 3100, "large-v2": 3100,
+                    "large-v3": 3100, "large": 3100
+                }
+                clean_ms = model_size.replace("whisper-", "").strip()
+                total_mb = sizes.get(clean_ms, 140)
+                total_bytes_expected = total_mb * 1024 * 1024
+                
+                last_pct = -1
+                while not stop_event.is_set():
+                    if os.path.isdir(target_dir):
+                        try:
+                            current_bytes = sum(
+                                os.path.getsize(os.path.join(r, f))
+                                for r, _, files in os.walk(target_dir)
+                                for f in files
+                            )
+                            pct = min(99, max(0, int((current_bytes / total_bytes_expected) * 100)))
+                            if pct > last_pct:
+                                last_pct = pct
+                                try:
+                                    progress_callback(pct)
+                                except Exception as e:
+                                    print(f"Errore callback monitor ({model_size}): {e}", flush=True)
+                        except Exception:
+                            pass
+                    stop_event.wait(0.3)
+
+            monitor_thread = threading.Thread(target=monitor_progress, daemon=True)
+            monitor_thread.start()
+
         try:
             if not (os.path.isdir(target_dir) and os.path.exists(os.path.join(target_dir, "model.bin"))):
                 print(f"Scaricamento modello Whisper '{model_size}' in '{target_dir}'...")
@@ -169,8 +94,9 @@ class WhisperProvider(STTProvider):
             self.model = None
             raise RuntimeError(f"Errore caricamento/download modello Whisper {model_size}: {e}")
         finally:
-            if hasattr(sys, '_va_downloads'):
-                sys._va_downloads.pop(thread_id, None)
+            stop_event.set()
+            if monitor_thread and monitor_thread.is_alive():
+                monitor_thread.join(timeout=1.0)
 
         self.audio_buffer = bytearray()
         
