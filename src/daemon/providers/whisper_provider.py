@@ -1,7 +1,43 @@
+import sys
 import os
 import threading
 import numpy as np
 from .base import STTProvider
+
+# Setup global monkey patch for HuggingFace's tqdm download progress bars
+try:
+    import huggingface_hub.file_download
+    if not hasattr(huggingface_hub.file_download.tqdm, '_va_patched'):
+        _va_active_downloads = {}
+        sys._va_active_downloads = _va_active_downloads
+        
+        orig_init = huggingface_hub.file_download.tqdm.__init__
+        orig_update = huggingface_hub.file_download.tqdm.update
+
+        def patched_init(self, *args, **kwargs):
+            orig_init(self, *args, **kwargs)
+            self._va_tid = threading.get_ident()
+
+        def patched_update(self, n=1):
+            res = orig_update(self, n)
+            tid = getattr(self, '_va_tid', threading.get_ident())
+            downloads = getattr(sys, '_va_active_downloads', {})
+            if tid in downloads and self.total and self.total > 5 * 1024 * 1024:
+                info = downloads[tid]
+                pct = min(99, max(0, int((self.n / self.total) * 100)))
+                if pct > info['last_pct']:
+                    info['last_pct'] = pct
+                    try:
+                        info['cb'](pct)
+                    except Exception as e:
+                        print(f"Errore progress_callback ({tid}): {e}", flush=True)
+            return res
+
+        huggingface_hub.file_download.tqdm.__init__ = patched_init
+        huggingface_hub.file_download.tqdm.update = patched_update
+        huggingface_hub.file_download.tqdm._va_patched = True
+except Exception as e:
+    print(f"Avviso: impossibile applicare patch a huggingface_hub tqdm: {e}")
 
 class WhisperProvider(STTProvider):
     MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
@@ -43,45 +79,10 @@ class WhisperProvider(STTProvider):
                         shutil.rmtree(old_hf_dir, ignore_errors=True)
                         break
 
-        stop_event = threading.Event()
-        monitor_thread = None
-
-        if progress_callback and not (os.path.isdir(target_dir) and os.path.exists(os.path.join(target_dir, "model.bin"))):
-            def monitor_progress():
-                sizes = {
-                    "tiny": 75, "tiny.en": 75,
-                    "base": 140, "base.en": 140,
-                    "small": 466, "small.en": 466,
-                    "medium": 1500, "medium.en": 1500,
-                    "large-v1": 3100, "large-v2": 3100,
-                    "large-v3": 3100, "large": 3100
-                }
-                clean_ms = model_size.replace("whisper-", "").strip()
-                total_mb = sizes.get(clean_ms, 140)
-                total_bytes_expected = total_mb * 1024 * 1024
-                
-                last_pct = -1
-                while not stop_event.is_set():
-                    if os.path.isdir(target_dir):
-                        try:
-                            current_bytes = sum(
-                                os.path.getsize(os.path.join(r, f))
-                                for r, _, files in os.walk(target_dir)
-                                for f in files
-                            )
-                            pct = min(99, max(0, int((current_bytes / total_bytes_expected) * 100)))
-                            if pct > last_pct:
-                                last_pct = pct
-                                try:
-                                    progress_callback(pct)
-                                except Exception as e:
-                                    print(f"Errore callback monitor ({model_size}): {e}", flush=True)
-                        except Exception:
-                            pass
-                    stop_event.wait(0.3)
-
-            monitor_thread = threading.Thread(target=monitor_progress, daemon=True)
-            monitor_thread.start()
+        thread_id = threading.get_ident()
+        downloads = getattr(sys, '_va_active_downloads', None)
+        if progress_callback and downloads is not None:
+            downloads[thread_id] = {'cb': progress_callback, 'last_pct': -1}
 
         try:
             if not (os.path.isdir(target_dir) and os.path.exists(os.path.join(target_dir, "model.bin"))):
@@ -95,9 +96,8 @@ class WhisperProvider(STTProvider):
             self.model = None
             raise RuntimeError(f"Errore caricamento/download modello Whisper {model_size}: {e}")
         finally:
-            stop_event.set()
-            if monitor_thread and monitor_thread.is_alive():
-                monitor_thread.join(timeout=1.0)
+            if downloads is not None:
+                downloads.pop(thread_id, None)
 
         self.audio_buffer = bytearray()
         
