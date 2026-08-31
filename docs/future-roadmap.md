@@ -119,6 +119,10 @@ Before invoking heavy LLM inference, the transcribed speech text is checked agai
 - **If Cosine Similarity > 0.85/0.90**: The pipeline bypasses LLM generation completely, executes the tool or skill in <10ms offline, and returns instant audio/OSD feedback.
 - **If No High Match**: The query is routed to Stage 2.
 
+> [!IMPORTANT]
+> **Stato Attuale (v0.2)**: `FastPathDispatcher` (`src/daemon/core/pipeline.py`) è implementato con matching deterministico basato su Regex (<1ms).
+> **Evoluzione Futura (TODO)**: Estensione di `FastPathDispatcher` mediante il layer `VectorIntentMatcher` (`services/embedding_service.py`) per calcolo di Cosine Similarity su frasi informali/colloquiali.
+
 #### Stage 2: Token Streaming & Parallel GUI Rendering
 As tokens arrive asynchronously from the LLM provider (`local_provider`, `ollama_provider`, `openai_provider`, `anthropic_provider`):
 1. **GUI Stream**: Tokens are piped directly via D-Bus/GLib idle dispatch to `VoiceAssistantWindow`, rendering live text token-by-token in the Libadwaita markdown chat bubble.
