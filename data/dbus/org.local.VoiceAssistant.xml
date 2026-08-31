@@ -1,0 +1,32 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="org.local.VoiceAssistant">
+    <method name="ToggleListening">
+      <arg type="b" direction="out" name="is_listening"/>
+    </method>
+    <method name="GetAvailableModels">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="out" name="models_json"/>
+    </method>
+    <method name="GetDownloadingModels">
+      <arg type="s" direction="out" name="models_json"/>
+    </method>
+    <method name="DownloadModel">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="in" name="model"/>
+    </method>
+    <method name="CancelDownload">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="in" name="model"/>
+    </method>
+    <signal name="StateChanged">
+      <arg type="s" name="new_state"/>
+    </signal>
+    <signal name="DownloadProgress">
+      <arg type="s" name="provider"/>
+      <arg type="s" name="model"/>
+      <arg type="i" name="percent"/>
+    </signal>
+  </interface>
+</node>

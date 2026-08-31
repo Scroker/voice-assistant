@@ -14,12 +14,16 @@ install_subdir('services',
   install_dir: extensiondir
 )
 
+install_subdir('dbus',
+  install_dir: extensiondir
+)
+
 blueprint_compiler = find_program('blueprint-compiler', required: true)
 
 prefs_ui_target = custom_target('compile-prefs-blueprint',
   input: 'ui/prefs.blp',
   output: 'prefs.ui',
-  command: [blueprint_compiler, 'compile', '--output', join_paths(meson.current_source_dir(), 'ui/prefs.ui'), '@INPUT@']
+  command: [blueprint_compiler, 'compile', '--output', '@OUTPUT@', '@INPUT@']
 )
 
 custom_target('voice-assistant-gresource',
@@ -28,7 +32,8 @@ custom_target('voice-assistant-gresource',
   depends: prefs_ui_target,
   command: [find_program('glib-compile-resources'),
             '--target=@OUTPUT@',
-            '--sourcedir=@CURRENT_SOURCE_DIR@',
+            '--sourcedir=' + meson.current_source_dir(),
+            '--sourcedir=' + meson.current_build_dir(),
             '@INPUT@'],
   install: true,
   install_dir: extensiondir

@@ -14,6 +14,8 @@ subdir('data')
 subdir('src')
 subdir('po')
 
+install_data('stylesheet.css', install_dir: extensiondir)
+
 gnome.post_install(
   glib_compile_schemas: true,
   update_desktop_database: false

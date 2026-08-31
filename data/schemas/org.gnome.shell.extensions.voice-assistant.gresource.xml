@@ -17,6 +17,9 @@
     <file preprocess="xml-stripblanks">icons/user-trash-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/vocal-assistant-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/web-browser-symbolic.svg</file>
-    <file preprocess="xml-stripblanks">ui/prefs.ui</file>
+    <file preprocess="xml-stripblanks">dbus/org.local.VoiceAssistant.xml</file>
+    <file>services/voice-assistant.service.in</file>
+    <file>services/org.local.VoiceAssistant.service.in</file>
+    <file preprocess="xml-stripblanks">prefs.ui</file>
   </gresource>
 </gresources>

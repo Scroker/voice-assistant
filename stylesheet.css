@@ -1,0 +1,35 @@
+/* Voice Assistant GNOME Extension stylesheet */
+
+.voice-assistant-indicator {
+    padding: 0 6px;
+}
+
+.voice-assistant-indicator-active {
+    color: #3584e4;
+}
+
+.voice-assistant-indicator-listening {
+    color: #e01b24;
+}
+
+.voice-assistant-badge {
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.voice-assistant-badge-idle {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #eeeeec;
+}
+
+.voice-assistant-badge-listening {
+    background-color: #e01b24;
+    color: #ffffff;
+}
+
+.voice-assistant-badge-processing {
+    background-color: #3584e4;
+    color: #ffffff;
+}

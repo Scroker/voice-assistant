@@ -21,6 +21,8 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
@@ -42,12 +44,17 @@ function setupDaemonServices(extensionDir) {
     
     let systemdContent = `[Unit]\nDescription=Local Voice Assistant Daemon\nAfter=graphical-session.target\n\n[Service]\nType=dbus\nBusName=org.local.VoiceAssistant\nExecStart=${startScript}\nRestart=on-failure\n`;
     try {
-        let systemdTpl = servicesDir.get_child('voice-assistant.service.in');
-        if (systemdTpl.query_exists(null)) {
-            let [, bytes] = systemdTpl.load_contents(null);
-            systemdContent = decoder.decode(bytes).replace(/@startScript@/g, startScript);
-        }
-    } catch (e) { }
+        let bytes = Gio.resources_lookup_data('/org/gnome/shell/extensions/voice-assistant/services/voice-assistant.service.in', Gio.ResourceLookupFlags.NONE);
+        systemdContent = decoder.decode(bytes.get_data()).replace(/@startScript@/g, startScript);
+    } catch (e) {
+        try {
+            let systemdTpl = servicesDir.get_child('voice-assistant.service.in');
+            if (systemdTpl.query_exists(null)) {
+                let [, bytes] = systemdTpl.load_contents(null);
+                systemdContent = decoder.decode(bytes).replace(/@startScript@/g, startScript);
+            }
+        } catch (err) { }
+    }
 
     let systemdService = systemdDir.get_child('voice-assistant.service');
     systemdService.replace_contents(encoder.encode(systemdContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
@@ -60,12 +67,17 @@ function setupDaemonServices(extensionDir) {
     
     let dbusContent = `[D-BUS Service]\nName=org.local.VoiceAssistant\nExec=${startScript}\nSystemdService=voice-assistant.service\n`;
     try {
-        let dbusTpl = servicesDir.get_child('org.local.VoiceAssistant.service.in');
-        if (dbusTpl.query_exists(null)) {
-            let [, bytes] = dbusTpl.load_contents(null);
-            dbusContent = decoder.decode(bytes).replace(/@startScript@/g, startScript);
-        }
-    } catch (e) { }
+        let bytes = Gio.resources_lookup_data('/org/gnome/shell/extensions/voice-assistant/services/org.local.VoiceAssistant.service.in', Gio.ResourceLookupFlags.NONE);
+        dbusContent = decoder.decode(bytes.get_data()).replace(/@startScript@/g, startScript);
+    } catch (e) {
+        try {
+            let dbusTpl = servicesDir.get_child('org.local.VoiceAssistant.service.in');
+            if (dbusTpl.query_exists(null)) {
+                let [, bytes] = dbusTpl.load_contents(null);
+                dbusContent = decoder.decode(bytes).replace(/@startScript@/g, startScript);
+            }
+        } catch (err) { }
+    }
 
     let dbusService = dbusDir.get_child('org.local.VoiceAssistant.service');
     dbusService.replace_contents(encoder.encode(dbusContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
@@ -81,12 +93,11 @@ function setupDaemonServices(extensionDir) {
             try {
                 proc.wait_check_finish(res);
                 let startProc = new Gio.Subprocess({
-                    argv: ['systemctl', '--user', 'start', 'voice-assistant.service'],
+                    argv: ['systemctl', '--user', 'enable', '--now', 'voice-assistant.service'],
                     flags: Gio.SubprocessFlags.NONE
                 });
                 startProc.init(null);
-                console.log('[VoiceAssistant] Systemd service started successfully.');
-            } catch(e) {
+            } catch (e) {
                 console.error(`[VoiceAssistant] systemctl start failed: ${e.message}`);
             }
         });
@@ -107,8 +118,13 @@ function stopDaemonService() {
     }
 }
 
-// Definizione dell'interfaccia D-Bus (XML Introspection)
-const VoiceAssistantIface = `
+// Definizione dell'interfaccia D-Bus (Caricata da GResource o fallback)
+let VoiceAssistantIface;
+try {
+    let bytes = Gio.resources_lookup_data('/org/gnome/shell/extensions/voice-assistant/dbus/org.local.VoiceAssistant.xml', Gio.ResourceLookupFlags.NONE);
+    VoiceAssistantIface = new TextDecoder().decode(bytes.get_data());
+} catch (e) {
+    VoiceAssistantIface = `
 <node>
   <interface name="org.local.VoiceAssistant">
     <method name="ToggleListening">
@@ -118,14 +134,28 @@ const VoiceAssistantIface = `
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="out" name="models_json"/>
     </method>
+    <method name="GetDownloadingModels">
+      <arg type="s" direction="out" name="models_json"/>
+    </method>
+    <method name="DownloadModel">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="in" name="model"/>
+    </method>
+    <method name="CancelDownload">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="in" name="model"/>
+    </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
     </signal>
     <signal name="DownloadProgress">
+      <arg type="s" name="provider"/>
+      <arg type="s" name="model"/>
       <arg type="i" name="percent"/>
     </signal>
   </interface>
 </node>`;
+}
 
 const VoiceAssistantProxy = Gio.DBusProxy.makeProxyWrapper(VoiceAssistantIface);
 
@@ -140,7 +170,7 @@ const AssistantIndicator = GObject.registerClass(
             this._customGIcon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg');
             this._icon = new St.Icon({
                 gicon: this._customGIcon,
-                style_class: 'system-status-icon',
+                style_class: 'system-status-icon voice-assistant-indicator',
             });
             this.add_child(this._icon);
 
@@ -178,7 +208,6 @@ const AssistantIndicator = GObject.registerClass(
         }
 
         _connectToDaemon() {
-            // Monitoriamo l'apparizione del demone sul bus
             this._watchId = Gio.bus_watch_name(
                 Gio.BusType.SESSION,
                 'org.local.VoiceAssistant',
@@ -196,7 +225,6 @@ const AssistantIndicator = GObject.registerClass(
                             }
                             this._dbusProxy = proxy;
 
-                            // Ascolto dei segnali di stato inviati dal demone Python
                             this._stateSignalId = this._dbusProxy.connectSignal(
                                 'StateChanged',
                                 (proxy, senderName, [newState]) => {
@@ -204,7 +232,6 @@ const AssistantIndicator = GObject.registerClass(
                                 }
                             );
                             
-                            // Ascolto del progresso di download
                             this._progressSignal = this._dbusProxy.connectSignal('DownloadProgress',
                                 (proxy, senderName, [pName, mName, percent]) => {
                                     if (this._downloadItem) {
@@ -219,64 +246,38 @@ const AssistantIndicator = GObject.registerClass(
                         }
                     );
                 },
-                (connection, name) => {
-                    console.warn(`[VoiceAssistant] Demone scomparso dal bus`);
-                    if (this._dbusProxy) {
-                        if (this._stateSignalId) this._dbusProxy.disconnectSignal(this._stateSignalId);
-                        if (this._progressSignal) this._dbusProxy.disconnectSignal(this._progressSignal);
-                        this._stateSignalId = null;
-                        this._progressSignal = null;
-                    }
+                () => {
+                    console.log('[VoiceAssistant] Demone scomparso dal bus');
                     this._dbusProxy = null;
-                    let isEnabled = this._settings.get_boolean('enabled');
-                    this._updateUiState(isEnabled ? 'idle' : 'disabled');
                 }
             );
         }
 
         _toggleRecording() {
-            if (!this._dbusProxy) {
-                console.warn('[VoiceAssistant] Demone non connesso.');
-                return;
-            }
-
-            // Chiamata asincrona al metodo D-Bus per accendere/spegnere
-            this._dbusProxy.ToggleListeningRemote((result, error) => {
-                if (error) {
-                    console.error(`[VoiceAssistant] Chiamata fallita: ${error.message}`);
-                }
-            });
-        }
-
-        _showOsd(iconName, text) {
-            try {
-                let icon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg');
-                
-                if (Main.osdWindowManager.showAll) {
-                    Main.osdWindowManager.showAll(icon, text, null, null); // GNOME 49+
-                } else {
-                    Main.osdWindowManager.show(-1, icon, text, null, null); // GNOME 45-48
-                }
-            } catch (e) {
-                console.error(`[VoiceAssistant] Errore visualizzazione OSD: ${e}`);
+            if (this._dbusProxy) {
+                this._dbusProxy.ToggleListeningRemote((result, error) => {
+                    if (error) {
+                        console.error(`[VoiceAssistant] Errore ToggleListening: ${error.message}`);
+                    }
+                });
+            } else {
+                let currentState = this._settings.get_boolean('enabled');
+                this._settings.set_boolean('enabled', !currentState);
             }
         }
 
         _updateUiState(state) {
-            if (!this._icon || !this._icon.get_stage())
-                return;
-            // Feedback visivo immediato modificando l'icona o lo stile
+            console.log(`[VoiceAssistant] Aggiornamento stato UI: ${state}`);
             switch (state) {
                 case 'listening':
                     this._icon.icon_name = null;
                     this._icon.gicon = this._customGIcon;
-                    this._icon.set_style('color: #3584e4;'); // Blu durante l'ascolto
-                    this._showOsd('vocal-assistant-symbolic', _('In ascolto...'));
+                    this._icon.set_style('color: #e01b24;'); 
                     if (this._toggleItem) this._toggleItem.label.text = _('Disattiva Assistente');
                     break;
                 case 'processing':
                     this._icon.gicon = null;
-                    this._icon.icon_name = 'system-run-symbolic';
+                    this._icon.icon_name = 'brain-augmented-symbolic';
                     this._icon.set_style('color: #e5a50a;');
                     if (this._toggleItem) this._toggleItem.label.text = _('Disattiva Assistente');
                     break;
@@ -290,7 +291,6 @@ const AssistantIndicator = GObject.registerClass(
                     this._icon.gicon = null;
                     this._icon.icon_name = 'folder-download-symbolic';
                     this._icon.set_style('color: #e5a50a;');
-                    // Il toggle resta utilizzabile, non viene sovrascritto
                     break;
                 case 'disabled':
                     this._icon.icon_name = null;
@@ -304,7 +304,6 @@ const AssistantIndicator = GObject.registerClass(
                     this._icon.gicon = this._customGIcon;
                     this._icon.set_style(null);
                     if (this._toggleItem) this._toggleItem.label.text = _('Disattiva Assistente');
-                    // Nascondi la voce di download quando il modello è pronto
                     if (this._downloadItem) this._downloadItem.visible = false;
                     break;
             }
@@ -336,21 +335,35 @@ export default class VoiceAssistantExtension extends Extension {
         this._indicator = new AssistantIndicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
 
+        // Scorciatoia da tastiera nativa per attivare/disattivare l'ascolto
+        this._settings = this.getSettings();
+        Main.wm.addKeybinding(
+            'toggle-shortcut',
+            this._settings,
+            Meta.KeyBindingFlags.NONE,
+            Shell.ActionMode.ALL,
+            () => {
+                if (this._indicator) {
+                    this._indicator._toggleRecording();
+                }
+            }
+        );
+
         // Installa e avvia il demone tramite Systemd/DBus
         setupDaemonServices(this.dir);
     }
 
     disable() {
+        Main.wm.removeKeybinding('toggle-shortcut');
+
         if (this._indicator) {
             this._indicator.destroy();
             this._indicator = null;
         }
 
-        // Deregistra il bundle GResource
         if (this._resource) {
             Gio.resources_unregister(this._resource);
             this._resource = null;
         }
-        // Il demone systemd continua l'esecuzione in background (es. scaricamento modelli o blocco schermo)
     }
 }

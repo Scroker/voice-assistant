@@ -96,5 +96,10 @@
       <summary>Server MCP configurati</summary>
       <description>Lista in formato JSON dei server e degli strumenti MCP abilitati.</description>
     </key>
+    <key name="toggle-shortcut" type="as">
+      <default>['&lt;Super&gt;v']</default>
+      <summary>Scorciatoia da tastiera per attivare l'ascolto</summary>
+      <description>Combinazione di tasti per attivare/disattivare manualmente l'ascolto dell'assistente.</description>
+    </key>
   </schema>
 </schemalist>
