@@ -1,26 +1,46 @@
 # Interfaccia D-Bus Reference
 
-> Bus: **Session Bus**
-> Service Name: `org.local.VoiceAssistant`
-> Object Path: `/org/local/VoiceAssistant`
-> Interface: `org.local.VoiceAssistant`
+> Bus: **Session Bus**  
+> Service Name: `org.local.VoiceAssistant`  
+> Object Path: `/org/local/VoiceAssistant`  
+> Interface: `org.local.VoiceAssistant`  
+> Introspection File: `data/dbus/org.local.VoiceAssistant.xml`
 
 ---
 
 ## Introspection XML
 
-Questo XML è definito in `src/extension.js` (lato client GJS) e implementato in `src/daemon/main.py` (lato server Python tramite `dasbus`).
+L'XML di introspezione è memorizzato in `data/dbus/org.local.VoiceAssistant.xml` e compilato all'interno delle risorse `gresource`.
 
 ```xml
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
 <node>
   <interface name="org.local.VoiceAssistant">
     <method name="ToggleListening">
       <arg type="b" direction="out" name="is_listening"/>
     </method>
+    <method name="GetAvailableModels">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="out" name="models_json"/>
+    </method>
+    <method name="GetDownloadingModels">
+      <arg type="s" direction="out" name="models_json"/>
+    </method>
+    <method name="DownloadModel">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="in" name="model"/>
+    </method>
+    <method name="CancelDownload">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="in" name="model"/>
+    </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
     </signal>
     <signal name="DownloadProgress">
+      <arg type="s" name="provider"/>
+      <arg type="s" name="model"/>
       <arg type="i" name="percent"/>
     </signal>
   </interface>
@@ -32,80 +52,26 @@ Questo XML è definito in `src/extension.js` (lato client GJS) e implementato in
 ## Metodi
 
 ### `ToggleListening() → boolean`
-
 Alterna lo stato dell'assistente tra `disabled` e `idle`.
 
-| Ritorno | Significato |
-|---|---|
-| `true` | L'assistente è stato **abilitato** (transizione a `idle`) |
-| `false` | L'assistente è stato **disabilitato** (transizione a `disabled`) |
+### `GetAvailableModels(provider: string) → string (JSON)`
+Ritorna la lista dei modelli supportati ed installati per il provider specificato (`vosk` o `whisper`).
 
-**Side effects:**
-- Scrive `enabled` nel backend GSettings
-- Avvia o ferma il flusso audio del microfono
+### `GetDownloadingModels() → string (JSON)`
+Ritorna una mappa dei modelli attualmente in fase di download ed il relativo progresso percentuale.
 
-**Invocazione da CLI:**
+### `DownloadModel(provider: string, model: string)`
+Avvia in background lo scaricamento del modello specificato.
 
-```bash
-gdbus call --session \
-  --dest org.local.VoiceAssistant \
-  --object-path /org/local/VoiceAssistant \
-  --method org.local.VoiceAssistant.ToggleListening
-```
+### `CancelDownload(provider: string, model: string)`
+Annulla il download in corso del modello specificato e rimuove i file parziali dal disco.
 
 ---
 
 ## Segnali
 
 ### `StateChanged(new_state: string)`
+Emesso ad ogni transizione di stato della state machine (`disabled`, `idle`, `listening`, `processing`, `speaking`, `downloading`).
 
-Emesso ad ogni transizione di stato della state machine.
-
-| Stato | Significato |
-|---|---|
-| `"disabled"` | Assistente spento, microfono chiuso |
-| `"idle"` | In attesa della wakeword |
-| `"listening"` | Wakeword rilevata, STT attivo |
-| `"processing"` | Testo riconosciuto, elaborazione in corso |
-| `"speaking"` | Risposta audio in corso (futuro) |
-| `"downloading"` | Download modello in corso |
-
-**Monitoraggio da CLI:**
-
-```bash
-gdbus monitor --session \
-  --dest org.local.VoiceAssistant \
-  --object-path /org/local/VoiceAssistant
-```
-
-### `DownloadProgress(percent: int)`
-
-Emesso durante il download di un modello STT. Il valore `percent` va da `0` a `100` con granularità di 1%.
-
-> **Nota**: questo segnale viene emesso solo per il provider attualmente selezionato. Se l'utente cambia modello durante un download, il vecchio download continua in background ma smette di emettere il segnale.
-
----
-
-## Attivazione Automatica
-
-Il file `.service` D-Bus (`~/.local/share/dbus-1/services/org.local.VoiceAssistant.service`) abilita l'attivazione automatica: qualsiasi chiamata al bus name `org.local.VoiceAssistant` avvia il demone se non è in esecuzione, tramite il servizio systemd associato.
-
----
-
-## Debugging
-
-```bash
-# Stato del servizio
-systemctl --user status voice-assistant.service
-
-# Log in tempo reale
-journalctl --user -u voice-assistant -f
-
-# Riavvio del demone
-systemctl --user restart voice-assistant.service
-
-# Introspezione live
-gdbus introspect --session \
-  --dest org.local.VoiceAssistant \
-  --object-path /org/local/VoiceAssistant
-```
+### `DownloadProgress(provider: string, model: string, percent: int)`
+Emesso periodicamente durante lo scaricamento di un modello per aggiornare la percentuale di progresso in tempo reale nella UI.

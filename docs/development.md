@@ -9,9 +9,10 @@
 | Pacchetto | Scopo |
 |---|---|
 | `meson` + `ninja-build` | Build system |
+| `blueprint-compiler` | Compilatore interfacce UI Blueprint (.blp → .ui) |
 | `python3`, `python3-venv` | Runtime del daemon |
 | `glib-compile-schemas` | Compilazione GSettings |
-| `glib-compile-resources` | Compilazione GResource (icone SVG) |
+| `glib-compile-resources` | Compilazione GResource (icone, UI, D-Bus XML, servizi) |
 | `gettext` | Localizzazione |
 | `python3-gi` (PyGObject) | Accesso a GLib/Gio dal daemon |
 | `libportaudio2` | Backend di `sounddevice` |
@@ -46,11 +47,32 @@ meson install -C build
 gnome-extensions enable voice-assistant@mkswap.github.io
 ```
 
+### Generazione del Pacchetto ZIP installabile
+
+Per pacchettizzare l'estensione in un file `.zip` pronto per la distribuzione o l'installazione su altri sistemi:
+
+```bash
+# Genera build/voice-assistant@mkswap.github.io.shell-extension.zip
+meson compile -C build zip
+```
+
 ---
 
 ## Workflow di Sviluppo
 
-### Modifiche all'Estensione GNOME (`extension.js`, `prefs.js`)
+### Modifiche all'Interfaccia Preferenze (`data/ui/prefs.blp`)
+
+L'interfaccia preferenze è scritta in **Blueprint**. Non modificare manualmente file XML `.ui`.
+
+```bash
+# Modifica il file Blueprint
+nano data/ui/prefs.blp
+
+# Ricompila ed installa l'estensione
+meson install -C build
+```
+
+### Modifiche all'Estensione GNOME (`src/extension.js`, `src/prefs.js`)
 
 ```bash
 # Dopo ogni modifica, reinstallare e riavviare GNOME Shell
@@ -79,17 +101,6 @@ python main.py
 journalctl --user -u voice-assistant -f
 ```
 
-### Modifiche allo Schema GSettings
-
-Dopo aver modificato `data/schemas/org.gnome.shell.extensions.voice-assistant.gschema.xml`:
-
-```bash
-# Ricompilare
-meson install -C build
-# Oppure manualmente:
-glib-compile-schemas data/schemas/
-```
-
 ---
 
 ## Struttura del Repository
@@ -97,27 +108,33 @@ glib-compile-schemas data/schemas/
 ```
 voice-assistant@mkswap.github.io/
 ├── meson.build                              # Build config root
+├── stylesheet.css                           # Stili CSS per l'indicatore GNOME Shell
 ├── README.md                                # Documentazione utente
 ├── LICENSE                                  # GPLv3
 ├── data/
-│   ├── meson.build                          # Build rules per assets
+│   ├── meson.build                          # Build rules per assets e Blueprint
 │   ├── metadata.json.in                     # Metadata dell'estensione GNOME
+│   ├── dbus/
+│   │   └── org.local.VoiceAssistant.xml     # Introspezione D-Bus XML
+│   ├── services/
+│   │   ├── voice-assistant.service.in       # Template servizio Systemd
+│   │   └── org.local.VoiceAssistant.service.in # Template attivazione D-Bus
+│   ├── ui/
+│   │   └── prefs.blp                        # Interfaccia preferenze in Blueprint
 │   ├── icons/
 │   │   ├── mic-1-symbolic.svg               # Icona microfono
 │   │   └── vocal-assistant-symbolic.svg     # Icona principale dell'assistente
 │   └── schemas/
 │       ├── ...gschema.xml                   # Schema GSettings
-│       ├── ...gresource.xml                 # Manifest GResource (icone)
-│       └── gschemas.compiled                # Binario compilato (generato)
+│       └── ...gresource.xml                 # Manifest GResource
 ├── src/
 │   ├── meson.build                          # Build rules per sorgenti
 │   ├── extension.js                         # Estensione GNOME Shell
-│   ├── prefs.js                             # Pannello preferenze Libadwaita
+│   ├── prefs.js                             # Logic & Binding del pannello preferenze
 │   └── daemon/
 │       ├── main.py                          # Entry point del daemon
 │       ├── start.sh                         # Script di avvio (systemd)
 │       ├── requirements.txt                 # Dipendenze pip
-│       ├── venv/                            # Virtual environment (non versionato)
 │       └── providers/
 │           ├── __init__.py                  # Factory dei provider
 │           ├── base.py                      # Classe base astratta
@@ -162,76 +179,22 @@ python3 -c "import sounddevice; print(sounddevice.query_devices())"
 
 # Controllare che Pipewire/PulseAudio sia in esecuzione
 pactl info
-
-# Testare la cattura audio
-python3 -c "
-import sounddevice as sd
-import numpy as np
-data = sd.rec(int(16000 * 2), samplerate=16000, channels=1, dtype='int16')
-sd.wait()
-print(f'Campioni: {len(data)}, Volume medio: {np.abs(data.astype(float)).mean():.0f}')
-"
-```
-
-### La wakeword non viene rilevata
-
-```bash
-# Controllare il valore attuale
-gsettings get org.gnome.shell.extensions.voice-assistant wakeword
-
-# Controllare i log del daemon per i risultati parziali di Vosk
-journalctl --user -u voice-assistant -f | grep -i "wakeword\|partial\|rilevata"
-```
-
-### Il download del modello si blocca
-
-```bash
-# Controllare se c'è un file .zip parziale
-ls -la ~/.local/share/voice-assistant/models/*.zip
-
-# Il download supporta il resume: riavviare il daemon riprenderà dal punto in cui si è interrotto
-systemctl --user restart voice-assistant.service
 ```
 
 ---
 
 ## Convenzioni di Codice
 
-### Python (Daemon)
+### UI e Stile (Blueprint & CSS)
+- Tutta la struttura delle preferenze va definita in `data/ui/prefs.blp`.
+- `prefs.js` deve contenere solo la logica dei segnali, i binding GSettings ed il popolamento dinamico delle liste.
+- Gli stili grafici dell'estensione vanno aggiunti in `stylesheet.css`.
 
-- Commenti e print in **italiano** (coerenza col progetto)
-- Thread-safety: l'accesso allo stato (`_state`, `provider`) avviene sempre tramite `GLib.idle_add()` per garantire l'esecuzione nel main thread
-- I download operano in thread dedicati con un `load_id` per gestire la concorrenza
-- Il `progress_callback` deve accettare un singolo `int` (percentuale 0-100)
+### Python (Daemon)
+- Thread-safety: l'accesso allo stato avviene sempre tramite `GLib.idle_add()` per il main thread.
+- I download operano in thread dedicati per isolare ciascuna operazione.
 
 ### JavaScript (Estensione GNOME)
-
-- Seguire le convenzioni GJS / GNOME Shell
-- I messaggi di log usano il prefisso `[VoiceAssistant]`
-- Le stringhe traducibili vanno wrappate in `_()`
-- L'estensione non importa mai direttamente moduli del daemon
-
-### GSettings
-
-- Ogni nuova chiave richiede: modifica al `.gschema.xml`, handler in `main.py`, UI in `prefs.js`
-- I binding in `prefs.js` usano `Gio.SettingsBindFlags.DEFAULT` dove possibile
-
----
-
-## Localizzazione (i18n)
-
-Le stringhe traducibili sono estratte da `extension.js` e `prefs.js` (definiti in `po/POTFILES.in`).
-
-```bash
-# Aggiornare il template POT
-cd build
-meson compile voice-assistant-pot
-
-# Aggiornare la traduzione italiana
-cd ../po
-msgmerge -U it.po voice-assistant.pot
-```
-
-Attualmente è supportato solo l'italiano (`it`). Per aggiungere una lingua:
-1. Aggiungere il codice lingua a `po/LINGUAS`
-2. Creare il file `.po` con `msginit`
+- Seguire le convenzioni GJS / GNOME Shell.
+- I log usano il prefisso `[VoiceAssistant]`.
+- Le stringhe traducibili usano `_()`.

@@ -5,11 +5,11 @@ Un'estensione per GNOME Shell che integra un assistente vocale **completamente l
 ## ✨ Funzionalità
 
 - 🎤 **Wakeword personalizzabile** — attivazione vocale hands-free (default: *"assistente"*)
+- ⌨️ **Scorciatoia da tastiera nativa** — attivazione rapida tramite `<Super>v` configurabile
 - 🧠 **Due motori STT** — Vosk (leggero, streaming reale) e Whisper (preciso, batch via faster-whisper)
 - 🔇 **100% Offline** — nessuna connessione cloud, piena privacy
-- ⚡ **Download automatico** dei modelli con progress tracking e resume su interruzione
-- 🎨 **Feedback visivo nativo** — icona colorata nella top bar + OSD di GNOME
-- ⚙️ **Impostazioni live** — pannello preferenze Libadwaita con aggiornamento in tempo reale
+- ⚡ **Download automatico** dei modelli con progress tracking, notifica ed annullamento
+- 🎨 **Interfaccia Blueprint & Libadwaita** — layout moderno e pulito (.blp) caricato nativamente con Gtk.Builder
 - 🔋 **Inibizione sospensione** — blocco automatico di sleep/idle durante il download dei modelli
 - 🌍 **Localizzazione** — supporto i18n con Gettext (attualmente: italiano)
 
@@ -19,7 +19,8 @@ Un'estensione per GNOME Shell che integra un assistente vocale **completamente l
 |---|---|
 | GNOME Shell | 45+ (testato su 50) |
 | Python | 3.10+ |
-| Meson | 0.53+ |
+| Meson | 0.56+ |
+| `blueprint-compiler` | Qualsiasi |
 | `python3-gi` (PyGObject) | Qualsiasi |
 | `libportaudio2` | Qualsiasi |
 
@@ -43,98 +44,47 @@ gnome-extensions enable voice-assistant@mkswap.github.io
 
 Il daemon Python viene avviato automaticamente come servizio systemd utente. I modelli vengono scaricati automaticamente al primo utilizzo.
 
+### 📦 Creazione pacchetto ZIP
+
+Per generare un file `.zip` dell'estensione installabile tramite **Extension Manager**:
+
+```bash
+meson compile -C build zip
+```
+
+---
+
 ## 🏗️ Architettura
 
 Il progetto è composto da tre componenti:
 
 | Componente | Tecnologia | Ruolo |
 |---|---|---|
-| **Extension** (`extension.js`) | GJS / GNOME Shell | Icona nella top bar, feedback visivo, orchestrazione del daemon |
-| **Preferences** (`prefs.js`) | GJS / Libadwaita | Pannello impostazioni nativo con binding GSettings live |
+| **Extension** (`extension.js`) | GJS / GNOME Shell | Icona nella top bar, keybinding nativi, orchestrazione daemon |
+| **Preferences** (`prefs.js` + `prefs.blp`) | GJS / Blueprint / Libadwaita | Pannello impostazioni nativo con binding GSettings live |
 | **Daemon** (`daemon/main.py`) | Python / dasbus | Cattura audio, wake word detection, riconoscimento vocale |
 
-La comunicazione avviene tramite **D-Bus** (Session Bus) per i comandi e gli eventi, e **GSettings** per la configurazione persistente.
-
-```
-Extension ◄──D-Bus──► Daemon Python
-    │                      │
-    └──── GSettings ───────┘
-         (configurazione condivisa)
-```
+---
 
 ## 📁 Struttura del Progetto
 
 ```
 voice-assistant@mkswap.github.io/
 ├── meson.build              # Build system root
+├── stylesheet.css           # Stili CSS per l'indicatore GNOME Shell
 ├── src/
 │   ├── extension.js         # Estensione GNOME Shell
-│   ├── prefs.js             # Preferenze Libadwaita
-│   └── daemon/
-│       ├── main.py          # Entry point daemon
-│       ├── start.sh         # Script di avvio systemd
-│       ├── requirements.txt # Dipendenze pip
-│       └── providers/       # Motori STT pluggabili
-│           ├── base.py          # Interfaccia astratta
-│           ├── vosk_provider.py # Vosk (streaming)
-│           └── whisper_provider.py # Whisper (batch)
+│   ├── prefs.js             # Logic & Binding preferenze Libadwaita
+│   └── daemon/              # Daemon Python background
 ├── data/
+│   ├── ui/prefs.blp         # Layout dell'interfaccia preferenze in Blueprint
+│   ├── dbus/                # XML Introspezione D-Bus
+│   ├── services/            # Template unit Systemd & D-Bus
 │   ├── schemas/             # GSettings schema + GResource
 │   └── icons/               # Icone SVG simboliche
 ├── po/                      # Traduzioni (Gettext)
 └── docs/                    # Documentazione tecnica
 ```
-
-## 📖 Documentazione Tecnica
-
-Per dettagli approfonditi, consulta la directory `docs/`:
-
-| Documento | Contenuto |
-|---|---|
-| [Architettura](docs/architecture.md) | Diagrammi di sistema, state machine, flussi dati, ciclo di vita |
-| [D-Bus Reference](docs/dbus.md) | Introspection XML, metodi, segnali, comandi CLI di debug |
-| [GSettings Reference](docs/gsettings.md) | Tutte le chiavi, valori validi, comandi `gsettings` |
-| [Provider STT](docs/providers.md) | Vosk vs Whisper, formato audio, come aggiungere un nuovo provider |
-| [Guida Sviluppatori](docs/development.md) | Setup ambiente, workflow, debug, convenzioni di codice |
-
-## 🔧 Comandi Utili
-
-```bash
-# Stato del daemon
-systemctl --user status voice-assistant.service
-
-# Log in tempo reale
-journalctl --user -u voice-assistant -f
-
-# Monitorare i segnali D-Bus
-gdbus monitor --session --dest org.local.VoiceAssistant --object-path /org/local/VoiceAssistant
-
-# Attivare/disattivare via CLI
-gdbus call --session --dest org.local.VoiceAssistant \
-  --object-path /org/local/VoiceAssistant \
-  --method org.local.VoiceAssistant.ToggleListening
-
-# Cambiare wakeword
-gsettings set org.gnome.shell.extensions.voice-assistant wakeword "ehi computer"
-
-# Cambiare provider/modello
-gsettings set org.gnome.shell.extensions.voice-assistant stt-provider whisper
-gsettings set org.gnome.shell.extensions.voice-assistant stt-model base
-```
-
-## 📦 Gestione Modelli
-
-I modelli risiedono in `~/.local/share/voice-assistant/models/`:
-
-```
-~/.local/share/voice-assistant/models/
-├── vosk-model-small-it-0.22/   (~48 MB)
-├── vosk-model-it-0.22/         (~1.2 GB)
-├── whisper-base/               (~140 MB)
-└── whisper-small/              (~466 MB)
-```
-
-I modelli possono essere gestiti dalla UI delle preferenze (download e cancellazione) o manualmente dalla cartella.
 
 ## 📄 Licenza
 
