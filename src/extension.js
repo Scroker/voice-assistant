@@ -147,21 +147,44 @@ try {
 
 const VoiceAssistantProxy = Gio.DBusProxy.makeProxyWrapper(VoiceAssistantIface);
 
-// Quick Settings Toggle Button
+// Quick Settings Toggle Button con Menu a tendina
 const VoiceAssistantQuickToggle = GObject.registerClass(
-class VoiceAssistantQuickToggle extends QuickSettings.QuickToggle {
+class VoiceAssistantQuickToggle extends QuickSettings.QuickMenuToggle {
     _init(extension) {
         super._init({
             title: _('Voice Assistant'),
-            subtitle: _('Idle'),
+            subtitle: _('In attesa'),
             gicon: Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg'),
             toggleMode: true,
         });
 
         this._extension = extension;
+
         this.connect('clicked', () => {
             this._extension._toggleRecording();
         });
+
+        // Header del Menu QuickSettings
+        this.menu.setHeader('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg', _('Voice Assistant'), _('Assistente Vocale Locale'));
+
+        // Voce per il cambio stato / attivazione
+        this._toggleItem = new PopupMenu.PopupMenuItem(_('Attiva / Disattiva'));
+        this._toggleItem.connect('activate', () => {
+            this._extension._toggleRecording();
+        });
+        this.menu.addMenuItem(this._toggleItem);
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        // Voce per le preferenze
+        this._settingsItem = new PopupMenu.PopupMenuItem(_('Preferenze...'));
+        this._settingsItem.connect('activate', () => {
+            if (Main.panel.closeQuickSettings) {
+                Main.panel.closeQuickSettings();
+            }
+            this._extension.openPreferences();
+        });
+        this.menu.addMenuItem(this._settingsItem);
     }
 
     updateUiState(state) {
