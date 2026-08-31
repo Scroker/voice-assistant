@@ -181,14 +181,10 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                         if (percent >= 0 && percent < 100) {
                             downloadingProgress.set(key, percent);
                             if (downloadButtons.has(key)) {
-                                let { btn, spinner } = downloadButtons.get(key);
-                                if (btn) {
-                                    btn.label = `${percent}%`;
-                                    btn.sensitive = false;
-                                }
-                                if (spinner) {
-                                    spinner.visible = true;
-                                    spinner.start();
+                                let { progressBar } = downloadButtons.get(key);
+                                if (progressBar) {
+                                    progressBar.fraction = Math.min(1.0, Math.max(0.0, percent / 100.0));
+                                    progressBar.text = `${percent}%`;
                                 }
                             } else {
                                 GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
@@ -515,7 +511,9 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 const row = new Adw.ActionRow({
                     title: m.name,
                     subtitle: m.subtitle || `${m.provider.toUpperCase()} • ${m.size_text || ''}`,
-                    activatable: true
+                    activatable: true,
+                    margin_top: 4,
+                    margin_bottom: 4
                 });
 
                 const checkBtn = new Gtk.CheckButton({
@@ -543,19 +541,12 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                     updateApplyButtons();
                 };
 
-                let currentDownloadBtn = null;
-                let currentSpinner = null;
-
                 const startDownload = () => {
                     downloadingProgress.set(modelKey, 0);
-                    if (currentDownloadBtn) {
-                        currentDownloadBtn.sensitive = false;
-                        currentDownloadBtn.label = '0%';
-                    }
-                    if (currentSpinner) {
-                        currentSpinner.visible = true;
-                        currentSpinner.start();
-                    }
+                    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                        renderModelList();
+                        return GLib.SOURCE_REMOVE;
+                    });
 
                     const fallbackLocalDownload = () => {
                         window.add_toast(new Adw.Toast({
@@ -641,21 +632,18 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 });
 
                 if (isDownloading) {
-                    currentSpinner = new Gtk.Spinner({ visible: true, margin_end: 6 });
-                    currentSpinner.start();
-                    currentDownloadBtn = new Gtk.Button({
-                        label: `${downloadPct}%`,
-                        sensitive: false,
-                        valign: Gtk.Align.CENTER
+                    const progressBar = new Gtk.ProgressBar({
+                        valign: Gtk.Align.CENTER,
+                        width_request: 140,
+                        show_text: true,
+                        fraction: Math.min(1.0, Math.max(0.0, downloadPct / 100.0)),
+                        text: `${downloadPct}%`
                     });
-                    currentDownloadBtn.add_css_class('pill');
-                    currentDownloadBtn.tooltip_text = _('Scaricamento in corso...');
 
-                    downloadButtons.set(modelKey, { btn: currentDownloadBtn, spinner: currentSpinner });
+                    downloadButtons.set(modelKey, { progressBar });
 
                     const box = new Gtk.Box({ spacing: 6, valign: Gtk.Align.CENTER });
-                    box.append(currentSpinner);
-                    box.append(currentDownloadBtn);
+                    box.append(progressBar);
                     row.add_suffix(box);
                 } else if (isInstalled && !isCurrent) {
                     const deleteBtn = Gtk.Button.new_from_icon_name('user-trash-symbolic');
@@ -692,19 +680,14 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
                     row.add_suffix(deleteBtn);
                 } else if (!isInstalled) {
-                    // Non installato e non in download
-                    currentSpinner = new Gtk.Spinner({ visible: false, margin_end: 6 });
-                    currentDownloadBtn = Gtk.Button.new_from_icon_name('folder-download-symbolic');
+                    const currentDownloadBtn = Gtk.Button.new_from_icon_name('folder-download-symbolic');
                     currentDownloadBtn.valign = Gtk.Align.CENTER;
                     currentDownloadBtn.add_css_class('flat');
                     currentDownloadBtn.tooltip_text = _('Scarica modello');
 
-                    downloadButtons.set(modelKey, { btn: currentDownloadBtn, spinner: currentSpinner });
-
                     currentDownloadBtn.connect('clicked', () => startDownload());
 
                     const box = new Gtk.Box({ spacing: 6, valign: Gtk.Align.CENTER });
-                    box.append(currentSpinner);
                     box.append(currentDownloadBtn);
                     row.add_suffix(box);
                 }
