@@ -632,3 +632,41 @@ jobs:
           xvfb-run meson test -C build --print-errorlogs
 ```
 
+---
+
+## 13. Short-Term Conversational Memory (`src/daemon/services/llm_service.py`)
+
+To enable natural multi-turn conversations and follow-up requests (e.g. *"Che tempo fa a Milano?"* followed by *"E a Roma?"* or *"Imposta volume al 50%"* followed by *"Alzalo ancora di poco"*):
+
+### Key Specifications
+1. **Sliding Context Buffer**:
+   - Maintain a rolling deque of past user and assistant exchanges (`deque(maxlen=10)`).
+   - Inject chat history in standard LLM OpenAI/Ollama messages schema `[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]`.
+2. **Inactivity Memory Expiration**:
+   - Automated memory reset timer (e.g. 60–90 seconds of user silence).
+   - Prevents stale context from polluting new unrelated queries.
+3. **MCP Tool Context Retain**:
+   - Retain performed tool execution results (e.g. current volume setting) in short-term context for follow-up adjustments.
+
+---
+
+## 14. Continuous Conversation & Intent Guard (`src/daemon/main.py` & `src/daemon/core/pipeline.py`)
+
+To enable hands-free multi-turn interactions while preventing accidental activations when the user speaks to third parties in the room:
+
+### 14.1 Auto-Listen Mode (Turn-Taking)
+- Automatically reopen a 4-second listening window immediately after the assistant finishes speaking (`SPEAKING ➔ LISTENING`).
+- A subtle audio chime and visual UI glow inform the user that the microphone is open for follow-up without needing to repeat the wakeword *"Assistente"*.
+
+### 14.2 3-Tier Intent Guard (Side-Talk Filtering)
+To ensure the assistant only responds when explicitly addressed and ignores background side conversations:
+
+1. **Dismissal Signals**:
+   - Detect explicit closing phrases (*"Grazie"*, *"Basta così"*, *"Niente"*, *"A posto"*, *"Ciao"*) to instantly close the listener and return to `IDLE`.
+2. **Grammatical & Intent Verification**:
+   - Validate if recognized text contains question words (*"che"*, *"come"*, *"dove"*, *"quando"*), imperative system verbs (*"apri"*, *"chiudi"*, *"imposta"*), or direct match with `FastPathDispatcher`.
+   - Non-matching side-talk (e.g. *"Passami il caffè"*, *"Arrivo subito"*) is silently dropped without generating an LLM response.
+3. **Selective VAD Energy Threshold**:
+   - Apply a stricter speech energy threshold during Auto-Listen windows to ignore off-axis or distant room voices.
+
+

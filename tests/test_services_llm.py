@@ -67,5 +67,24 @@ class TestServicesLLM(unittest.TestCase):
 
         self.assertEqual(tokens, ["Risposta ", "locale."])
 
+    @patch('urllib.request.urlopen')
+    def test_anthropic_streaming(self, mock_urlopen):
+        """Verifica che lo streaming dei token da Anthropic Claude API venga decodificato correttamente."""
+        settings_observer = MagicMock()
+        settings_observer.get.side_effect = lambda k, d=None: "anthropic" if k == "llm-mode" else ("test-key" if k == "llm-api-key" else d)
+
+        mock_response = MagicMock()
+        mock_response.__enter__.return_value = [
+            b'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Ciao da "}}\n',
+            b'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Claude!"}}\n',
+        ]
+        mock_urlopen.return_value = mock_response
+
+        manager = LLMServiceManager(settings_observer=settings_observer)
+        tokens = list(manager.stream_tokens("Ciao"))
+
+        self.assertEqual(tokens, ["Ciao da ", "Claude!"])
+
 if __name__ == '__main__':
     unittest.main()
+

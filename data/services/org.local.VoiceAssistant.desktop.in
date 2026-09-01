@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Voice Assistant
+Name[it]=Assistente Vocale
+Comment=Local & Offline Voice Assistant for GNOME
+Comment[it]=Assistente vocale locale ed offline per GNOME
+Exec=gdbus call --session --dest org.local.VoiceAssistant --object-path /org/local/VoiceAssistant --method org.local.VoiceAssistant.ShowWindow
+Icon=vocal-assistant-icon
+Terminal=false
+Type=Application
+Categories=Utility;AudioVideo;Audio;
+Keywords=Voice;Assistant;Speech;Offline;Vosk;Whisper;
+StartupNotify=false
+X-GNOME-UsesNotifications=true

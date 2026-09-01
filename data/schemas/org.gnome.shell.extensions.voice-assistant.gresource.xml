@@ -1,25 +1,60 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
   <gresource prefix="/org/gnome/shell/extensions/voice-assistant">
+    <!-- Icon Theme (Hicolor Standard) -->
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/audio-input-microphone-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/audio-volume-high-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/brain-augmented-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/check-plain-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/drive-harddisk-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/edit-clear-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/filter-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/folder-download-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/folder-open-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/go-previous-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/help-about-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/mic-1-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/paper-plane-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/preferences-system-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/system-run-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/user-trash-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/vocal-assistant-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/web-browser-symbolic.svg</file>
+
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/apps/vocal-assistant-icon.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/32x32/apps/vocal-assistant-icon.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/64x64/apps/vocal-assistant-icon.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/128x128/apps/vocal-assistant-icon.svg</file>
+
+    <file preprocess="xml-stripblanks">icons/hicolor/32x32/status/vocal-assistant-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/64x64/status/vocal-assistant-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/128x128/status/vocal-assistant-symbolic.svg</file>
+
+    <!-- Root level icons for backward compatibility and direct path lookup -->
     <file preprocess="xml-stripblanks">icons/audio-input-microphone-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/audio-volume-high-symbolic.svg</file>
-    <file preprocess="xml-stripblanks">icons/brain-augemnted-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/brain-augmented-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/check-plain-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/drive-harddisk-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/edit-clear-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/filter-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/folder-download-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/folder-open-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/go-previous-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/help-about-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/mic-1-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/paper-plane-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/preferences-system-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/system-run-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/user-trash-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/vocal-assistant-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/web-browser-symbolic.svg</file>
+
     <file preprocess="xml-stripblanks">dbus/org.local.VoiceAssistant.xml</file>
     <file>services/voice-assistant.service.in</file>
     <file>services/org.local.VoiceAssistant.service.in</file>
+    <file>services/org.local.VoiceAssistant.desktop.in</file>
     <file preprocess="xml-stripblanks" alias="ui/prefs.ui">prefs.ui</file>
+    <file preprocess="xml-stripblanks" alias="ui/assistant_window.ui">assistant_window.ui</file>
   </gresource>
 </gresources>

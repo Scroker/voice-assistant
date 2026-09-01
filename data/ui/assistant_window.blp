@@ -1,0 +1,71 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $AssistantWindow : Adw.ApplicationWindow {
+  title: _("Assistente Vocale");
+  default-width: 460;
+  default-height: 600;
+
+  content: Adw.ToolbarView toolbar_view {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Assistente Vocale");
+        subtitle: _("AI Locale & Offline");
+      };
+
+      [end]
+      Gtk.Button settings_btn {
+        icon-name: "emblem-system-symbolic";
+        tooltip-text: _("Impostazioni assistente");
+      }
+    }
+
+    content: Adw.Clamp {
+      maximum-size: 680;
+
+      child: Gtk.ScrolledWindow scrolled {
+        hscrollbar-policy: never;
+        vexpand: true;
+
+        child: Gtk.Box chat_box {
+          orientation: vertical;
+          margin-top: 12;
+          margin-bottom: 12;
+        };
+      };
+    };
+
+    [bottom]
+    Adw.Clamp {
+      maximum-size: 680;
+
+      child: Gtk.Box {
+        orientation: horizontal;
+        spacing: 8;
+        margin-top: 8;
+        margin-bottom: 12;
+        margin-start: 12;
+        margin-end: 12;
+
+        Gtk.Entry entry {
+          placeholder-text: _("Scrivi un messaggio o fai una domanda...");
+          hexpand: true;
+          styles ["pill"]
+        }
+
+        Gtk.Button send_btn {
+          icon-name: "paper-plane-symbolic";
+          tooltip-text: _("Invia messaggio");
+          styles ["suggested-action", "circular"]
+        }
+
+        Gtk.Button mic_btn {
+          icon-name: "audio-input-microphone-symbolic";
+          tooltip-text: _("Avvia ascolto vocale (Push-to-Talk)");
+          styles ["circular"]
+        }
+      };
+    }
+  };
+}

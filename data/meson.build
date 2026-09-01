@@ -10,6 +10,11 @@ install_data('schemas/org.gnome.shell.extensions.voice-assistant.gschema.xml',
   install_dir: join_paths(get_option('datadir'), 'glib-2.0', 'schemas')
 )
 
+install_data('services/org.local.VoiceAssistant.desktop.in',
+  rename: 'org.local.VoiceAssistant.desktop',
+  install_dir: join_paths(get_option('datadir'), 'applications')
+)
+
 install_subdir('icons',
   install_dir: extensiondir
 )
@@ -30,10 +35,16 @@ prefs_ui_target = custom_target('compile-prefs-blueprint',
   command: [blueprint_compiler, 'compile', '--output', '@OUTPUT@', '@INPUT@']
 )
 
+assistant_ui_target = custom_target('compile-assistant-blueprint',
+  input: 'ui/assistant_window.blp',
+  output: 'assistant_window.ui',
+  command: [blueprint_compiler, 'compile', '--output', '@OUTPUT@', '@INPUT@']
+)
+
 gresource_target = custom_target('voice-assistant-gresource',
   input: 'schemas/org.gnome.shell.extensions.voice-assistant.gresource.xml',
   output: 'org.gnome.shell.extensions.voice-assistant.gresource',
-  depends: prefs_ui_target,
+  depends: [prefs_ui_target, assistant_ui_target],
   command: [find_program('glib-compile-resources'),
             '--target=@OUTPUT@',
             '--sourcedir=' + meson.current_source_dir(),

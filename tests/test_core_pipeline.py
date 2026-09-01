@@ -74,11 +74,15 @@ class TestCorePipeline(unittest.TestCase):
             tts_engine=tts_mock
         )
 
-        result = controller.process_text_input("alza il volume")
+        result = controller.process_text_input("alza il volume", speak=False)
         self.assertTrue(result["fast_path"])
         self.assertEqual(result["intent"], "volume_up")
         self.assertEqual(state_machine.state, AssistantState.IDLE)
-        tts_mock.assert_called_once()
+
+        result_voice = controller.process_text_input("alza il volume", speak=True)
+        self.assertTrue(result_voice["fast_path"])
+        self.assertEqual(state_machine.state, AssistantState.SPEAKING)
+        tts_mock.assert_called()
 
     def test_pipeline_controller_llm_streaming_flow(self):
         """Verifica il flusso di streaming LLM e transizioni di stato nel PipelineController."""

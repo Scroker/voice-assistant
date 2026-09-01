@@ -9,6 +9,12 @@ except ImportError:
     Model = None
     KaldiRecognizer = None
 
+import sys
+import logging
+from core.logger import ErrorCollector
+
+logger = logging.getLogger("VoiceAssistant.STT.Vosk")
+
 from .base import STTProvider
 
 class VoskProvider(STTProvider):
@@ -37,17 +43,17 @@ class VoskProvider(STTProvider):
         old_model_path = os.path.expanduser(f"~/.cache/vosk/{target_name}")
         
         if not os.path.isdir(model_path) and os.path.isdir(old_model_path):
-            print(f"Modello trovato nella vecchia posizione ({old_model_path}), uso quello.")
+            logger.info(f"Modello trovato nella vecchia posizione ({old_model_path}), uso quello.")
             model_path = old_model_path
 
         if download_only:
-            print(f"Scaricamento background modello Vosk '{model_name}'...")
+            logger.info(f"Scaricamento background modello Vosk '{model_name}'...")
             if not (os.path.exists(model_path) and os.path.isdir(model_path)):
                 self._download_model(target_name, model_path, progress_callback)
             self.model = None
             self.recognizer = None
         else:
-            print(f"Inizializzazione VoskProvider con modello '{model_name}' (dir: {self.MODELS_DIR})...")
+            logger.info(f"Inizializzazione VoskProvider con modello '{model_name}' (dir: {self.MODELS_DIR})...")
             self.model = self._load_or_download_model(target_name, model_path, progress_callback)
             self.recognizer = KaldiRecognizer(self.model, 16000)
 
@@ -57,8 +63,8 @@ class VoskProvider(STTProvider):
                 model = Model(model_path=model_path)
                 return model
             except Exception as e:
-                print(f"Attenzione: Modello Vosk in '{model_path}' è corrotto o non valido: {e}")
-                print(f"Rimuovo la cartella corrotta e procedo al download automatico...")
+                logger.warning(f"Modello Vosk in '{model_path}' è corrotto o non valido: {e}")
+                logger.info("Rimuovo la cartella corrotta e procedo al download automatico...")
                 shutil.rmtree(model_path, ignore_errors=True)
 
         return self._download_model(target_name, os.path.join(self.MODELS_DIR, target_name), progress_callback)
@@ -68,7 +74,7 @@ class VoskProvider(STTProvider):
         url = f"https://alphacephei.com/vosk/models/{target_name}.zip"
         zip_path = os.path.join(self.MODELS_DIR, f"{target_name}.zip")
         
-        print(f"Avvio download automatico modello Vosk da {url}...")
+        logger.info(f"Avvio download automatico modello Vosk da {url}...")
         if progress_callback:
             progress_callback(0)
             
@@ -107,25 +113,27 @@ class VoskProvider(STTProvider):
                                     progress_callback(pct)
                 break
             except Exception as e:
-                print(f"Avviso: Interruzione download Vosk (tentativo {attempt}/{max_retries}): {e}")
+                logger.warning(f"Interruzione download Vosk (tentativo {attempt}/{max_retries}): {e}")
                 if attempt == max_retries:
+                    ErrorCollector.record_error(*sys.exc_info(), component="VoiceAssistant.STT.Vosk")
                     raise Exception(f"Impossibile scaricare il modello Vosk dopo {max_retries} tentativi: {e}")
                 import time
                 time.sleep(2)
                 
         try:
-            print(f"Download completato. Estrazione di '{zip_path}'...")
+            logger.info(f"Download completato. Estrazione di '{zip_path}'...")
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(self.MODELS_DIR)
                 
             if progress_callback:
                 progress_callback(100)
                 
-            print(f"Estrazione completata. Caricamento modello da '{target_dir}'...")
+            logger.info(f"Estrazione completata. Caricamento modello da '{target_dir}'...")
             return Model(model_path=target_dir)
             
         except Exception as e:
-            print(f"Errore durante il download/estrazione del modello Vosk: {e}")
+            logger.error(f"Errore durante il download/estrazione del modello Vosk: {e}")
+            ErrorCollector.record_error(*sys.exc_info(), component="VoiceAssistant.STT.Vosk")
             if os.path.exists(zip_path):
                 try: os.remove(zip_path)
                 except: pass
@@ -191,7 +199,7 @@ class VoskProvider(STTProvider):
                 models.sort(key=_sort_key)
                 return models
         except Exception as e:
-            print(f"Avviso: Impossibile recuperare la lista modelli Vosk online ({e}). Uso lista locale.")
+            logger.warning(f"Impossibile recuperare la lista modelli Vosk online ({e}). Uso lista locale.")
             return [
                 {"id": "vosk-model-small-it-0.22", "name": "Italian - vosk-model-small-it-0.22 (47.4MiB)", "lang": "it", "lang_text": "Italian", "size_text": "47.4MiB", "url": "https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip", "type": "small"},
                 {"id": "vosk-model-it-0.22", "name": "Italian - vosk-model-it-0.22 (1.2GiB)", "lang": "it", "lang_text": "Italian", "size_text": "1.2GiB", "url": "https://alphacephei.com/vosk/models/vosk-model-it-0.22.zip", "type": "big"},

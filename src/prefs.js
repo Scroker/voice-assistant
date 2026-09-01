@@ -40,10 +40,12 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             if (display) {
                 const iconTheme = Gtk.IconTheme.get_for_display(display);
                 iconTheme.add_resource_path('/org/gnome/shell/extensions/voice-assistant/icons');
+                iconTheme.add_resource_path('/org/gnome/shell/extensions/voice-assistant/icons/hicolor');
 
                 const iconsDir = `${this.path}/icons`;
                 if (Gio.File.new_for_path(iconsDir).query_exists(null)) {
                     iconTheme.add_search_path(iconsDir);
+                    iconTheme.add_search_path(`${iconsDir}/hicolor`);
                 }
             }
         } catch (e) {
@@ -242,7 +244,11 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         const updateActiveModelSubtitle = () => {
             let provider = settings.get_string('stt-provider') || 'vosk';
             let model = settings.get_string('stt-model') || 'vosk-model-small-it-0.22';
-            let providerDisplay = provider === 'whisper' ? 'Whisper' : 'Vosk';
+            let providerDisplay = 'Vosk';
+            if (provider === 'whisper') providerDisplay = 'Whisper';
+            else if (provider === 'openai_cloud') providerDisplay = 'OpenAI Cloud STT';
+            else if (provider === 'groq_cloud') providerDisplay = 'Groq Cloud STT';
+
             currentModelRow.subtitle = `${providerDisplay} • ${model}`;
             whisperHardwareGroup.visible = (provider === 'whisper');
         };
@@ -265,6 +271,11 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             { id: 'medium', provider: 'whisper', name: 'Whisper Medium', subtitle: 'Whisper • ~1.5GB • Multilingual', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~1.5GB' },
             { id: 'medium.en', provider: 'whisper', name: 'Whisper Medium (English)', subtitle: 'Whisper • ~1.5GB • English Only', lang: 'en', lang_text: 'English', size_text: '~1.5GB' },
             { id: 'large-v3', provider: 'whisper', name: 'Whisper Large v3', subtitle: 'Whisper • ~3.1GB • Multilingual', lang: 'multilingual', lang_text: 'Multilingual', size_text: '~3.1GB' }
+        ];
+
+        const cloudSttModels = [
+            { id: 'whisper-1', provider: 'openai_cloud', name: 'OpenAI Whisper Cloud', subtitle: 'OpenAI Cloud • High Accuracy • Requires API Key', lang: 'multilingual', lang_text: 'Multilingual', size_text: 'Cloud API' },
+            { id: 'whisper-large-v3', provider: 'groq_cloud', name: 'Groq Whisper Cloud', subtitle: 'Groq Cloud • Ultra Fast • Requires API Key', lang: 'multilingual', lang_text: 'Multilingual', size_text: 'Cloud API' }
         ];
 
         let fetchedVoskModels = [
@@ -320,7 +331,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 }
             } catch (e) { }
 
-            const allModels = [...whisperStaticModels, ...fetchedVoskModels];
+            const allModels = [...whisperStaticModels, ...cloudSttModels, ...fetchedVoskModels];
             const query = searchEntry.text.trim().toLowerCase();
             const activeTab = selectorViewStack.visible_child_name || 'all';
 
@@ -331,7 +342,8 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
             const filteredModels = allModels.filter(m => {
                 let modelKey = `${m.provider}:${m.id}`;
                 let isDownloading = downloadingProgress.has(modelKey);
-                let isInstalled = !isDownloading && (installedSet.has(m.id) || installedSet.has(`${m.provider}-${m.id}`) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`)));
+                let isCloud = (m.provider === 'openai_cloud' || m.provider === 'groq_cloud');
+                let isInstalled = isCloud || (!isDownloading && (installedSet.has(m.id) || installedSet.has(`${m.provider}-${m.id}`) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`))));
 
                 if (activeTab === 'installed' && !isInstalled) return false;
                 if (activeTab === 'downloading' && !isDownloading) return false;
@@ -362,7 +374,8 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
                 let modelKey = `${m.provider}:${m.id}`;
                 let isDownloading = downloadingProgress.has(modelKey);
                 let downloadPct = downloadingProgress.get(modelKey) || 0;
-                let isInstalled = !isDownloading && (installedSet.has(m.id) || installedSet.has(`${m.provider}-${m.id}`) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`)));
+                let isCloud = (m.provider === 'openai_cloud' || m.provider === 'groq_cloud');
+                let isInstalled = isCloud || (!isDownloading && (installedSet.has(m.id) || installedSet.has(`${m.provider}-${m.id}`) || (m.provider === 'whisper' && installedSet.has(`whisper-${m.id}`))));
 
                 const row = new Adw.ActionRow({
                     title: m.name,
@@ -673,27 +686,35 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         // ==========================================
         const llmEnableRow = builder.get_object('llm_enable_row');
         const llmModeRow = builder.get_object('llm_mode_row');
+        const llmApiKeyRow = builder.get_object('llm_api_key_row');
         const llmSystemPromptRow = builder.get_object('llm_system_prompt_row');
         const llmUrlRow = builder.get_object('llm_url_row');
         const llmModelRow = builder.get_object('llm_model_row');
 
         settings.bind('llm-enabled', llmEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        settings.bind('llm-api-key', llmApiKeyRow, 'text', Gio.SettingsBindFlags.DEFAULT);
         settings.bind('llm-system-prompt', llmSystemPromptRow, 'text', Gio.SettingsBindFlags.DEFAULT);
-        settings.bind('llm-url', llmUrlRow, 'text', Gio.SettingsBindFlags.DEFAULT);
+        settings.bind('llm-endpoint', llmUrlRow, 'text', Gio.SettingsBindFlags.DEFAULT);
         settings.bind('llm-model', llmModelRow, 'text', Gio.SettingsBindFlags.DEFAULT);
 
+        // Map modes: 0: local, 1: ollama, 2: openai, 3: anthropic, 4: http
+        const modeMap = ['local', 'ollama', 'openai', 'anthropic', 'http'];
         let currentLlmMode = settings.get_string('llm-mode') || 'local';
-        llmModeRow.selected = (currentLlmMode === 'ollama' || currentLlmMode === 'http') ? 1 : 0;
+        let idx = modeMap.indexOf(currentLlmMode);
+        llmModeRow.selected = (idx >= 0) ? idx : 0;
 
         const updateLlmModeVisibility = () => {
-            let isExternal = (llmModeRow.selected === 1);
-            llmUrlRow.visible = isExternal;
-            llmModelRow.visible = isExternal;
+            let sel = llmModeRow.selected;
+            let mode = modeMap[sel] || 'local';
+            llmApiKeyRow.visible = (mode === 'openai' || mode === 'anthropic' || mode === 'http');
+            llmUrlRow.visible = (mode === 'ollama' || mode === 'http' || mode === 'openai');
+            llmModelRow.visible = (mode !== 'local');
         };
         updateLlmModeVisibility();
 
         llmModeRow.connect('notify::selected', () => {
-            let newMode = (llmModeRow.selected === 1) ? 'ollama' : 'local';
+            let sel = llmModeRow.selected;
+            let newMode = modeMap[sel] || 'local';
             settings.set_string('llm-mode', newMode);
             updateLlmModeVisibility();
         });
@@ -704,14 +725,21 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
         // ==========================================
         const ttsEnableRow = builder.get_object('tts_enable_row');
         const ttsEngineRow = builder.get_object('tts_engine_row');
+        const ttsVoiceRow = builder.get_object('tts_voice_row');
 
         settings.bind('tts-enabled', ttsEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        settings.bind('tts-voice', ttsVoiceRow, 'text', Gio.SettingsBindFlags.DEFAULT);
 
-        let currentTts = settings.get_string('tts-engine') || 'piper';
-        ttsEngineRow.selected = (currentTts === 'espeak') ? 1 : 0;
+        const ttsEngineMap = ['piper', 'espeak', 'openai', 'system'];
+        let currentTts = settings.get_string('tts-provider') || settings.get_string('tts-engine') || 'piper';
+        let ttsIdx = ttsEngineMap.indexOf(currentTts);
+        ttsEngineRow.selected = (ttsIdx >= 0) ? ttsIdx : 0;
+
         ttsEngineRow.connect('notify::selected', () => {
-            let newEngine = (ttsEngineRow.selected === 1) ? 'espeak' : 'piper';
+            let sel = ttsEngineRow.selected;
+            let newEngine = ttsEngineMap[sel] || 'piper';
             settings.set_string('tts-engine', newEngine);
+            settings.set_string('tts-provider', newEngine);
         });
 
 

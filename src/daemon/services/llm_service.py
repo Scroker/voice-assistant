@@ -1,10 +1,12 @@
 """
-Unified LLM Streaming Service supporting both In-Daemon Local GGUF models (via llama-cpp-python)
-and External HTTP services (Ollama, LM Studio, OpenAI API).
+Unified LLM Streaming Service supporting In-Daemon Local GGUF models (via llama-cpp-python),
+External HTTP services (Ollama, LM Studio), OpenAI API, and Anthropic Claude API.
 """
 import os
 import json
 import logging
+import asyncio
+import concurrent.futures
 import urllib.request
 import urllib.error
 from typing import Generator, Optional, Dict, Any
@@ -113,18 +115,21 @@ class LocalGGUFProvider:
 
 class LLMServiceManager:
     """
-    Manager for LLM Streaming Services. Routes to either In-Daemon Local GGUF or External HTTP (Ollama/LM Studio).
+    Manager for LLM Streaming Services.
+    Routes to Local GGUF, Ollama, OpenAI (GPT-4o/DeepSeek/Groq), or Anthropic Claude.
     """
-    def __init__(self, settings_observer: Optional[Any] = None):
+    def __init__(self, settings_observer: Optional[Any] = None, mcp_manager: Optional[Any] = None):
         self.settings_observer = settings_observer
+        self.mcp_manager = mcp_manager
         self.local_gguf_provider = LocalGGUFProvider()
 
     def get_config(self) -> Dict[str, Any]:
-        mode = "local" # Default: "local" (GGUF in-daemon) or "ollama" / "http"
+        mode = "local" # Default: "local" (GGUF in-daemon) or "ollama" / "openai" / "anthropic" / "http"
         endpoint = "http://localhost:11434/api/generate"
         model_name = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
         temperature = 0.3
-        system_prompt = "Sei un assistente vocale italiano rapido e conciso. Rispondi in massimo 2 frasi brevi e dirette alla domanda. Non divagare mai."
+        api_key = ""
+        system_prompt = "Sei un assistente vocale veloce e conciso. Rispondi SEMPRE in massimo 1 frase breve e diretta (massimo 10 parole). Non spiegare mai il tuo ragionamento, non aggiungere mai preamboli, spiegazioni o saluti."
 
         if self.settings_observer:
             mode = self.settings_observer.get("llm-mode", mode)
@@ -132,37 +137,165 @@ class LLMServiceManager:
             model_name = self.settings_observer.get("llm-model", model_name)
             temperature = self.settings_observer.get("llm-temperature", temperature)
             system_prompt = self.settings_observer.get("llm-system-prompt", system_prompt)
+            api_key = self.settings_observer.get("llm-api-key", api_key)
+
+        # Dynamic System Clock Injection
+        import datetime
+        now = datetime.datetime.now()
+        days_it = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+        months_it = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+        clock_context = f"Data e ora corrente di sistema: {days_it[now.weekday()]} {now.day} {months_it[now.month]} {now.year}, ore {now.strftime('%H:%M')}."
+
+        system_prompt = f"{system_prompt}\n\n{clock_context}"
+
+        if self.mcp_manager and self.mcp_manager.enabled:
+            mcp_tools_prompt = self.mcp_manager.format_system_prompt_tools()
+            if mcp_tools_prompt:
+                system_prompt = f"{system_prompt}\n\n{mcp_tools_prompt}"
 
         return {
             "mode": mode,
             "endpoint": endpoint,
             "model_name": model_name,
             "temperature": temperature,
+            "api_key": api_key,
             "system_prompt": system_prompt
         }
 
+    def _parse_tool_call(self, text: str) -> Optional[Dict[str, Any]]:
+        """Parses JSON tool call emitted by LLM in response text."""
+        if not text:
+            return None
+        text_clean = text.strip()
+        if text_clean.startswith("{") and text_clean.endswith("}"):
+            try:
+                data = json.loads(text_clean)
+                if "tool" in data:
+                    return data
+            except Exception:
+                pass
+
+        import re
+        match = re.search(r'```(?:json)?\s*(\{\s*"tool"\s*:.*?\})\s*```', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except Exception:
+                pass
+
+        match_inline = re.search(r'(\{\s*"tool"\s*:\s*"[^"]+"\s*(?:,\s*"args"\s*:\s*\{.*?\})?\s*\})', text, re.DOTALL)
+        if match_inline:
+            try:
+                return json.loads(match_inline.group(1))
+            except Exception:
+                pass
+
+        return None
+
+    def _execute_tool_sync(self, tool_name: str, args: Dict[str, Any]) -> str:
+        """Executes an MCP tool synchronously, handling nested asyncio event loops cleanly."""
+        if not self.mcp_manager:
+            return ""
+
+        coro = self.mcp_manager.execute_tool(tool_name, args)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(lambda: asyncio.run(coro))
+                return future.result()
+        else:
+            return asyncio.run(coro)
+
     def stream_tokens(self, prompt: str) -> Generator[str, None, None]:
         """
-        Invia il prompt al provider selezionato (Local GGUF in-daemon o Ollama/HTTP)
-        e produce un flusso di token in tempo reale.
+        Invia il prompt al provider selezionato (Local GGUF, Ollama, OpenAI API, Anthropic API)
+        e produce un flusso di token in tempo reale, eseguendo eventuali tool call MCP.
         """
         config = self.get_config()
         mode = config["mode"]
+        accumulated_tokens = []
+
+        def _yield_and_track(token: str):
+            accumulated_tokens.append(token)
+            return token
 
         # 1. In-Daemon Local GGUF Mode
         if mode == "local":
             try:
                 for token in self.local_gguf_provider.stream_tokens(prompt, system_prompt=config["system_prompt"]):
-                    yield token
+                    yield _yield_and_track(token)
+                
+                full_resp = "".join(accumulated_tokens)
+                tool_call = self._parse_tool_call(full_resp)
+                if tool_call and self.mcp_manager:
+                    tool_name = tool_call.get("tool")
+                    args = tool_call.get("args", {})
+                    try:
+                        res = self._execute_tool_sync(tool_name, args)
+                        yield f"\n{res}"
+                    except Exception as e:
+                        logger.error(f"Errore durante l'esecuzione del tool {tool_name}: {e}")
                 return
             except Exception as e:
                 logger.warning(f"[LLM] Errore esecuzione Local GGUF in-daemon: {e}. Fallback su HTTP/Ollama...")
 
-        # 2. External HTTP / Ollama / LM Studio Mode (Fallback o impostazione utente)
+        # 2. Anthropic Claude API Mode
+        if mode == "anthropic" or "anthropic.com" in config["endpoint"]:
+            endpoint = config["endpoint"] if "anthropic.com" in config["endpoint"] else "https://api.anthropic.com/v1/messages"
+            model_name = config["model_name"] if config["model_name"] and not config["model_name"].endswith(".gguf") else "claude-3-5-sonnet-20241022"
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": config["api_key"],
+                "anthropic-version": "2023-06-01"
+            }
+            payload = {
+                "model": model_name,
+                "max_tokens": 300,
+                "system": config["system_prompt"],
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": True
+            }
+            req_data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
+
+            try:
+                with urllib.request.urlopen(req, timeout=10.0) as resp:
+                    for line in resp:
+                        if not line: continue
+                        line_str = line.decode('utf-8').strip()
+                        if not line_str or not line_str.startswith("data: "): continue
+                        line_str = line_str[6:].strip()
+                        try:
+                            data = json.loads(line_str)
+                            if data.get("type") == "content_block_delta":
+                                delta = data.get("delta", {})
+                                token = delta.get("text", "")
+                                if token:
+                                    yield _yield_and_track(token)
+                        except json.JSONDecodeError:
+                            continue
+            except Exception as e:
+                logger.error(f"[LLM] Errore streaming Anthropic API: {e}")
+                yield f"Errore durante la chiamata ad Anthropic API: {e}"
+            return
+
+        # 3. External HTTP / Ollama / OpenAI API Mode
         endpoint = config["endpoint"]
         model_name = config["model_name"]
         
-        if "/v1/chat/completions" in endpoint:
+        headers = {"Content-Type": "application/json"}
+        if config["api_key"]:
+            headers["Authorization"] = f"Bearer {config['api_key']}"
+
+        if mode == "openai" or "openai.com" in endpoint or "/v1/chat/completions" in endpoint:
+            if mode == "openai" and "localhost" in endpoint:
+                endpoint = "https://api.openai.com/v1/chat/completions"
+                model_name = model_name if model_name and not model_name.endswith(".gguf") else "gpt-4o-mini"
             payload = {
                 "model": model_name,
                 "messages": [
@@ -183,7 +316,6 @@ class LLMServiceManager:
                 "stream": True
             }
 
-        headers = {"Content-Type": "application/json"}
         req_data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
 
@@ -206,18 +338,31 @@ class LLMServiceManager:
                         token = ""
                         if "response" in data:
                             token = data["response"]
+                        elif "message" in data and isinstance(data["message"], dict):
+                            token = data["message"].get("content", "")
                         elif "choices" in data and len(data["choices"]) > 0:
                             delta = data["choices"][0].get("delta", {})
                             token = delta.get("content", "")
 
                         if token:
-                            yield token
+                            yield _yield_and_track(token)
                     except json.JSONDecodeError:
                         continue
 
+            full_resp = "".join(accumulated_tokens)
+            tool_call = self._parse_tool_call(full_resp)
+            if tool_call and self.mcp_manager:
+                tool_name = tool_call.get("tool")
+                args = tool_call.get("args", {})
+                try:
+                    res = self._execute_tool_sync(tool_name, args)
+                    yield f"\n{res}"
+                except Exception as e:
+                    logger.error(f"Errore durante l'esecuzione del tool {tool_name}: {e}")
+
         except urllib.error.URLError as e:
             logger.error(f"[LLM] Errore connessione all'endpoint {endpoint}: {e}")
-            yield f"Impossibile connettersi al server LLM locale su {endpoint}."
+            yield f"Impossibile connettersi al server LLM su {endpoint}."
         except Exception as e:
             logger.error(f"[LLM] Errore durante lo streaming LLM: {e}")
             yield "Si è verificato un errore durante l'elaborazione della risposta."

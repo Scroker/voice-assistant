@@ -5,6 +5,12 @@
     <method name="ToggleListening">
       <arg type="b" direction="out" name="is_listening"/>
     </method>
+    <method name="TriggerListening">
+      <arg type="b" direction="out" name="is_listening"/>
+    </method>
+    <method name="GetState">
+      <arg type="s" direction="out" name="state"/>
+    </method>
     <method name="GetAvailableModels">
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="out" name="models_json"/>
@@ -25,8 +31,26 @@
     </method>
     <method name="ClearErrorReports">
     </method>
+    <method name="GenerateDiagnosticBundle">
+      <arg type="s" direction="out" name="bundle_path"/>
+    </method>
+    <method name="ShowWindow">
+    </method>
+    <method name="OpenSettings">
+    </method>
+    <method name="ProcessTextInput">
+      <arg type="s" direction="in" name="text"/>
+    </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
+    </signal>
+    <signal name="TranscriptReceived">
+      <arg type="s" name="text"/>
+      <arg type="b" name="is_final"/>
+    </signal>
+    <signal name="ResponseTokenStreamed">
+      <arg type="s" name="token"/>
+      <arg type="b" name="is_complete"/>
     </signal>
     <signal name="DownloadProgress">
       <arg type="s" name="provider"/>

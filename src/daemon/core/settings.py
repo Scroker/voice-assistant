@@ -1,7 +1,10 @@
 """
 Reactive GSettings Observer for Voice Assistant Daemon
 """
+import logging
 from gi.repository import Gio, GLib
+
+logger = logging.getLogger("VoiceAssistant.Settings")
 
 
 class SettingsObserver:
@@ -18,15 +21,15 @@ class SettingsObserver:
             self._settings = Gio.Settings.new(self.SCHEMA_ID)
             self._settings.connect('changed', self._on_settings_changed)
         except Exception as e:
-            print(f"[SettingsObserver] Warning: Failed to connect GSettings ({e})")
+            logger.warning(f"[SettingsObserver] Failed to connect GSettings ({e})")
 
     def _on_settings_changed(self, settings, key):
-        print(f"[SettingsObserver] Key changed: {key}")
+        logger.debug(f"[SettingsObserver] Key changed: {key}")
         if self._callback:
             try:
                 self._callback(key)
             except Exception as e:
-                print(f"[SettingsObserver] Error in settings change callback: {e}")
+                logger.error(f"[SettingsObserver] Error in settings change callback: {e}")
 
     def get_string(self, key: str, default: str = "") -> str:
         if self._settings and key in self._settings.keys():

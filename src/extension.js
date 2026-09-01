@@ -57,7 +57,7 @@ function setupDaemonServices(extensionDir) {
     if (!systemdDir.query_exists(null)) {
         systemdDir.make_directory_with_parents(null);
     }
-    
+
     try {
         let systemdTpl = loadTemplate('/org/gnome/shell/extensions/voice-assistant/services/voice-assistant.service.in', 'voice-assistant.service.in');
         let systemdContent = systemdTpl.replace(/@startScript@/g, startScript);
@@ -72,7 +72,7 @@ function setupDaemonServices(extensionDir) {
     if (!dbusDir.query_exists(null)) {
         dbusDir.make_directory_with_parents(null);
     }
-    
+
     try {
         let dbusTpl = loadTemplate('/org/gnome/shell/extensions/voice-assistant/services/org.local.VoiceAssistant.service.in', 'org.local.VoiceAssistant.service.in');
         let dbusContent = dbusTpl.replace(/@startScript@/g, startScript);
@@ -82,7 +82,45 @@ function setupDaemonServices(extensionDir) {
         console.error(`[VoiceAssistant] Errore installazione servizio D-Bus: ${e.message}`);
     }
 
-    // 3. Reload systemd and start service
+    // 3. Install Desktop Application Entry (per far comparire l'icona nel menu Applicazioni di GNOME)
+    let appsDir = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_data_dir(), 'applications']));
+    if (!appsDir.query_exists(null)) {
+        appsDir.make_directory_with_parents(null);
+    }
+
+    try {
+        let desktopContent = loadTemplate('/org/gnome/shell/extensions/voice-assistant/services/org.local.VoiceAssistant.desktop.in', 'org.local.VoiceAssistant.desktop.in');
+        let desktopFile = appsDir.get_child('org.local.VoiceAssistant.desktop');
+        desktopFile.replace_contents(encoder.encode(desktopContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+    } catch (e) {
+        console.error(`[VoiceAssistant] Errore installazione file .desktop: ${e.message}`);
+    }
+
+    // 4. Install App Icons in ~/.local/share/icons/hicolor/
+    let userIconsDir = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_data_dir(), 'icons', 'hicolor']));
+    const iconSizes = [
+        ['scalable', 'apps', 'vocal-assistant-icon.svg'],
+        ['32x32', 'apps', 'vocal-assistant-icon.svg'],
+        ['64x64', 'apps', 'vocal-assistant-icon.svg'],
+        ['128x128', 'apps', 'vocal-assistant-icon.svg']
+    ];
+
+    for (const [size, category, filename] of iconSizes) {
+        try {
+            let targetDir = userIconsDir.get_child(size).get_child(category);
+            if (!targetDir.query_exists(null)) {
+                targetDir.make_directory_with_parents(null);
+            }
+            let targetFile = targetDir.get_child(filename);
+            let resourcePath = `/org/gnome/shell/extensions/voice-assistant/icons/hicolor/${size}/${category}/${filename}`;
+            let bytes = Gio.resources_lookup_data(resourcePath, Gio.ResourceLookupFlags.NONE);
+            targetFile.replace_contents(bytes.get_data(), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+        } catch (e) {
+            // Ignora se già esistente o errore di scrittura secondario
+        }
+    }
+
+    // 5. Reload systemd and start service
     try {
         let reloadProc = new Gio.Subprocess({
             argv: ['systemctl', '--user', 'daemon-reload'],
@@ -101,7 +139,7 @@ function setupDaemonServices(extensionDir) {
                 console.error(`[VoiceAssistant] systemctl start failed: ${e.message}`);
             }
         });
-    } catch(e) {
+    } catch (e) {
         console.error(`[VoiceAssistant] systemctl reload failed: ${e.message}`);
     }
 }
@@ -117,6 +155,9 @@ try {
   <interface name="org.local.VoiceAssistant">
     <method name="ToggleListening">
       <arg type="b" direction="out" name="is_listening"/>
+    </method>
+    <method name="GetState">
+      <arg type="s" direction="out" name="state"/>
     </method>
     <method name="GetAvailableModels">
       <arg type="s" direction="in" name="provider"/>
@@ -147,167 +188,206 @@ try {
 
 const VoiceAssistantProxy = Gio.DBusProxy.makeProxyWrapper(VoiceAssistantIface);
 
+// Helper per il caricamento garantito delle icone SVG dall'estensione
+function getIcon(extension, name) {
+    if (extension && extension.path) {
+        let iconPath = `${extension.path}/icons/${name}.svg`;
+        if (GLib.file_test(iconPath, GLib.FileTest.EXISTS)) {
+            return Gio.FileIcon.new(Gio.File.new_for_path(iconPath));
+        }
+        let hicolorPath = `${extension.path}/icons/hicolor/scalable/status/${name}.svg`;
+        if (GLib.file_test(hicolorPath, GLib.FileTest.EXISTS)) {
+            return Gio.FileIcon.new(Gio.File.new_for_path(hicolorPath));
+        }
+    }
+    try {
+        let resourcePath = `/org/gnome/shell/extensions/voice-assistant/icons/${name}.svg`;
+        let bytes = Gio.resources_lookup_data(resourcePath, Gio.ResourceLookupFlags.NONE);
+        if (bytes) {
+            return Gio.icon_new_for_string(`resource://${resourcePath}`);
+        }
+    } catch (e) {
+        // Fallback su themed icon se la risorsa non è ancora registrata
+    }
+    return Gio.ThemedIcon.new(name);
+}
+
 // Quick Settings Toggle Button con Menu a tendina
 const VoiceAssistantQuickToggle = GObject.registerClass(
-class VoiceAssistantQuickToggle extends QuickSettings.QuickMenuToggle {
-    _init(extension) {
-        super._init({
-            title: _('Voice Assistant'),
-            subtitle: _('In attesa'),
-            gicon: Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg'),
-            toggleMode: true,
-        });
-
-        this._extension = extension;
-
-        this.connect('clicked', () => {
-            this._extension._toggleRecording();
-        });
-
-        // Header del Menu QuickSettings
-        this.menu.setHeader('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg', _('Voice Assistant'), _('Assistente Vocale Locale'));
-
-        // Voce unicamente per le preferenze / impostazioni
-        this._settingsItem = new PopupMenu.PopupMenuItem(_('Preferences'));
-        this._settingsItem.connect('activate', () => {
-            if (Main.panel.closeQuickSettings) {
-                Main.panel.closeQuickSettings();
-            }
-            this._extension.openPreferences();
-        });
-        this.menu.addMenuItem(this._settingsItem);
-    }
-
-    updateUiState(state) {
-        switch (state) {
-            case 'listening':
-                this.checked = true;
-                this.subtitle = _('In ascolto...');
-                break;
-            case 'processing':
-                this.checked = true;
-                this.subtitle = _('Elaborazione...');
-                break;
-            case 'speaking':
-                this.checked = true;
-                this.subtitle = _('Riproduzione...');
-                break;
-            case 'downloading':
-                this.checked = true;
-                this.subtitle = _('Download...');
-                break;
-            case 'disabled':
-                this.checked = false;
-                this.subtitle = _('Disabilitato');
-                break;
-            case 'unavailable':
-                this.checked = false;
-                this.subtitle = _('Non disponibile');
-                break;
-            case 'idle':
-            default:
-                this.checked = true;
-                this.subtitle = _('In attesa');
-                break;
-        }
-    }
-});
-
-// Quick Settings System Indicator
-const VoiceAssistantSystemIndicator = GObject.registerClass(
-class VoiceAssistantSystemIndicator extends QuickSettings.SystemIndicator {
-    _init(extension) {
-        super._init();
-        this._extension = extension;
-        this._toggle = new VoiceAssistantQuickToggle(extension);
-        this.quickSettingsItems.push(this._toggle);
-    }
-
-    updateUiState(state) {
-        if (this._toggle) {
-            this._toggle.updateUiState(state);
-        }
-    }
-
-    destroy() {
-        this._toggle = null;
-        super.destroy();
-    }
-});
-
-// Pulsante nella Top Bar (trigger diretto al click, senza menu a tendina)
-const AssistantIndicator = GObject.registerClass(
-    class AssistantIndicator extends PanelMenu.Button {
+    class VoiceAssistantQuickToggle extends QuickSettings.QuickMenuToggle {
         _init(extension) {
-            super._init(0.5, 'Voice Assistant Trigger', true);
+            let toggleIcon = getIcon(extension, 'vocal-assistant-symbolic');
+            super._init({
+                title: _('Voice Assistant'),
+                subtitle: _('In attesa'),
+                gicon: toggleIcon,
+                toggleMode: true,
+            });
+
             this._extension = extension;
 
-            this._customGIcon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/vocal-assistant-symbolic.svg');
-            this._brainIcon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/brain-augmented-symbolic.svg');
-            this._downloadIcon = Gio.icon_new_for_string('resource:///org/gnome/shell/extensions/voice-assistant/icons/folder-download-symbolic.svg');
-
-            this._icon = new St.Icon({
-                gicon: this._customGIcon,
-                style_class: 'system-status-icon voice-assistant-indicator',
+            this.connect('clicked', () => {
+                let isEnabled = this._extension._settings.get_boolean('enabled');
+                this._extension._settings.set_boolean('enabled', !isEnabled);
             });
-            this.add_child(this._icon);
 
-            this.connect('event', (actor, event) => {
-                if (event.type() === Clutter.EventType.BUTTON_PRESS) {
-                    this._extension._toggleRecording();
-                    return Clutter.EVENT_STOP;
+            // Voce per avviare l'ascolto vocale immediato
+            this._listenItem = new PopupMenu.PopupMenuItem(_('Avvia Ascolto Vocale'));
+            this._listenItem.connect('activate', () => {
+                if (Main.panel.closeQuickSettings) {
+                    Main.panel.closeQuickSettings();
                 }
-                return Clutter.EVENT_PROPAGATE;
+                this._extension._toggleRecording();
             });
+            this.menu.addMenuItem(this._listenItem);
 
-            this._updateUiState(this._extension._lastState || 'unavailable');
+            // Voce per aprire la finestra interattiva dell'Assistente
+            this._windowItem = new PopupMenu.PopupMenuItem(_('Apri Finestra Assistente'));
+            this._windowItem.connect('activate', () => {
+                if (Main.panel.closeQuickSettings) {
+                    Main.panel.closeQuickSettings();
+                }
+                this._extension._openAssistantWindow();
+            });
+            this.menu.addMenuItem(this._windowItem);
+
+            // Voce per le preferenze / impostazioni
+            this._settingsItem = new PopupMenu.PopupMenuItem(_('Preferenze'));
+            this._settingsItem.connect('activate', () => {
+                if (Main.panel.closeQuickSettings) {
+                    Main.panel.closeQuickSettings();
+                }
+                this._extension.openPreferences();
+            });
+            this.menu.addMenuItem(this._settingsItem);
         }
 
-        _updateUiState(state) {
-            // L'icona sparisce solo quando l'assistente è disattivato ('disabled')
-            if (state === 'disabled') {
-                this.visible = false;
-                return;
-            }
-            this.visible = true;
-
-            this._icon.icon_name = null;
+        updateUiState(state) {
+            let isEnabled = this._extension._settings ? this._extension._settings.get_boolean('enabled') : true;
             switch (state) {
                 case 'listening':
-                    this._icon.gicon = this._customGIcon;
-                    this._icon.set_style('color: #3584e4;'); // Blu GNOME
+                    this.checked = true;
+                    this.subtitle = _('In ascolto...');
                     break;
                 case 'processing':
-                    this._icon.gicon = this._brainIcon;
-                    this._icon.set_style('color: #e5a50a;'); // Giallo/Arancio GNOME
+                    this.checked = true;
+                    this.subtitle = _('Elaborazione...');
                     break;
                 case 'speaking':
-                    this._icon.gicon = this._customGIcon;
-                    this._icon.set_style('color: #2ec27e;'); // Verde GNOME
+                    this.checked = true;
+                    this.subtitle = _('Riproduzione...');
                     break;
                 case 'downloading':
-                    this._icon.gicon = this._downloadIcon;
-                    this._icon.set_style('color: #e5a50a;');
+                    this.checked = true;
+                    this.subtitle = _('Download...');
+                    break;
+                case 'disabled':
+                    this.checked = false;
+                    this.subtitle = _('Disabilitato');
                     break;
                 case 'unavailable':
-                    this._icon.gicon = this._customGIcon;
-                    this._icon.set_style('color: #e01b24;'); // Rosso GNOME
+                    this.checked = false;
+                    this.subtitle = _('Non disponibile');
                     break;
                 case 'idle':
                 default:
-                    this._icon.gicon = this._customGIcon;
-                    this._icon.set_style(null);
+                    this.checked = isEnabled;
+                    this.subtitle = isEnabled ? _('In attesa') : _('Disabilitato');
                     break;
             }
         }
-    }
-);
+    });
+
+// Quick Settings System Indicator (inclusa l'icona di stato nell'area di sistema in topbar)
+const VoiceAssistantSystemIndicator = GObject.registerClass(
+    class VoiceAssistantSystemIndicator extends QuickSettings.SystemIndicator {
+        _init(extension) {
+            super._init();
+            this._extension = extension;
+
+            this._customGIcon = getIcon(extension, 'vocal-assistant-symbolic');
+            this._downloadIcon = getIcon(extension, 'folder-download-symbolic');
+
+            // Aggiunge l'icona dell'assistente direttamente all'area di stato di sistema (accanto a Wi-Fi/Volume/Batteria)
+            this._indicator = this._addIndicator();
+            this._indicator.gicon = this._customGIcon;
+            this._indicator.style_class = 'system-status-icon voice-assistant-indicator';
+
+            this._toggle = new VoiceAssistantQuickToggle(extension);
+            this.quickSettingsItems.push(this._toggle);
+        }
+
+        updateUiState(state) {
+            if (this._toggle) {
+                this._toggle.updateUiState(state);
+            }
+
+            if (!this._indicator) return;
+
+            if (state === 'disabled') {
+                this._indicator.visible = false;
+                return;
+            }
+            this._indicator.visible = true;
+
+            this._indicator.icon_name = null;
+            switch (state) {
+                case 'listening':
+                    this._indicator.gicon = this._customGIcon;
+                    this._indicator.set_style('color: #3584e4;'); // Blu GNOME
+                    break;
+                case 'processing':
+                    this._indicator.gicon = this._customGIcon;
+                    this._indicator.set_style('color: #e5a50a;'); // Giallo/Arancio GNOME
+                    break;
+                case 'speaking':
+                    this._indicator.gicon = this._customGIcon;
+                    this._indicator.set_style('color: #2ec27e;'); // Verde GNOME
+                    break;
+                case 'downloading':
+                    this._indicator.gicon = this._downloadIcon;
+                    this._indicator.set_style('color: #e5a50a;');
+                    break;
+                case 'unavailable':
+                    this._indicator.gicon = this._customGIcon;
+                    this._indicator.set_style('color: #e01b24;'); // Rosso GNOME
+                    break;
+                case 'idle':
+                default:
+                    this._indicator.gicon = this._customGIcon;
+                    this._indicator.set_style(null);
+                    break;
+            }
+        }
+
+        destroy() {
+            this._toggle = null;
+            this._indicator = null;
+            super.destroy();
+        }
+    });
 
 // Classe principale dell'estensione
 export default class VoiceAssistantExtension extends Extension {
     enable() {
         this._resource = Gio.Resource.load(this.dir.get_child('org.gnome.shell.extensions.voice-assistant.gresource').get_path());
         Gio.resources_register(this._resource);
+
+        try {
+            const display = Gdk.Display.get_default();
+            if (display) {
+                const iconTheme = Gtk.IconTheme.get_for_display(display);
+                iconTheme.add_resource_path('/org/gnome/shell/extensions/voice-assistant/icons');
+                iconTheme.add_resource_path('/org/gnome/shell/extensions/voice-assistant/icons/hicolor');
+                const iconsDir = this.dir.get_child('icons').get_path();
+                if (iconsDir && GLib.file_test(iconsDir, GLib.FileTest.EXISTS)) {
+                    iconTheme.add_search_path(iconsDir);
+                    iconTheme.add_search_path(`${iconsDir}/hicolor`);
+                }
+            }
+        } catch (e) {
+            console.warn('[VoiceAssistant] Errore registrazione IconTheme:', e);
+        }
 
         this._settings = this.getSettings('org.gnome.shell.extensions.voice-assistant');
         this._lastState = 'unavailable';
@@ -338,13 +418,7 @@ export default class VoiceAssistantExtension extends Extension {
     }
 
     _syncIndicators() {
-        // Top Panel Indicator (mostrato dinamicamente quando l'assistente è attivo)
-        if (!this._indicator) {
-            this._indicator = new AssistantIndicator(this);
-            Main.panel.addToStatusArea(this.uuid, this._indicator);
-        }
-
-        // Quick Settings Indicator (interruttore sempre presente nei Quick Settings)
+        // Quick Settings Indicator (integra l'icona nel blocco di sistema e il toggle nei Quick Settings)
         if (!this._quickIndicator) {
             this._quickIndicator = new VoiceAssistantSystemIndicator(this);
             Main.panel.statusArea.quickSettings.addExternalIndicator(this._quickIndicator);
@@ -370,9 +444,17 @@ export default class VoiceAssistantExtension extends Extension {
                             this._updateUiState('unavailable');
                             return;
                         }
+                        if (this._dbusProxy) {
+                            if (this._stateSignalId) {
+                                try { this._dbusProxy.disconnectSignal(this._stateSignalId); } catch (e) { }
+                                this._stateSignalId = null;
+                            }
+                            if (this._progressSignal) {
+                                try { this._dbusProxy.disconnectSignal(this._progressSignal); } catch (e) { }
+                                this._progressSignal = null;
+                            }
+                        }
                         this._dbusProxy = proxy;
-                        let isEnabled = this._settings.get_boolean('enabled');
-                        this._updateUiState(isEnabled ? 'idle' : 'disabled');
 
                         this._stateSignalId = this._dbusProxy.connectSignal(
                             'StateChanged',
@@ -380,16 +462,40 @@ export default class VoiceAssistantExtension extends Extension {
                                 this._updateUiState(newState);
                             }
                         );
-                        
+
                         this._progressSignal = this._dbusProxy.connectSignal('DownloadProgress',
                             (proxy, senderName, [pName, mName, percent]) => {
                                 this._updateDownloadProgress(pName, mName, percent);
                             });
+
+                        if (typeof this._dbusProxy.GetStateRemote === 'function') {
+                            this._dbusProxy.GetStateRemote((result, error) => {
+                                if (!error && result && result.length > 0) {
+                                    this._updateUiState(result[0]);
+                                } else {
+                                    let isEnabled = this._settings.get_boolean('enabled');
+                                    this._updateUiState(isEnabled ? 'idle' : 'disabled');
+                                }
+                            });
+                        } else {
+                            let isEnabled = this._settings.get_boolean('enabled');
+                            this._updateUiState(isEnabled ? 'idle' : 'disabled');
+                        }
                     }
                 );
             },
             () => {
                 console.log('[VoiceAssistant] Demone scomparso dal bus');
+                if (this._dbusProxy) {
+                    if (this._stateSignalId) {
+                        try { this._dbusProxy.disconnectSignal(this._stateSignalId); } catch (e) { }
+                    }
+                    if (this._progressSignal) {
+                        try { this._dbusProxy.disconnectSignal(this._progressSignal); } catch (e) { }
+                    }
+                }
+                this._stateSignalId = null;
+                this._progressSignal = null;
                 this._dbusProxy = null;
                 this._updateUiState('unavailable');
             }
@@ -428,22 +534,28 @@ export default class VoiceAssistantExtension extends Extension {
             this._showOsd(_('In ascolto...'));
         }
 
-        if (this._indicator) {
-            this._indicator._updateUiState(state);
-        }
         if (this._quickIndicator) {
             this._quickIndicator.updateUiState(state);
         }
     }
 
     _updateDownloadProgress(pName, mName, percent) {
-        if (this._indicator && this._indicator._downloadItem) {
+        if (this._quickIndicator && this._quickIndicator._toggle) {
             if (percent >= 0 && percent < 100) {
-                this._indicator._downloadItem.label.text = _(`Downloading ${pName} (${mName}): ${percent}%`);
-                this._indicator._downloadItem.visible = true;
+                this._quickIndicator._toggle.subtitle = _(`Download ${pName} (${mName}): ${percent}%`);
             } else {
-                this._indicator._downloadItem.visible = false;
+                this._quickIndicator.updateUiState(this._lastState);
             }
+        }
+    }
+
+    _openAssistantWindow() {
+        if (this._dbusProxy) {
+            this._dbusProxy.ShowWindowRemote((result, error) => {
+                if (error) {
+                    console.error('[VoiceAssistant] Errore apertura finestra D-Bus:', error.message);
+                }
+            });
         }
     }
 
@@ -454,24 +566,23 @@ export default class VoiceAssistantExtension extends Extension {
         }
 
         if (this._dbusProxy) {
-            if (this._stateSignalId) this._dbusProxy.disconnectSignal(this._stateSignalId);
-            if (this._progressSignal) this._dbusProxy.disconnectSignal(this._progressSignal);
+            if (this._stateSignalId) {
+                try { this._dbusProxy.disconnectSignal(this._stateSignalId); } catch (e) { }
+            }
+            if (this._progressSignal) {
+                try { this._dbusProxy.disconnectSignal(this._progressSignal); } catch (e) { }
+            }
             this._stateSignalId = null;
             this._progressSignal = null;
             this._dbusProxy = null;
         }
 
-        if (this._settingsSignal) {
-            this._settings.disconnect(this._settingsSignal);
+        if (this._settings && this._settingsSignal) {
+            try { this._settings.disconnect(this._settingsSignal); } catch (e) { }
             this._settingsSignal = null;
         }
 
         Main.wm.removeKeybinding('toggle-shortcut');
-
-        if (this._indicator) {
-            this._indicator.destroy();
-            this._indicator = null;
-        }
 
         if (this._quickIndicator) {
             this._quickIndicator.destroy();

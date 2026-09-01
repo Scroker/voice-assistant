@@ -24,6 +24,7 @@ graph TD
             base --> whisper
         end
         main --> Providers
+        main <--> gui["gui/assistant_window.py<br/>(GTK4 Chat GUI Window)"]
     end
 
     ext <-->|D-Bus Session Bus| main
@@ -95,6 +96,17 @@ Il motore Wake Word è **sempre Vosk** con il modello `vosk-model-small-it-0.22`
 
 Quando la wakeword (configurabile via GSettings, default: `"assistente"`) viene rilevata nel testo parziale o finale di Vosk, il daemon transisce nello stato `listening` e delega il riconoscimento completo al provider STT configurato dall'utente.
 
+### Sistema di Pulizia Audio a Runtime & AEC (`AudioFilter` + PipeWire)
+
+Per garantire la massima accuratezza di riconoscimento durante la riproduzione audio e in ambienti rumorosi, il sistema applica un'elaborazione audio a due livelli:
+
+1. **Livello Sistema — PipeWire WebRTC AEC (`module-echo-cancel`)**:
+   All'avvio, il demone verifica ed attiva il modulo nativo PipeWire `module-echo-cancel` con algoritmo `aec_method=webrtc` ed imposta la sorgente predefinita a `echo-cancel-source`. Se la scheda audio o il driver PortAudio richiedono un sample rate nativo (es. 48kHz), `_create_stream()` effettua un fallback trasparente sul dispositivo predefinito mantenendo la pulizia a runtime.
+2. **Livello Applicativo — Dynamic Audio Filter (`src/daemon/audio/filter.py`)**:
+   I chunk PCM grezzi passano attraverso la classe `AudioFilter`:
+   - **Filtro Passo-Alto IIR (Biquad 80Hz cutoff)**: Rimuove vibrazioni meccaniche, rumble e il fruscio continuo delle ventole del laptop.
+   - **Adaptive Noise Gate**: Calcola il rumore di fondo della stanza ed attenua dell'80% i segnali al di sotto della soglia per prevenire l'invio di rumore ambientale a Vosk/Whisper.
+
 ### Gestione Settings Live
 
 Il daemon sottoscrive individualmente le chiavi GSettings:
@@ -120,17 +132,23 @@ La wakeword viene aggiornata istantaneamente. Le altre chiavi triggerano un **re
 ```mermaid
 flowchart TD
     subgraph enable ["enable()"]
-        A1["1. Registra GResource<br/>(Icone SVG, D-Bus XML, UI prefs compilata, Servizi)"] --> A2["2. Crea AssistantIndicator<br/>(PanelMenu.Button + stylesheet.css)"]
+        A1["1. Registra GResource<br/>(Icone SVG, D-Bus XML, UI prefs compilata, Servizi)"] --> A2["2. Crea VoiceAssistantSystemIndicator<br/>(QuickSettings.SystemIndicator + QuickToggle)"]
         A2 --> A3["3. Registra Keybinding Nativa<br/>(toggle-shortcut -> Super+V via Main.wm.addKeybinding)"]
         A3 --> A4["4. setupDaemonServices()<br/>(Inietta unit Systemd & D-Bus da GResource)"]
         A4 --> A5["5. Avvia Servizio Systemd"]
     end
 
     subgraph disable ["disable()"]
-        B1["1. Rimuovi Keybinding Nativa"] --> B2["2. Distruggi Indicatore Top Bar"]
+        B1["1. Rimuovi Keybinding Nativa"] --> B2["2. Distruggi Indicatore QuickSettings"]
         B2 --> B3["3. Deregistra GResource"]
     end
 ```
+
+### Integrazione Quick Settings
+
+L'estensione estende `QuickSettings.SystemIndicator` e si registra nel pannello di sistema tramite `Main.panel.statusArea.quickSettings.addExternalIndicator(this._quickIndicator)`.
+- **Icona di Stato**: Inserita nell'area di stato di sistema nella barra superiore (accanto a Volume/Batteria/Rete). Il click sul gruppo apre il menu Quick Settings di GNOME.
+- **Quick Toggle**: Interruttore dedicato (`VoiceAssistantQuickToggle`) presente all'interno del menu dei Quick Settings per attivare/disattivare l'ascolto e accedere direttamente al pannello preferenze.
 
 ### D-Bus Proxy
 
@@ -138,16 +156,17 @@ L'estensione legge la definizione XML D-Bus da GResource (`/org/gnome/shell/exte
 
 ### Feedback Visivo
 
-Gli stili grafici e i colori dell'indicatore nella barra superiore sono gestiti in modo centralizzato in `stylesheet.css`:
+Gli stili grafici e i colori dell'indicatore sono gestiti in modo dinamico sia sull'icona di sistema che sul toggle nei Quick Settings:
 
 | Stato | Icona | Colore / Stile CSS | OSD |
 |---|---|---|---|
 | `idle` | `vocal-assistant-symbolic` | Default | No |
-| `listening` | `vocal-assistant-symbolic` | `.listening` (`#3584e4` blu) | "In ascolto..." |
-| `processing` | `system-run-symbolic` | `.processing` (`#e5a50a` giallo) | No |
-| `speaking` | `audio-volume-high-symbolic` | `.speaking` (`#3584e4`) | No |
-| `downloading` | `folder-download-symbolic` | `.downloading` (`#e5a50a`) | No |
-| `disabled` | `vocal-assistant-symbolic` | `.disabled` (`#e01b24` rosso) | No |
+| `listening` | `vocal-assistant-symbolic` | `#3584e4` (blu GNOME) | "In ascolto..." |
+| `processing` | `brain-augmented-symbolic` | `#e5a50a` (giallo GNOME) | No |
+| `speaking` | `vocal-assistant-symbolic` | `#2ec27e` (verde GNOME) | No |
+| `downloading` | `folder-download-symbolic` | `#e5a50a` (giallo GNOME) | No |
+| `disabled` | Icona nascosta | - | No |
+| `unavailable` | `vocal-assistant-symbolic` | `#e01b24` (rosso GNOME) | No |
 
 ### OSD Nativo
 
@@ -315,3 +334,29 @@ Il progetto usa Meson + Ninja integrato con `blueprint-compiler`.
         ├── vosk_provider.py
         └── whisper_provider.py
 ```
+
+---
+
+## 7. Model Context Protocol (MCP) & Tool Nativi
+
+Il Voice Assistant integra un'architettura **MCP (Model Context Protocol)** gestita da `MCPManager` (`src/daemon/mcp/manager.py`) per estendere le capacità del modello LLM e consentire l'esecuzione di comandi su GNOME Desktop.
+
+### Architettura MCP
+
+1. **Tool Nativi (8 Tool)**:
+   - `system_volume`: Regolazione del volume audio (`wpctl` / `pactl`).
+   - `dark_mode`: Gestione tema chiaro/scuro GNOME Desktop.
+   - `app_launcher`: Avvio di applicazioni e browser.
+   - `date_time`: Lettura dinamica dell'orologio e della data di sistema.
+   - `system_media`: Controllo riproduzione multimediale (Play/Pause/Next/Prev) via MPRIS.
+   - `screen_brightness`: Regolazione luminosità schermo (`brightnessctl` / D-Bus).
+   - `system_power`: Gestione sessione (lock, suspend, logout, reboot, shutdown).
+   - `clipboard`: Lettura e scrittura negli appunti (`wl-clipboard` / `xclip`).
+
+2. **Fast-Path Dispatcher (<10ms)**:
+   - Intercetta intenti deterministici ed esegue i tool MCP direttamente senza chiamare l'LLM per una risposta immediata a bassissima latenza.
+
+3. **Dynamic Prompt & Context Injection**:
+   - Inserimento automatico degli schemi JSON dei tool e del timestamp di sistema aggiornato ad ogni richiesta dell'LLM in `LLMServiceManager`.
+
+Per i dettagli completi sul funzionamento dei tool, consultare la [Guida MCP](mcp-guide.md). Per approfondire il funzionamento della pipeline di streaming e del Fast-Path, consultare la [Guida alla Pipeline](pipeline.md).

@@ -1,8 +1,13 @@
 """
 Thread-safe Async Model Downloader Service
 """
+import sys
 import threading
 import json
+import logging
+from core.logger import ErrorCollector
+
+logger = logging.getLogger("VoiceAssistant.Download")
 
 
 class ModelDownloader:
@@ -59,7 +64,9 @@ class ModelDownloader:
                 if self.emit_progress_cb:
                     self.emit_progress_cb(provider, model_name, 100)
             except Exception as e:
-                print(f"[ModelDownloader] Download error ({key}): {e}")
+                logger.error(f"Download error ({key}): {e}")
+                if not isinstance(e, InterruptedError):
+                    ErrorCollector.record_error(*sys.exc_info(), component="VoiceAssistant.Download")
             finally:
                 with self._lock:
                     self._downloading_models.pop(key, None)

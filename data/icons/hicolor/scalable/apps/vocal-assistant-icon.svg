@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="gnome-wave-dynamic" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3584e4" />
+      <stop offset="100%" stop-color="#33d17a" />
+    </linearGradient>
+  </defs>
+  
+  <g fill="url(#gnome-wave-dynamic)">
+    <rect x="11" y="52" width="6" height="24" rx="3" />
+    <rect x="21" y="40" width="6" height="48" rx="3" />
+    <rect x="31" y="48" width="6" height="32" rx="3" />
+    <rect x="41" y="28" width="6" height="72" rx="3" />
+    <rect x="51" y="36" width="6" height="56" rx="3" />
+    <rect x="61" y="16" width="6" height="96" rx="3" />
+    <rect x="71" y="24" width="6" height="80" rx="3" />
+    <rect x="81" y="44" width="6" height="40" rx="3" />
+    <rect x="91" y="32" width="6" height="64" rx="3" />
+    <rect x="101" y="48" width="6" height="32" rx="3" />
+    <rect x="111" y="56" width="6" height="16" rx="3" />
+  </g>
+</svg>

@@ -5,6 +5,9 @@ import gc
 import ctypes
 import threading
 import time
+import logging
+
+logger = logging.getLogger("VoiceAssistant.ModelManager")
 
 
 class ModelManager:
@@ -37,7 +40,7 @@ class ModelManager:
         with self._lock:
             elapsed = time.time() - self.last_active_time
             if elapsed >= self.idle_timeout_sec:
-                print(f"[ModelManager] Idle timeout reached ({elapsed:.1f}s >= {self.idle_timeout_sec}s). Purging VRAM & RAM...")
+                logger.info(f"Idle timeout reached ({elapsed:.1f}s >= {self.idle_timeout_sec}s). Purging VRAM & RAM...")
                 self.purge_vram_and_ram()
                 return True
         return False
@@ -48,17 +51,17 @@ class ModelManager:
         """
         with self._lock:
             if unload_llm and self.llm_instance:
-                print("[ModelManager] Unloading LLM instance...")
+                logger.info("Unloading LLM instance...")
                 del self.llm_instance
                 self.llm_instance = None
 
             if unload_stt and self.stt_instance:
-                print("[ModelManager] Unloading STT instance...")
+                logger.info("Unloading STT instance...")
                 del self.stt_instance
                 self.stt_instance = None
 
             if unload_tts and self.tts_instance:
-                print("[ModelManager] Unloading TTS instance...")
+                logger.info("Unloading TTS instance...")
                 del self.tts_instance
                 self.tts_instance = None
 
@@ -82,6 +85,6 @@ class ModelManager:
             libc = ctypes.CDLL("libc.so.6")
             libc.malloc_trim(0)
         except Exception as e:
-            print(f"[ModelManager] Warning trimming libc malloc: {e}")
+            logger.warning(f"Warning trimming libc malloc: {e}")
 
-        print("[ModelManager] VRAM and RAM reclamation completed.")
+        logger.info("VRAM and RAM reclamation completed.")

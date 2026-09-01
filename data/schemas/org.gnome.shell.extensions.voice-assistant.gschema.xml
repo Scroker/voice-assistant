@@ -79,7 +79,12 @@
     <key name="llm-mode" type="s">
       <default>'local'</default>
       <summary>Modalità esecuzione LLM</summary>
-      <description>Modalità di esecuzione LLM ('local', 'ollama', 'http').</description>
+      <description>Modalità di esecuzione LLM ('local', 'ollama', 'openai', 'anthropic', 'http').</description>
+    </key>
+    <key name="llm-api-key" type="s">
+      <default>''</default>
+      <summary>Chiave API per LLM/TTS in Cloud</summary>
+      <description>Chiave API opzionale per l'autenticazione con OpenAI, Anthropic, DeepSeek, Groq o OpenRouter.</description>
     </key>
     <key name="tts-engine" type="s">
       <default>'piper'</default>

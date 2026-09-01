@@ -5,9 +5,12 @@ Un'estensione per GNOME Shell che integra un assistente vocale **completamente l
 ## ✨ Funzionalità
 
 - 🎤 **Wakeword personalizzabile** — attivazione vocale hands-free (default: *"assistente"*)
+- 🤖 **Model Context Protocol (MCP)** — suite native di 8 tool per il controllo di volume, tema, luminosità, app, orologio, media, alimentazione e appunti
+- ⚡ **Fast-Path Offline (<10ms)** — esecuzione immediata dei comandi frequenti a bassissima latenza senza attendere l'LLM
 - ⌨️ **Scorciatoia da tastiera nativa** — attivazione rapida tramite `<Super>v` configurabile
 - 🧠 **Due motori STT** — Vosk (leggero, streaming reale) e Whisper (preciso, batch via faster-whisper)
 - 🔇 **100% Offline** — nessuna connessione cloud, piena privacy
+- 🔊 **AEC & Noise Suppression a Runtime** — filtro DSP integrato (Biquad Passo-Alto + Noise Gate) e integrazione PipeWire WebRTC AEC per un Barge-In nitido
 - ⚡ **Download automatico** dei modelli con progress tracking, notifica ed annullamento
 - 🎨 **Interfaccia Blueprint & Libadwaita** — layout moderno e pulito (.blp) caricato nativamente con Gtk.Builder
 - 🔋 **Inibizione sospensione** — blocco automatico di sleep/idle durante il download dei modelli
@@ -68,7 +71,7 @@ Il progetto è composto da tre componenti:
 
 | Componente | Tecnologia | Ruolo |
 |---|---|---|
-| **Extension** (`extension.js`) | GJS / GNOME Shell | Icona nella top bar, keybinding nativi, orchestrazione daemon |
+| **Extension** (`extension.js`) | GJS / GNOME Shell | Indicatore nei Quick Settings (area di sistema), keybinding nativi, orchestrazione daemon |
 | **Preferences** (`prefs.js` + `prefs.blp`) | GJS / Blueprint / Libadwaita | Pannello impostazioni nativo con binding GSettings live |
 | **Daemon** (`daemon/main.py`) | Python / dasbus | Cattura audio, wake word detection, riconoscimento vocale |
 
@@ -89,7 +92,7 @@ voice-assistant@scroker.github.io/
 ├── meson.build              # Build system root
 ├── stylesheet.css           # Stili CSS per l'indicatore GNOME Shell
 ├── src/
-│   ├── extension.js         # Estensione GNOME Shell
+│   ├── extension.js         # Estensione GNOME Shell (QuickSettings integration)
 │   ├── prefs.js             # Logic & Binding preferenze Libadwaita
 │   └── daemon/              # Daemon Python background
 ├── data/
@@ -97,9 +100,13 @@ voice-assistant@scroker.github.io/
 │   ├── dbus/                # XML Introspezione D-Bus
 │   ├── services/            # Template unit Systemd & D-Bus
 │   ├── schemas/             # GSettings schema + GResource
-│   └── icons/               # Icone SVG simboliche
+│   └── icons/
+│       └── hicolor/         # Icone organizzate secondo lo standard GNOME Icon Theme Spec
 ├── po/                      # Traduzioni (Gettext)
 └── docs/                    # Documentazione tecnica
+    ├── architecture.md      # Architettura di sistema
+    ├── pipeline.md          # Architettura della Pipeline, Fast-Path e Streaming
+    └── mcp-guide.md         # Guida completa ai tool MCP nativi ed esterni
 ```
 
 ## 📄 Licenza

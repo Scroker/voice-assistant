@@ -207,3 +207,28 @@ Tutti i provider ricevono audio nel seguente formato fisso:
 | **Canali** | 1 (mono) |
 | **Formato** | PCM int16 (little-endian) |
 | **Block size** | 8000 frames (0.5 secondi per chunk) |
+
+---
+
+## Provider LLM (Language Models)
+
+L'assistente supporta diversi provider di intelligenza artificiale per l'elaborazione del linguaggio:
+
+| Provider | ID `llm-mode` / `llm-provider` | Descrizione | Autenticazione |
+|---|---|---|---|
+| **Local GGUF** | `local` | Esecuzione diretta nel demone via `llama-cpp-python` e download automatico HuggingFace. | Nessuna (Offline) |
+| **Ollama** | `ollama` | Connessione all'istanza locale o di rete di Ollama (`http://localhost:11434`). | Nessuna |
+| **OpenAI API** | `openai` | API Cloud ufficiali OpenAI (GPT-4o, GPT-4o-mini), DeepSeek, Groq o OpenRouter. | Bearer `llm-api-key` |
+| **Anthropic Claude** | `anthropic` | API Cloud ufficiali Anthropic (Claude 3.5 Sonnet / Haiku). | Header `x-api-key` |
+
+---
+
+## Provider TTS (Sintesi Vocale)
+
+| Provider | ID `tts-provider` | Descrizione | Voce / Modelli |
+|---|---|---|---|
+| **Piper TTS** | `piper` | Sintesi neurale locale ONNX ad altissima velocità e naturalezza umanoide. | `it_IT-paola-medium`, `it_IT-riccardo-x_low`, `en_US-lessac-medium` |
+| **eSpeak-ng** | `espeak` | Sintesi offline ultra-leggera e nativa Linux. | Voci di sistema (es. `it`) |
+| **OpenAI Cloud TTS** | `openai` | Sintesi neurale ad altissima qualità via API Cloud OpenAI. | `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer` |
+| **System Dispatcher** | `system` | Fallback di sistema basato su `spd-say`. | Voci installate su GNOME |
+

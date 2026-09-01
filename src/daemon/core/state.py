@@ -5,6 +5,12 @@ from enum import Enum
 import threading
 
 
+import logging
+from core.logger import ErrorCollector
+
+logger = logging.getLogger("VoiceAssistant.State")
+
+
 class AssistantState(str, Enum):
     IDLE = "idle"
     LISTENING = "listening"
@@ -51,8 +57,9 @@ class StateMachine:
         with self._lock:
             if self._state == new_state:
                 return False
-            print(f"[StateMachine] State transition: {self._state} -> {new_state}")
+            logger.info(f"State transition: {self._state} -> {new_state}")
             self._state = new_state
+            ErrorCollector.update_context("state", new_state)
             callbacks_to_invoke = list(self._callbacks)
 
         # Invoke callbacks outside the lock to prevent deadlocks
@@ -60,6 +67,6 @@ class StateMachine:
             try:
                 cb(new_state)
             except Exception as e:
-                print(f"[StateMachine] Error in state callback: {e}")
+                logger.error(f"Error in state callback: {e}")
 
         return True

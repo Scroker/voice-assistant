@@ -52,7 +52,7 @@ Adw.NavigationSplitView split_view {
 
             [prefix]
             Gtk.Image {
-              icon-name: "brain-augemnted-symbolic";
+              icon-name: "brain-augmented-symbolic";
               margin-end: 12;
             }
           }
@@ -218,7 +218,7 @@ Adw.NavigationSplitView split_view {
               Adw.PreferencesPage llm_page {
                 Adw.PreferencesGroup {
                   title: _("Large Language Model (LLM)");
-                  description: _("Configure the in-daemon local GGUF model or external server (Ollama / LocalAI).");
+                  description: _("Configure local GGUF, Ollama, OpenAI API, or Anthropic Claude.");
 
                   Adw.SwitchRow llm_enable_row {
                     title: _("Enable LLM Responses");
@@ -227,13 +227,20 @@ Adw.NavigationSplitView split_view {
 
                   Adw.ComboRow llm_mode_row {
                     title: _("Execution Engine");
-                    subtitle: _("Choose between native in-daemon GGUF or external HTTP server");
+                    subtitle: _("Choose between local GGUF, Ollama, OpenAI, or Anthropic");
                     model: Gtk.StringList {
                       strings: [
                         "Local GGUF (In-Daemon Llama 3.2)",
-                        "External HTTP (Ollama / LocalAI)"
+                        "Ollama (Local HTTP)",
+                        "OpenAI Cloud API",
+                        "Anthropic Claude API",
+                        "Custom HTTP Endpoint"
                       ];
                     };
+                  }
+
+                  Adw.EntryRow llm_api_key_row {
+                    title: _("API Key (OpenAI / Anthropic / Groq)");
                   }
 
                   Adw.EntryRow llm_system_prompt_row {
@@ -241,11 +248,11 @@ Adw.NavigationSplitView split_view {
                   }
 
                   Adw.EntryRow llm_url_row {
-                    title: _("Ollama Server URL");
+                    title: _("Server Endpoint URL");
                   }
 
                   Adw.EntryRow llm_model_row {
-                    title: _("Ollama Model Name");
+                    title: _("Model Name");
                   }
                 }
               }
@@ -265,10 +272,16 @@ Adw.NavigationSplitView split_view {
                     title: _("TTS Engine");
                     model: Gtk.StringList {
                       strings: [
-                        "Piper (Local)",
-                        "eSpeak NG"
+                        "Piper (Local ONNX)",
+                        "eSpeak NG",
+                        "OpenAI Cloud TTS",
+                        "System Speech Dispatcher"
                       ];
                     };
+                  }
+
+                  Adw.EntryRow tts_voice_row {
+                    title: _("Voice Model / Name");
                   }
                 }
               }

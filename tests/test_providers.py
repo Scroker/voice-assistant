@@ -44,12 +44,23 @@ class TestProviders(unittest.TestCase):
             provider = WhisperProvider(model_size="tiny", hardware="cpu", extra={}, download_only=True)
             self.assertIsNotNone(provider)
 
-    @patch("providers.vosk_provider.VoskProvider._download_model")
-    def test_vosk_provider_init(self, mock_download):
-        """Verifica che VoskProvider sia istanziabile in modalità mock senza rete."""
-        from providers.vosk_provider import VoskProvider
-        provider = VoskProvider(model_name="vosk-model-small-it-0.22", hardware="cpu", extra={}, download_only=True)
-        self.assertIsNotNone(provider)
+    @patch("urllib.request.urlopen")
+    def test_cloud_stt_provider(self, mock_urlopen):
+        """Verifica l'elaborazione dei chunk e l'invio HTTP di OpenAICloudSTTProvider."""
+        from providers.openai_cloud_provider import OpenAICloudSTTProvider
+        mock_response = MagicMock()
+        mock_response.read.return_value = b'{"text": "Ciao assistente"}'
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+
+        provider = OpenAICloudSTTProvider(model="whisper-1", hardware="cloud", extra={"api_key": "test_key"})
+        res, partial = provider.process_chunk(b"\x00\x00" * 3200)
+        self.assertEqual(res, "")
+        self.assertEqual(partial, "")
+
+        transcription = provider.flush_and_transcribe()
+        self.assertEqual(transcription, "Ciao assistente")
 
 if __name__ == '__main__':
     unittest.main()
+

@@ -1,8 +1,12 @@
 import sys
 import os
 import threading
+import logging
 import numpy as np
+from core.logger import ErrorCollector
 from .base import STTProvider
+
+logger = logging.getLogger("VoiceAssistant.STT.Whisper")
 
 def setup_tqdm_patch():
     if getattr(sys, '_va_patched', False):
@@ -56,7 +60,7 @@ def setup_tqdm_patch():
                     try:
                         info['cb'](pct)
                     except Exception as e:
-                        print(f"Interruzione download callback ({tid}): {e}", flush=True)
+                        logger.warning(f"Interruzione download callback ({tid}): {e}")
                         raise e
             return n
 
@@ -75,14 +79,15 @@ class WhisperProvider(STTProvider):
             self.MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
 
         if not download_only:
-            print(f"Inizializzazione WhisperProvider (Modello: {model_size}, HW: {hardware}, dir: {self.MODELS_DIR})...")
+            logger.info(f"Inizializzazione WhisperProvider (Modello: {model_size}, HW: {hardware}, dir: {self.MODELS_DIR})...")
         else:
-            print(f"Scaricamento background modello Whisper '{model_size}'...")
+            logger.info(f"Scaricamento background modello Whisper '{model_size}'...")
 
         try:
             from faster_whisper import WhisperModel
         except ImportError:
-            print("ERRORE CRITICO: pacchetto faster-whisper non installato.")
+            logger.error("ERRORE CRITICO: pacchetto faster-whisper non installato.")
+            ErrorCollector.record_error(*sys.exc_info(), component="VoiceAssistant.STT.Whisper")
             self.model = None
             raise RuntimeError("Pacchetto 'faster-whisper' non installato.")
 
@@ -105,7 +110,7 @@ class WhisperProvider(STTProvider):
                 for snap in os.listdir(snapshots_dir):
                     snap_path = os.path.join(snapshots_dir, snap)
                     if os.path.exists(os.path.join(snap_path, "model.bin")):
-                        print(f"Migrazione modello Whisper da '{snap_path}' a '{target_dir}'...")
+                        logger.info(f"Migrazione modello Whisper da '{snap_path}' a '{target_dir}'...")
                         shutil.copytree(snap_path, target_dir, dirs_exist_ok=True)
                         shutil.rmtree(old_hf_dir, ignore_errors=True)
                         break
@@ -117,20 +122,21 @@ class WhisperProvider(STTProvider):
 
         try:
             if not (os.path.isdir(target_dir) and os.path.exists(os.path.join(target_dir, "model.bin"))):
-                print(f"Scaricamento modello Whisper '{model_size}' in '{target_dir}'...")
+                logger.info(f"Scaricamento modello Whisper '{model_size}' in '{target_dir}'...")
                 download_model(model_size, output_dir=target_dir)
                 
             if not download_only:
                 self.model = WhisperModel(target_dir, device=device, compute_type=compute_type)
-                print(f"Modello Whisper '{model_folder_name}' caricato con successo da {target_dir}.")
+                logger.info(f"Modello Whisper '{model_folder_name}' caricato con successo da {target_dir}.")
             else:
                 self.model = None
-                print(f"Modello Whisper '{model_folder_name}' scaricato con successo in {target_dir}.")
+                logger.info(f"Modello Whisper '{model_folder_name}' scaricato con successo in {target_dir}.")
         except Exception as e:
-            print(f"Errore caricamento modello Whisper: {e}")
+            logger.error(f"Errore caricamento modello Whisper: {e}")
+            ErrorCollector.record_error(*sys.exc_info(), component="VoiceAssistant.STT.Whisper")
             self.model = None
             if os.path.exists(target_dir) and not os.path.exists(os.path.join(target_dir, "model.bin")):
-                print(f"Rimozione cartella download incompleto per Whisper: {target_dir}")
+                logger.info(f"Rimozione cartella download incompleto per Whisper: {target_dir}")
                 shutil.rmtree(target_dir, ignore_errors=True)
             raise RuntimeError(f"Errore caricamento/download modello Whisper {model_size}: {e}")
         finally:
@@ -158,12 +164,13 @@ class WhisperProvider(STTProvider):
         # Converte byte (int16 PCM) in array numpy float32 normalizzato (-1.0, 1.0)
         audio_np = np.frombuffer(self.audio_buffer, np.int16).flatten().astype(np.float32) / 32768.0
         
-        print(f"Whisper sta trascrivendo {len(audio_np)/16000:.1f} secondi di audio...")
+        logger.info(f"Whisper sta trascrivendo {len(audio_np)/16000:.1f} secondi di audio...")
         try:
             segments, info = self.model.transcribe(audio_np, beam_size=5, language="it")
             text = " ".join([segment.text for segment in segments]).strip()
         except Exception as e:
-            print(f"Errore durante la trascrizione Whisper: {e}")
+            logger.error(f"Errore durante la trascrizione Whisper: {e}")
+            ErrorCollector.record_error(*sys.exc_info(), component="VoiceAssistant.STT.Whisper")
             text = ""
             
         self.audio_buffer.clear()
