@@ -34,26 +34,34 @@ class VoskProvider(STTProvider):
             self.MODELS_DIR = os.path.expanduser(models_dir)
         else:
             self.MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
-        
+
+        stt_dir = os.path.join(self.MODELS_DIR, "stt")
+        os.makedirs(stt_dir, exist_ok=True)
+
         target_name = self.MODEL_MAPPINGS.get(model_name, model_name)
         if not target_name.startswith("vosk-model-"):
             target_name = f"vosk-model-{target_name}"
             
-        model_path = os.path.join(self.MODELS_DIR, target_name)
+        model_path = os.path.join(stt_dir, target_name)
+        legacy_path = os.path.join(self.MODELS_DIR, target_name)
         old_model_path = os.path.expanduser(f"~/.cache/vosk/{target_name}")
         
-        if not os.path.isdir(model_path) and os.path.isdir(old_model_path):
+        if not os.path.isdir(model_path) and os.path.isdir(legacy_path):
+            logger.info(f"Modello trovato nella posizione legacy ({legacy_path}), uso quello.")
+            model_path = legacy_path
+        elif not os.path.isdir(model_path) and os.path.isdir(old_model_path):
             logger.info(f"Modello trovato nella vecchia posizione ({old_model_path}), uso quello.")
             model_path = old_model_path
 
         if download_only:
             logger.info(f"Scaricamento background modello Vosk '{model_name}'...")
             if not (os.path.exists(model_path) and os.path.isdir(model_path)):
-                self._download_model(target_name, model_path, progress_callback)
+                target_dl_path = os.path.join(stt_dir, target_name)
+                self._download_model(target_name, target_dl_path, progress_callback)
             self.model = None
             self.recognizer = None
         else:
-            logger.info(f"Inizializzazione VoskProvider con modello '{model_name}' (dir: {self.MODELS_DIR})...")
+            logger.info(f"Inizializzazione VoskProvider con modello '{model_name}' (dir: {stt_dir})...")
             self.model = self._load_or_download_model(target_name, model_path, progress_callback)
             self.recognizer = KaldiRecognizer(self.model, 16000)
 
@@ -67,7 +75,8 @@ class VoskProvider(STTProvider):
                 logger.info("Rimuovo la cartella corrotta e procedo al download automatico...")
                 shutil.rmtree(model_path, ignore_errors=True)
 
-        return self._download_model(target_name, os.path.join(self.MODELS_DIR, target_name), progress_callback)
+        stt_dir = os.path.join(self.MODELS_DIR, "stt")
+        return self._download_model(target_name, os.path.join(stt_dir, target_name), progress_callback)
 
     def _download_model(self, target_name: str, target_dir: str, progress_callback=None):
         os.makedirs(self.MODELS_DIR, exist_ok=True)

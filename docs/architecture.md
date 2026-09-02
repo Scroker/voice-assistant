@@ -35,13 +35,28 @@ graph TD
 
 ## 1. Il Demone Python (`src/daemon/`)
 
-### Entry Point — `main.py`
+### Struttura attuale del demone
 
-Il processo viene avviato da `start.sh` tramite systemd e si registra sul Session Bus D-Bus come **`org.local.VoiceAssistant`**.
+Il processo viene avviato da `start.sh` tramite systemd e si registra sul Session Bus D-Bus come **`org.local.VoiceAssistant`**. La parte operativa del demone è stata separata in componenti dedicati per ridurre la complessità del punto di ingresso.
 
 | Componente | Ruolo |
 |---|---|
-| `VoiceAssistant` (classe) | Oggetto D-Bus principale. Gestisce stato, audio, provider e inibitori di sospensione |
+| `main.py` | Entry point del daemon; avvia il bootstrap e lascia la logica operativa ai moduli `core/` |
+| `core/power.py` | Gestisce la sospensione del sistema e gli inhibitor logind/GNOME durante i download e lo stato attivo |
+| `core/audio_runtime.py` | Verifica e inizializza l’AEC PipeWire, il dispositivo audio e la stream di input |
+| `core/lifecycle.py` | Concentra gestione dello stato, notifiche e emissione dei segnali D-Bus |
+| `core/provider_manager.py` | Gestisce caricamento provider, download e cleanup dei modelli |
+| `core/service_bootstrap.py` | Pubblica l’oggetto D-Bus e avvia il loop di eventi |
+| `core/runtime_manager.py` | Inizializza settings, wakeword, servizi, pipeline e avvia i thread background |
+| `core/assistant_runtime.py` | Gestisce wakeword, audio loop, trigger assistant e processing del testo |
+| `VoiceAssistant` (classe) | Oggetto D-Bus principale; coordina i componenti e espone i metodi e i segnali |
+
+### Entry Point — `main.py`
+
+Il punto di ingresso è oggi molto più leggero: crea l’istanza della classe principale, inizializza il runtime e registra il servizio sul bus tramite `service_bootstrap.py`.
+
+| Componente | Ruolo |
+|---|---|
 | `audio_callback()` | Callback `sounddevice` che inserisce i chunk PCM in una `queue.Queue` thread-safe |
 | `_audio_loop()` | Thread daemon che consuma la coda e distribuisce i chunk al Wake Word engine o al provider STT |
 | `PowerInhibitor` | Doppio lock (logind FD + GNOME SessionManager cookie) durante il download dei modelli |
@@ -94,9 +109,13 @@ stateDiagram-v2
 
 Il motore Wake Word è **sempre Vosk** con il modello `vosk-model-small-it-0.22`, indipendentemente dal provider STT selezionato per la trascrizione completa. Questo garantisce un consumo di risorsa CPU trascurabile durante il monitoraggio continuo.
 
+Il runtime del wakeword e dell’interazione vocale è oggi gestito da `core/assistant_runtime.py`, che raccoglie l’event loop audio, il trigger dell’assistente e la logica di riconoscimento del comando.
+
 Quando la wakeword (configurabile via GSettings, default: `"assistente"`) viene rilevata nel testo parziale o finale di Vosk, il daemon transisce nello stato `listening` e delega il riconoscimento completo al provider STT configurato dall'utente.
 
 ### Sistema di Pulizia Audio a Runtime & AEC (`AudioFilter` + PipeWire)
+
+L’operazione di setup audio è allocata in `core/audio_runtime.py`, mentre la parte applicativa del filtraggio del segnale resta in `audio/filter.py`. Questo separa il bootstrap del sistema audio dal processamento del flusso PCM.
 
 Per garantire la massima accuratezza di riconoscimento durante la riproduzione audio e in ambienti rumorosi, il sistema applica un'elaborazione audio a due livelli:
 

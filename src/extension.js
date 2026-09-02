@@ -226,6 +226,8 @@ const VoiceAssistantQuickToggle = GObject.registerClass(
 
             this._extension = extension;
 
+            this.menu.setHeader(toggleIcon, _('Voice Assistant'), null);
+
             this.connect('clicked', () => {
                 let isEnabled = this._extension._settings.get_boolean('enabled');
                 this._extension._settings.set_boolean('enabled', !isEnabled);
@@ -250,6 +252,9 @@ const VoiceAssistantQuickToggle = GObject.registerClass(
                 this._extension._openAssistantWindow();
             });
             this.menu.addMenuItem(this._windowItem);
+
+            // Separatore prima di Preferenze
+            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
             // Voce per le preferenze / impostazioni
             this._settingsItem = new PopupMenu.PopupMenuItem(_('Preferenze'));

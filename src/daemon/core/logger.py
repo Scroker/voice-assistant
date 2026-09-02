@@ -6,6 +6,7 @@ Provides:
 - ErrorCollector for crash context capture and JSON report persistence
 - EnvironmentSnapshot for system/environment info collection
 - DiagnosticBundler to create sanitized .tar.gz bundles for GitHub issues
+- Structured context tracing (operation_id, trace_id) for distributed debugging
 """
 import os
 import re
@@ -39,6 +40,30 @@ _HOME_RE = re.compile(re.escape(os.path.expanduser("~")))
 def _sanitize_text(text: str) -> str:
     """Sostituisce il percorso home dell'utente con ~ per privacy."""
     return _HOME_RE.sub("~", text)
+
+
+class ContextTraceFilter(logging.Filter):
+    """
+    Adds operation_id and trace_id to log records for structured tracing.
+    These values come from the current OperationContext.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Add context information to log record."""
+        # Lazily import to avoid circular dependency
+        try:
+            from core.performance_metrics import OperationContext
+            ctx = OperationContext.current()
+            if ctx:
+                record.operation_id = ctx.operation_id
+                record.trace_id = ctx.trace_id
+            else:
+                record.operation_id = "no-ctx"
+                record.trace_id = ""
+        except ImportError:
+            record.operation_id = "no-ctx"
+            record.trace_id = ""
+        return True
 
 
 class ErrorCollector:
@@ -401,22 +426,39 @@ class DiagnosticBundler:
                 pass
 
 
-def setup_logger(name: str = "VoiceAssistant") -> logging.Logger:
+def setup_logger(name: str = "VoiceAssistant", enable_context_tracing: bool = True) -> logging.Logger:
     """
     Configura il sistema di logging gerarchico con output su file rotante e stdout.
     Tutti i sotto-logger (VoiceAssistant.Audio, .LLM, ecc.) propagano al root.
+    
+    Args:
+        name: Nome del logger (default: "VoiceAssistant")
+        enable_context_tracing: Se True, aggiunge operation_id e trace_id ai log
     """
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
 
     if not logger.handlers:
-        file_formatter = logging.Formatter(
-            '[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        console_formatter = logging.Formatter(
-            '[%(levelname)s] [%(name)s]: %(message)s'
-        )
+        # Formatter con context tracing (opzionale)
+        if enable_context_tracing:
+            file_formatter = logging.Formatter(
+                '[%(asctime)s] [%(levelname)s] [%(operation_id)s] [%(name)s]: %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            console_formatter = logging.Formatter(
+                '[%(levelname)s] [%(operation_id)s] [%(name)s]: %(message)s'
+            )
+            # Aggiungi il context filter a tutti gli handler
+            context_filter = ContextTraceFilter()
+        else:
+            file_formatter = logging.Formatter(
+                '[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            console_formatter = logging.Formatter(
+                '[%(levelname)s] [%(name)s]: %(message)s'
+            )
+            context_filter = None
 
         # File Handler (5 MB max per file, 3 copie di backup)
         file_handler = RotatingFileHandler(
@@ -427,12 +469,16 @@ def setup_logger(name: str = "VoiceAssistant") -> logging.Logger:
         )
         file_handler.setFormatter(file_formatter)
         file_handler.setLevel(logging.DEBUG)
+        if context_filter:
+            file_handler.addFilter(context_filter)
         logger.addHandler(file_handler)
 
         # Console Handler (per journalctl / stdout)
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(console_formatter)
         console_handler.setLevel(logging.INFO)
+        if context_filter:
+            console_handler.addFilter(context_filter)
         logger.addHandler(console_handler)
 
     return logger

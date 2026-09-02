@@ -13,6 +13,120 @@ from typing import Generator, Optional, Dict, Any
 
 logger = logging.getLogger("VoiceAssistant.LLM")
 
+def fetch_huggingface_models(query: str = "", limit: int = 100) -> list:
+    """
+    Effettua una query alle API REST di Hugging Face per cercare o elencare i modelli GGUF più popolari.
+    """
+    base_url = "https://huggingface.co/api/models?filter=gguf&sort=downloads&direction=-1&limit=" + str(limit)
+    if query.strip():
+        base_url += f"&search={urllib.parse.quote(query.strip())}"
+
+    models = []
+    seen_ids = set()
+
+    try:
+        req = urllib.request.Request(base_url, headers={"User-Agent": "Mozilla/5.0 VoiceAssistant/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            for item in data:
+                repo_id = item.get("id") or item.get("modelId")
+                if not repo_id:
+                    continue
+                repo_name = repo_id.split("/")[-1]
+                clean_name = repo_name.replace("-GGUF", "").replace("-gguf", "")
+                filename = f"{clean_name}-Q4_K_M.gguf"
+                model_id = f"{repo_id}:{filename}"
+                if model_id not in seen_ids and filename not in seen_ids:
+                    seen_ids.add(model_id)
+                    downloads = item.get("downloads", 0)
+                    likes = item.get("likes", 0)
+                    models.append({
+                        "id": model_id,
+                        "provider": "llm",
+                        "name": repo_id,
+                        "subtitle": f"Hugging Face • {downloads:,} downloads • {likes} likes",
+                        "repo": repo_id,
+                        "file": filename,
+                        "size_text": "GGUF",
+                        "url": f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
+                    })
+    except Exception as e:
+        logger.warning(f"Impossibile interrogare Hugging Face API: {e}")
+
+    return models
+
+def download_llm_model(model_name: str, progress_callback=None, models_dir: Optional[str] = None) -> str:
+    models_dir = models_dir or os.path.expanduser("~/.local/share/voice-assistant/models/llm")
+    os.makedirs(models_dir, exist_ok=True)
+
+    repo = None
+    filename = None
+    url = None
+
+    if ":" in model_name:
+        repo, filename = model_name.split(":", 1)
+        url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
+    elif "/" in model_name:
+        parts = model_name.split("/")
+        if len(parts) >= 2 and parts[-1].endswith(".gguf"):
+            repo = "/".join(parts[:-1])
+            filename = parts[-1]
+            url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
+        elif len(parts) == 2:
+            repo = model_name
+            try:
+                tree_url = f"https://huggingface.co/api/models/{repo}/tree/main"
+                t_req = urllib.request.Request(tree_url, headers={"User-Agent": "Mozilla/5.0 VoiceAssistant/1.0"})
+                with urllib.request.urlopen(t_req, timeout=5) as t_resp:
+                    tree_data = json.loads(t_resp.read().decode("utf-8"))
+                    gguf_files = [f for f in tree_data if isinstance(f, dict) and f.get("path", "").endswith(".gguf")]
+                    if gguf_files:
+                        q4 = next((f for f in gguf_files if "q4_k_m" in f["path"].lower() or "q4_0" in f["path"].lower()), gguf_files[0])
+                        filename = q4["path"]
+                        url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
+            except Exception as e:
+                logger.warning(f"Errore ispezione repo tree Hugging Face per {repo}: {e}")
+
+    if not url:
+        repo = f"bartowski/{model_name.replace('.gguf', '')}-GGUF" if "/" not in model_name else model_name
+        filename = model_name if model_name.endswith(".gguf") else f"{model_name}.gguf"
+        url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
+
+    target_path = os.path.join(models_dir, filename)
+    if os.path.exists(target_path) and os.path.getsize(target_path) > 10000000:
+        if progress_callback:
+            progress_callback(model_name, 100)
+        return target_path
+
+    logger.info(f"[download_llm_model] Download {filename} da {repo} ({url})...")
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 VoiceAssistant/1.0"})
+        with urllib.request.urlopen(req) as resp, open(target_path, "wb") as f:
+            total_len = resp.headers.get("Content-Length")
+            total_size = int(total_len) if total_len else 0
+            downloaded = 0
+            block_size = 1024 * 1024
+            while True:
+                buffer = resp.read(block_size)
+                if not buffer:
+                    break
+                downloaded += len(buffer)
+                f.write(buffer)
+                if total_size > 0 and progress_callback:
+                    pct = int((downloaded / total_size) * 100)
+                    progress_callback(model_name, min(99, max(0, pct)))
+        if progress_callback:
+            progress_callback(model_name, 100)
+        return target_path
+    except Exception as e:
+        logger.error(f"[download_llm_model] Errore download HTTP: {e}")
+        if os.path.exists(target_path):
+            try:
+                os.remove(target_path)
+            except Exception:
+                pass
+        raise e
+
 class LocalGGUFProvider:
     """
     In-Daemon LLM Runner for GGUF models using llama-cpp-python and HuggingFace download.
@@ -30,22 +144,7 @@ class LocalGGUFProvider:
 
     def ensure_model_downloaded(self, repo_id: str = DEFAULT_MODEL_REPO, filename: str = DEFAULT_MODEL_FILE) -> str:
         """Scarica il file GGUF da HuggingFace se non è presente in locale."""
-        model_path = os.path.join(self.models_dir, filename)
-        if os.path.exists(model_path) and os.path.getsize(model_path) > 0:
-            return model_path
-
-        logger.info(f"[LocalGGUF] Scaricamento del modello GGUF '{filename}' da {repo_id}...")
-        try:
-            from huggingface_hub import hf_hub_download
-            downloaded_path = hf_hub_download(
-                repo_id=repo_id,
-                filename=filename,
-                local_dir=self.models_dir
-            )
-            return downloaded_path
-        except Exception as e:
-            logger.error(f"[LocalGGUF] Errore durante il download da HuggingFace: {e}")
-            raise e
+        return download_llm_model(filename, models_dir=self.models_dir)
 
     def load_model(self, model_file: str = DEFAULT_MODEL_FILE):
         model_path = self.ensure_model_downloaded(filename=model_file)

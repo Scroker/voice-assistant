@@ -7,7 +7,39 @@
 
 ## 1. Modularization of the Python Daemon (`src/daemon/`)
 
-Currently, `src/daemon/main.py` handles the D-Bus bus interface, PyGObject main loop, Pipewire audio capture, VAD/Wakeword detection, STT invocation, LLM communication, TTS playback, and download management in a single module.
+The daemon has already been partially refactored away from the monolithic `main.py` pattern. Responsibilities are now separated into focused modules so that the entry point remains a lightweight bootstrap and the operational logic is delegated to dedicated runtime components.
+
+### Current Modular Structure (Implemented)
+
+```text
+src/daemon/
+├── main.py                     # Entry point and lightweight bootstrap
+├── core/
+│   ├── state.py                # Centralized state machine
+│   ├── power.py                # Sleep inhibition / logind lock management
+│   ├── audio_runtime.py        # PipeWire AEC + input device + stream lifecycle
+│   ├── lifecycle.py            # State change emission and notifications
+│   ├── provider_manager.py     # STT/LLM provider loading + model download handling
+│   ├── service_bootstrap.py    # D-Bus service publication and EventLoop startup
+│   ├── runtime_manager.py      # Startup orchestration for settings, services and pipeline
+│   ├── assistant_runtime.py    # Wakeword, audio loop and conversational processing
+│   └── pipeline.py             # Streaming pipeline controller
+├── audio/
+│   ├── filter.py               # DSP filter and noise gate
+│   └── player.py               # Audio playback queue
+├── services/
+│   ├── llm_service.py          # LLM service manager
+│   ├── tts_service.py          # TTS engine abstraction
+│   └── ...
+├── gui/
+│   └── assistant_window.py     # Assistant window
+├── providers/
+│   └── ...
+└── mcp/
+    └── ...
+```
+
+This structure reflects the refactoring already completed in the codebase and continues the intended evolution described by the roadmap.
 
 ### Proposed Directory & Module Structure
 
@@ -145,7 +177,21 @@ Se durante lo streaming dei token l'LLM decide di chiamare un tool MCP (es. `{"t
 
 ---
 
-### 2.3 Scheletro di Implementazione (`core/pipeline.py`)
+### 2.3 Moduli già creati nel refactor attuale
+
+I seguenti componenti sono stati già introdotti come parte del refactor iniziale e sono responsabili di blocchi funzionali distinti del demone:
+
+- `core/power.py`: gestione del lock di sospensione e inhibitor del power management
+- `core/audio_runtime.py`: setup del dispositivo audio, verifica PipeWire AEC e gestione delle stream di input
+- `core/lifecycle.py`: transizioni di stato, notifiche e emissione dei segnali D-Bus
+- `core/provider_manager.py`: bootstrap, download, rinomina e cleanup dei modelli dei provider
+- `core/service_bootstrap.py`: pubblicazione dell’oggetto sul bus D-Bus e loop di eventi
+- `core/runtime_manager.py`: inizializzazione del demone, settings, wakeword, services e pipeline
+- `core/assistant_runtime.py`: attivazione assistant, wakeword, loop audio e processing del testo
+
+Questi moduli riducono la complessità di `main.py` e allineano il progetto alla separazione di responsabilità indicata dal piano di evoluzione.
+
+### 2.4 Scheletro di Implementazione (`core/pipeline.py`)
 
 ```python
 import asyncio
@@ -301,6 +347,86 @@ class ModelManager:
 ### 4.4 D-Bus Resource Metrics & Monitoring
 
 The daemon exposes real-time RAM/VRAM memory metrics over D-Bus (`GetResourceMetrics()`), allowing the GNOME Extension Preferences UI to display active memory consumption to the user.
+
+---
+
+## 4.5 Gap Realistici tra Roadmap e Stato Attuale del Progetto
+
+La roadmap descrive un’evoluzione ambiziosa verso un assistente vocale modulare, semantico e streaming-first. Il codice attuale ha già realizzato la base di un MVP valido, ma esistono differenze concrete tra il piano architetturale e l’implementazione effettiva.
+
+### Stato attuale osservabile
+
+Il progetto presenta già:
+- wakeword e riconoscimento vocale con provider multipli (Vosk/Whisper)
+- gestione settings live via GSettings
+- pipeline di fast-path per comandi diretti
+- supporto MCP nativo e server esterni configurabili
+- servizio LLM con streaming e tool-call parsing
+- classi di supporto per memoria, pipeline e modello, anche se non ancora integrate in modo completo
+
+Tuttavia, la struttura attuale è ancora molto più vicina a un monolite funzionale che a un sistema pienamente modulare.
+
+### Progressi reali ottenuti con il refactor iniziale
+
+Il lavoro di modularizzazione ha già separato alcune responsabilità dal file principale:
+- `PowerInhibitor` è stato estratto in `src/daemon/core/power.py`
+- la gestione del microfono e del modulo PipeWire AEC è stata spostata in `src/daemon/core/audio_runtime.py`
+- la logica di lifecycle e transizioni di stato è stata isolata in `src/daemon/core/lifecycle.py`
+- la gestione dei provider STT/LLM, download e annullamento modelli è stata raccolta in `src/daemon/core/provider_manager.py`
+
+Questo riduce il carico di `src/daemon/main.py` e allinea il progetto verso la struttura voluta dalla roadmap, senza cambiare il comportamento produttivo del demone.
+
+> [!NOTE]
+> Verifica eseguita: `python3 -m py_compile src/daemon/main.py src/daemon/core/power.py src/daemon/core/audio_runtime.py src/daemon/core/lifecycle.py src/daemon/core/provider_manager.py` → esito positivo (exit code 0).
+
+### Gap principali
+
+1. **Modularizzazione incompleta**
+   - Il cuore del sistema continua a risiedere in `src/daemon/main.py`.
+   - La logica di audio, STT, wakeword, TTS, LLM, download e D-Bus è ancora fortemente accoppiata.
+   - La roadmap propone una separazione chiara tra `core/`, `audio/`, `services/`, `mcp/`, `skills/` e `gui/`, ma il codice attuale non ha ancora raggiunto quell’assetto.
+
+2. **Streaming pipeline avanzata solo parzialmente implementata**
+   - Esistono `SentenceAggregator` e `FastPathDispatcher`, ma non una pipeline concorrente completa con: GUI live, TTS chunked, queue audio, multi-stage execution e controllo di interruzione.
+   - Il sistema è più vicino a un modello semplificato “token-by-token + sintesi finale” che a un flusso realmente streaming e concorrente.
+
+3. **Vector intent matching assente**
+   - Il fast-path è basato su regex e pattern deterministici, non su embeddings semantici.
+   - Non sono presenti componenti come `embedding_service.py`, `vector_store.py`, `skill_registry.py` o `VectorIntentMatcher` operativi.
+   - Questo limita fortemente la capacità di gestire frasi colloquiali, varianti linguistiche e comandi indiretti senza LLM.
+
+4. **MCP marketplace e tool discovery non ancora mature**
+   - La configurazione `mcp_servers.json` è presente e supportata, così come la registrazione di tool nativi.
+   - Ma la roadmap prevede discovery remota, marketplace, installazione 1-click e gestione avanzata di server esterni; oggi questo è incompleto o solo abbozzato.
+
+5. **ModelManager non ancora integrato come entità di runtime**
+   - Il file `core/model_manager.py` esiste, ma è più un componente di supporto che una componente attiva del lifecycle del daemon.
+   - Non è ancora usato come motore di lazy-loading, unload automatico e gestione memory in contesto reale della sessione.
+
+6. **Skills engine e workflow declarativi mancanti**
+   - La roadmap descrive un sistema di `SKILL.md` con parser YAML e executor offline.
+   - Non esiste ancora un vero registry di skill, parsing dichiarativo e meccanismo di trigger basato su intent/embedding.
+
+### Implicazione pratica
+
+Il progetto ha già superato la fase “prototipo tecnico” e si sta muovendo verso un assistente vocale locale utile. Tuttavia, per raggiungere il livello descritto nella roadmap serve un secondo step di maturazione:
+- separare davvero i componenti,
+- introdurre semantic dispatch,
+- realizzare pipeline streaming concorrente,
+- integrare un vero lifecycle di risorse e tool discovery,
+- trasformare il sistema da “funzionale” a “architetturalmente sostenibile”.
+
+### Priorità consigliate
+
+1. **Alta priorità**: modularizzazione di `main.py` e centralizzazione dello state machine
+2. **Alta priorità**: completamento della pipeline streaming reale (GUI + TTS + audio queue)
+3. **Alta priorità**: semantic fast-path via embeddings / skill matching
+4. **Media priorità**: marketplace MCP e UI di configurazione
+5. **Media priorità**: ModelManager integrato nel lifecycle runtime
+6. **Bassa/Media priorità**: skill engine declarative e documentazione di estensione
+
+> [!IMPORTANT]
+> La roadmap non rappresenta un obiettivo astratto: è la mappa del passaggio dal MVP attuale a un assistente realmente scalabile, performante e facilmente estendibile. Il lavoro più critico oggi è consolidare l’architettura, non solo aggiungere feature.
 
 ---
 
@@ -604,13 +730,66 @@ To maintain code stability across GNOME Shell versions (GNOME 45–48+) and prev
 | **State Machine** | Thread-safe state transitions & callback propagation | `tests/test_core_state.py` |
 | **Audio & VAD** | Silence detection timeouts & non-blocking player queue | `tests/test_audio.py` |
 | **Model Downloader** | Async download monitoring, cancellation, & progress signals | `tests/test_services_downloader.py` |
-| **Streaming Pipeline** | Sentence boundary aggregator (`.`, `!`, `?`, `\n`) & LLM stream | `tests/test_pipeline.py` |
-| **Skills Engine** | `SKILL.md` YAML frontmatter parsing & vector match threshold | `tests/test_skills.py` |
+| **Streaming Pipeline** | Sentence boundary aggregator (`.`, `!`, `?`, `\n`) & LLM stream | `tests/test_core_pipeline.py` |
+| **Runtime & Bootstrap** | Core module initialization, provider loading, signal handling | `tests/test_core_runtime.py` |
+| **Assistant Runtime** | Wakeword detection, audio loop resilience, STT integration | `tests/test_assistant_runtime.py` |
+| **Listening Loop** | Partial speech timeouts, provider safety, chime sample rate | `tests/test_listening_loop_resilience.py` |
 | **MCP Engine** | Native GNOME tools (`volume`, `dark_mode`) & JSON-RPC protocol | `tests/test_mcp.py` |
+| **MCP + LLM Integration** | Tool execution within streaming LLM responses | `tests/test_mcp_llm_integration.py` |
+| **GUI Assistant Window** | Window lifecycle and state binding | `tests/test_gui.py` |
+| **E2E Pipeline Integration** | Full flow: Audio → STT → LLM → TTS with latency measurement | `tests/test_e2e_pipeline_integration.py` |
+| **Performance Metrics** | Context tracing, latency measurement, performance thresholds | `tests/test_performance_metrics.py` |
 
 ---
 
-### 12.3 Automated GitHub Actions CI/CD Pipeline (`.github/workflows/ci.yml`)
+### 12.3 Structured Logging & Performance Metrics (`core/performance_metrics.py`)
+
+**Goal**: Auto-instrument pipeline operations for latency tracking and distributed tracing.
+
+#### Features:
+- **OperationContext**: Thread-safe context manager for correlating related operations (Audio → STT → LLM → TTS).
+  - Each operation gets unique `operation_id` and `trace_id` for request tracing.
+  - Sub-operations recorded as metrics within the context.
+  
+- **@measure_latency Decorator**: Automatically measure function execution time and check performance thresholds.
+  ```python
+  @measure_latency("stt_processing", component="STT")
+  def process_audio_chunk(audio_data):
+      return recognizer.process(audio_data)
+  ```
+
+- **PerformanceMonitor**: Central metrics aggregation with threshold checking and report generation.
+  - Configurable latency thresholds (e.g., STT < 500ms, LLM first token < 1s).
+  - Performance reports with min/max/avg/p95 latency statistics.
+  - JSON export for analysis and monitoring dashboards.
+
+- **ContextTraceFilter**: Logging filter that injects `operation_id` into all log records for distributed tracing.
+  - Log output: `[INFO] [op_12ab34cd] [VoiceAssistant.STT]: Processing complete`
+
+#### Example Integration:
+```python
+from core.performance_metrics import OperationContext, measure_latency, get_performance_monitor
+
+# Wrap a complete pipeline flow
+with OperationContext("e2e_flow", component="Pipeline") as ctx:
+    # Auto-measure function
+    @measure_latency("audio_capture", component="Audio")
+    def capture_audio():
+        return device.read(chunk_size)
+    
+    audio = capture_audio()
+    ctx.record_metric("vad_check", 15.5, status="success", confidence=0.92)
+    # ... more operations
+
+# Get performance report
+monitor = get_performance_monitor()
+report = monitor.get_performance_report()
+monitor.export_metrics_json("/tmp/metrics.json")
+```
+
+---
+
+### 12.4 Automated GitHub Actions CI/CD Pipeline (`.github/workflows/ci.yml`)
 
 ```yaml
 name: CI Test Suite

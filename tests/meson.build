@@ -54,3 +54,43 @@ test('test_logger', python3,
   args: [files('test_logger.py')],
   workdir: meson.project_source_root()
 )
+
+test('test_core_runtime', python3,
+  args: [files('test_core_runtime.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_assistant_runtime', python3,
+  args: [files('test_assistant_runtime.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_listening_loop_resilience', python3,
+  args: [files('test_listening_loop_resilience.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_mcp', python3,
+  args: [files('test_mcp.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_mcp_llm_integration', python3,
+  args: [files('test_mcp_llm_integration.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_gui', python3,
+  args: [files('test_gui.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_e2e_pipeline_integration', python3,
+  args: [files('test_e2e_pipeline_integration.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_performance_metrics', python3,
+  args: [files('test_performance_metrics.py')],
+  workdir: meson.project_source_root()
+)

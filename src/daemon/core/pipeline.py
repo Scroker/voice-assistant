@@ -1,5 +1,18 @@
 """
 Streaming Audio & LLM Response Pipeline with Fast-Path Intent Dispatcher
+
+Performance Metrics Integration:
+    This module can be instrumented with performance_metrics decorators:
+    
+    Example:
+        from core.performance_metrics import OperationContext, measure_latency
+        
+        with OperationContext("stt_processing", component="STT") as ctx:
+            # STT processing here
+            ctx.record_metric("vosk_decode", 150.5, status="success")
+            ctx.record_metric("confidence_check", 50.2, status="success")
+        
+        # Log output will include operation_id for tracing
 """
 import re
 import logging

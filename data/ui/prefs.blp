@@ -159,12 +159,42 @@ Adw.NavigationSplitView split_view {
 
               // 2. STT PAGE
               Adw.PreferencesPage stt_page {
-                Adw.PreferencesGroup {
-                  title: _("Speech-to-Text Engine (STT)");
-                  description: _("Configure the engine and model for speech-to-text transcription.");
+                Adw.PreferencesGroup stt_mode_group {
+                  title: _("Speech Recognition Mode");
+                  description: _("Select whether to process voice locally on device or via a cloud API service.");
+
+                  Adw.ActionRow stt_mode_local_row {
+                    title: _("Local Models (Vosk / Whisper)");
+                    subtitle: _("Offline speech recognition processed locally on device");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton stt_mode_local_radio {
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow stt_mode_cloud_row {
+                    title: _("Cloud Service (OpenAI / Groq)");
+                    subtitle: _("High-accuracy online speech recognition via API");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton stt_mode_cloud_radio {
+                      group: stt_mode_local_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+                }
+
+                Adw.PreferencesGroup stt_local_group {
+                  title: _("Local STT Model Configuration");
+                  description: _("Configure offline model execution.");
 
                   Adw.ActionRow current_model_row {
-                    title: _("Active STT Model");
+                    title: _("Active Local STT Model");
                     subtitle: _("Loading information...");
                     activatable: true;
 
@@ -180,6 +210,44 @@ Adw.NavigationSplitView split_view {
                       valign: center;
                       styles ["flat"]
                     }
+                  }
+                }
+
+                Adw.PreferencesGroup stt_cloud_group {
+                  title: _("Cloud STT Provider");
+                  description: _("Choose provider and API credentials for Cloud STT.");
+
+                  Adw.ActionRow stt_cloud_openai_row {
+                    title: _("OpenAI Whisper Cloud");
+                    subtitle: _("api.openai.com");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton stt_cloud_openai_radio {
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow stt_cloud_groq_row {
+                    title: _("Groq Whisper Cloud");
+                    subtitle: _("api.groq.com");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton stt_cloud_groq_radio {
+                      group: stt_cloud_openai_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.EntryRow stt_cloud_api_key_row {
+                    title: _("API Key");
+                  }
+
+                  Adw.EntryRow stt_cloud_model_row {
+                    title: _("Cloud Model Name");
                   }
                 }
 
@@ -218,29 +286,122 @@ Adw.NavigationSplitView split_view {
               Adw.PreferencesPage llm_page {
                 Adw.PreferencesGroup {
                   title: _("Large Language Model (LLM)");
-                  description: _("Configure local GGUF, Ollama, OpenAI API, or Anthropic Claude.");
+                  description: _("Enable and configure text generation capabilities.");
 
                   Adw.SwitchRow llm_enable_row {
                     title: _("Enable LLM Responses");
                     subtitle: _("Send voice transcriptions to the LLM to generate intelligent responses");
                   }
+                }
 
-                  Adw.ComboRow llm_mode_row {
-                    title: _("Execution Engine");
-                    subtitle: _("Choose between local GGUF, Ollama, OpenAI, or Anthropic");
-                    model: Gtk.StringList {
-                      strings: [
-                        "Local GGUF (In-Daemon Llama 3.2)",
-                        "Ollama (Local HTTP)",
-                        "OpenAI Cloud API",
-                        "Anthropic Claude API",
-                        "Custom HTTP Endpoint"
-                      ];
-                    };
+                Adw.PreferencesGroup llm_mode_group {
+                  title: _("Execution Engine");
+                  description: _("Select how the language model is executed.");
+
+                  Adw.ActionRow llm_mode_local_row {
+                    title: _("Local GGUF (In-Daemon Llama 3.2)");
+                    subtitle: _("Runs locally within Python daemon");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton llm_mode_local_radio {
+                      valign: center;
+                      margin-end: 12;
+                    }
                   }
 
+                  Adw.ActionRow llm_mode_ollama_row {
+                    title: _("Ollama (Local HTTP)");
+                    subtitle: _("Connect to local Ollama instance");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton llm_mode_ollama_radio {
+                      group: llm_mode_local_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow llm_mode_openai_row {
+                    title: _("OpenAI Cloud API");
+                    subtitle: _("ChatGPT models via api.openai.com");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton llm_mode_openai_radio {
+                      group: llm_mode_local_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow llm_mode_anthropic_row {
+                    title: _("Anthropic Claude API");
+                    subtitle: _("Claude 3.5 models via api.anthropic.com");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton llm_mode_anthropic_radio {
+                      group: llm_mode_local_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow llm_mode_custom_row {
+                    title: _("Custom HTTP Endpoint");
+                    subtitle: _("Custom OpenAI-compatible API server");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton llm_mode_custom_radio {
+                      group: llm_mode_local_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+                }
+
+                Adw.PreferencesGroup llm_local_group {
+                  title: _("Local LLM Model Configuration");
+                  description: _("Configure offline GGUF model execution.");
+
+                  Adw.ActionRow current_llm_model_row {
+                    title: _("Active Local LLM Model");
+                    subtitle: _("Loading information...");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.Image {
+                      icon-name: "brain-augmented-symbolic";
+                      margin-end: 12;
+                    }
+
+                    [suffix]
+                    Gtk.Button open_llm_model_selector_btn {
+                      icon-name: "go-next-symbolic";
+                      valign: center;
+                      styles ["flat"]
+                    }
+                  }
+                }
+
+                Adw.PreferencesGroup llm_hf_custom_group {
+                  title: _("Hugging Face Repository Download");
+                  description: _("Download any GGUF model directly from Hugging Face by entering the repository ID or model path (e.g. bartowski/Llama-3.2-1B-Instruct-GGUF or repo_id:file.gguf)");
+
+                  Adw.EntryRow custom_hf_entry_row {
+                    title: _("Import Hugging Face Model");
+                    show-apply-button: true;
+                  }
+                }
+
+                Adw.PreferencesGroup llm_config_group {
+                  title: _("Engine Configuration");
+
                   Adw.EntryRow llm_api_key_row {
-                    title: _("API Key (OpenAI / Anthropic / Groq)");
+                    title: _("API Key");
                   }
 
                   Adw.EntryRow llm_system_prompt_row {
@@ -267,18 +428,66 @@ Adw.NavigationSplitView split_view {
                     title: _("Enable Speech Synthesis");
                     subtitle: _("Play assistant response through speakers");
                   }
+                }
 
-                  Adw.ComboRow tts_engine_row {
-                    title: _("TTS Engine");
-                    model: Gtk.StringList {
-                      strings: [
-                        "Piper (Local ONNX)",
-                        "eSpeak NG",
-                        "OpenAI Cloud TTS",
-                        "System Speech Dispatcher"
-                      ];
-                    };
+                Adw.PreferencesGroup tts_engine_group {
+                  title: _("TTS Engine");
+                  description: _("Select speech synthesis provider.");
+
+                  Adw.ActionRow tts_engine_piper_row {
+                    title: _("Piper (Local ONNX)");
+                    subtitle: _("Fast local neural speech synthesis");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton tts_engine_piper_radio {
+                      valign: center;
+                      margin-end: 12;
+                    }
                   }
+
+                  Adw.ActionRow tts_engine_espeak_row {
+                    title: _("eSpeak NG");
+                    subtitle: _("Lightweight local formant synthesizer");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton tts_engine_espeak_radio {
+                      group: tts_engine_piper_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow tts_engine_openai_row {
+                    title: _("OpenAI Cloud TTS");
+                    subtitle: _("High quality cloud speech synthesis");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton tts_engine_openai_radio {
+                      group: tts_engine_piper_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow tts_engine_system_row {
+                    title: _("System Speech Dispatcher");
+                    subtitle: _("Default OS speech synthesis engine");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton tts_engine_system_radio {
+                      group: tts_engine_piper_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+                }
+
+                Adw.PreferencesGroup tts_config_group {
+                  title: _("Voice Configuration");
 
                   Adw.EntryRow tts_voice_row {
                     title: _("Voice Model / Name");
@@ -420,7 +629,7 @@ Adw.NavigationSplitView split_view {
                   Adw.ViewStackPage page_all {
                     name: "all";
                     title: _("All");
-                    icon-name: "emblem-documents-symbolic";
+                    icon-name: "brain-augmented-symbolic";
 
                     child: Adw.PreferencesGroup models_group_all {
                       title: _("Available Models");
