@@ -136,6 +136,7 @@ class DaemonRuntimeManager:
             audio_player=self.owner.audio_player,
             llm_streamer=lambda prompt: self.owner.llm_service.stream_tokens(prompt),
             tts_engine=_on_tts_engine,
+            mcp_manager=self.owner.mcp_manager,
         )
         self.owner.pipeline_controller.on_token_callback = self.owner._on_llm_token
         self.owner.pipeline_controller.fast_path.intent_handler = self.owner._handle_fast_path_intent

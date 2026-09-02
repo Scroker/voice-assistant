@@ -188,7 +188,7 @@ class StreamingPipelineController:
                 if matched:
                     # Execute fast-path intent
                     success, response = self.owner.fast_path_controller._handle_fast_path_intent(
-                        intent_name, params
+                        intent_name, params, text
                     )
                     return {
                         "matched": matched,

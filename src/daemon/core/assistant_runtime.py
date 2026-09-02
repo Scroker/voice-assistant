@@ -6,7 +6,22 @@ import logging
 import threading
 import time
 
-from gi.repository import GLib
+try:
+    from gi.repository import GLib
+except Exception:  # pragma: no cover - optional in minimal test envs
+    class _DummyGLib:
+        @staticmethod
+        def idle_add(*args, **kwargs):
+            return None
+
+        @staticmethod
+        def timeout_add(*args, **kwargs):
+            return None
+
+    GLib = _DummyGLib()
+
+from skills.skill_registry import SkillRegistry
+from skills.skill_executor import SkillExecutor
 
 logger = logging.getLogger("VoiceAssistant.AssistantRuntime")
 
@@ -16,8 +31,30 @@ class AssistantRuntimeController:
 
     def __init__(self, owner):
         self.owner = owner
+        self.skill_registry = SkillRegistry.from_default_directory()
 
-    def _handle_fast_path_intent(self, intent_name: str, params):
+    def _execute_skill(
+        self, skill_name: str, user_text: str, use_llm_fallback: bool = True
+    ):
+        """Execute a markdown skill with tool mapping and optional LLM fallback."""
+        skill = self.skill_registry.find_by_intent(skill_name)
+        if not skill:
+            return (False, f"Skill {skill_name} non trovata.")
+
+        executor = SkillExecutor(skill)
+        llm_fallback = None
+        if use_llm_fallback and hasattr(self.owner, "llm_service"):
+            try:
+                llm_fallback = lambda prompt: self.owner.llm_service.get_response(prompt)
+            except Exception:
+                pass
+
+        success, response, result = executor.execute(
+            user_text, mcp_manager=self.owner.mcp_manager, llm_fallback=llm_fallback
+        )
+        return (success, response)
+
+    def _handle_fast_path_intent(self, intent_name: str, params, text: str = ""):
         if not self.owner.mcp_manager:
             return (False, "")
 
@@ -57,6 +94,46 @@ class AssistantRuntimeController:
             elif intent_name == "media_play":
                 res = self.owner.mcp_manager.execute_tool("system_media", {"action": "play"})
                 return (True, res)
+            elif intent_name == "system_control":
+                if text:
+                    success, response = self._execute_skill("system_control", text)
+                    return (success, response)
+                action = str(params.get("action", params.get("mode", "") or "")).lower()
+                if action in {"volume_up", "increase", "up"}:
+                    res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "increase", "level": 10})
+                    return (True, res)
+                if action in {"volume_down", "decrease", "down"}:
+                    res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "decrease", "level": 10})
+                    return (True, res)
+                if action in {"mute", "silence", "silent"}:
+                    res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "mute"})
+                    return (True, res)
+                if action in {"theme_dark", "dark", "set_theme_dark"}:
+                    res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "dark"})
+                    return (True, res)
+                if action in {"theme_light", "light", "set_theme_light"}:
+                    res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "light"})
+                    return (True, res)
+                app_name = params.get("app") or params.get("app_name") or "firefox"
+                if action in {"launch_app", "app", "open_app"}:
+                    res = self.owner.mcp_manager.execute_tool("app_launcher", {"app_name": app_name})
+                    return (True, res)
+                return (False, "")
+            elif intent_name == "theme_control":
+                if text:
+                    success, response = self._execute_skill("theme_control", text)
+                    return (success, response)
+                mode = params.get("mode")
+                if mode is None and params.get("dark") is not None:
+                    mode = "dark" if params.get("dark") else "light"
+                mode = str(mode).lower() if mode is not None else "dark"
+                if mode in {"dark", "night", "black"}:
+                    res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "dark"})
+                    return (True, res)
+                if mode in {"light", "day", "white"}:
+                    res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "light"})
+                    return (True, res)
+                return (False, "")
         except Exception as e:
             logger.error(f"Errore esecuzione Fast-Path MCP: {e}")
 

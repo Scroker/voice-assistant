@@ -1,0 +1,13 @@
+{
+  "intent": "volume_up",
+  "name": "System Control",
+  "triggers": [
+    "alza il volume",
+    "aumenta il volume",
+    "metti più forte",
+    "alza un po' il volume",
+    "più forte",
+    "rendi più alto il volume"
+  ],
+  "params": {"delta": 10, "volume": 60}
+}

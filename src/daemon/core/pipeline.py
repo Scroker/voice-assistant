@@ -18,6 +18,9 @@ import re
 import logging
 from typing import Callable, Optional, Dict, Any, List, Tuple
 from .state import StateMachine, AssistantState
+from .smart_path_controller import SmartPathController
+from skills.vector_intent_matcher import VectorIntentMatcher
+from skills.skill_registry import SkillRegistry
 
 logger = logging.getLogger("VoiceAssistant.Pipeline")
 
@@ -128,11 +131,15 @@ class FastPathDispatcher:
 
     def __init__(self, intent_handler: Optional[Callable[[str, Dict[str, Any]], Tuple[bool, str]]] = None):
         self.intent_handler = intent_handler
+        self.vector_matcher = VectorIntentMatcher(SkillRegistry.from_default_directory())
 
     def dispatch(self, text: str) -> Tuple[bool, Optional[str], Dict[str, Any], Optional[str]]:
         """
         Analizza il testo. Se corrisponde a un intent Fast-Path, lo esegue e restituisce:
         (matched: bool, intent_name: str|None, params: dict, response_text: str|None)
+
+        Questo mantiene il comportamento deterministico del regex, ma aggiunge un fallback
+        semantico offline per varianti colloquiali non esplicitamente matchate.
         """
         clean_text = text.strip().lower()
         if not clean_text:
@@ -149,7 +156,7 @@ class FastPathDispatcher:
             response_text = f"Volume del sistema impostato al {val}%."
             if self.intent_handler:
                 try:
-                    success, custom_resp = self.intent_handler('set_volume', params)
+                    success, custom_resp = self.intent_handler('set_volume', params, clean_text)
                     if custom_resp:
                         response_text = custom_resp
                 except Exception as e:
@@ -165,13 +172,42 @@ class FastPathDispatcher:
                 
                 if self.intent_handler:
                     try:
-                        success, custom_resp = self.intent_handler(intent_name, params)
+                        success, custom_resp = self.intent_handler(intent_name, params, clean_text)
                         if custom_resp:
                             response_text = custom_resp
                     except Exception as e:
                         logger.error(f"[FastPath] Errore esecuzione handler intent {intent_name}: {e}")
 
                 return (True, intent_name, params, response_text)
+
+        semantic_match = self.vector_matcher.match(clean_text)
+        if semantic_match:
+            intent_name = semantic_match["intent"]
+            params = dict((semantic_match.get("skill") or {}).get("params", {}))
+            response_text = f"Intento semantico rilevato: {intent_name}."
+
+            if self.intent_handler:
+                try:
+                    success, custom_resp = self.intent_handler(intent_name, params, clean_text)
+                    if custom_resp:
+                        response_text = custom_resp
+                except Exception as e:
+                    logger.error(f"[FastPath] Errore esecuzione handler intent semantico {intent_name}: {e}")
+
+            if intent_name == "volume_up":
+                params.setdefault("delta", 10)
+                params.setdefault("volume", 60)
+            elif intent_name == "volume_down":
+                params.setdefault("delta", -10)
+                params.setdefault("volume", 40)
+            elif intent_name == "mute":
+                params.setdefault("volume", 0)
+            elif intent_name == "set_theme_dark":
+                params.setdefault("dark", True)
+            elif intent_name == "set_theme_light":
+                params.setdefault("dark", False)
+
+            return (True, intent_name, params, response_text)
 
         return (False, None, {}, None)
 
@@ -187,14 +223,17 @@ class PipelineController:
         state_machine: StateMachine,
         audio_player: Optional[Any] = None,
         llm_streamer: Optional[Callable[[str], Any]] = None,
-        tts_engine: Optional[Callable[[str], None]] = None
+        tts_engine: Optional[Callable[[str], None]] = None,
+        mcp_manager: Optional[Any] = None,
     ):
         self.state_machine = state_machine
         self.audio_player = audio_player
         self.llm_streamer = llm_streamer
         self.tts_engine = tts_engine
+        self.mcp_manager = mcp_manager
         
         self.fast_path = FastPathDispatcher()
+        self.smart_path = SmartPathController()
         self.sentence_aggregator = SentenceAggregator(sentence_callback=self._on_sentence_ready)
         self._streaming_active = False
 
@@ -242,7 +281,34 @@ class PipelineController:
                 "response": response_text
             }
 
-        # 2. LLM Streaming Path
+        # 2. SMART PATH Check (with RAG, Memory, LLM)
+        logger.info(f"[Pipeline] Fast-Path no match, attempting SMART PATH: '{text}' (speak={speak})")
+        try:
+            success, smart_response, tool_result = self.smart_path.execute_smart_path(
+                text,
+                llm_streamer=self.llm_streamer,
+                mcp_manager=self.mcp_manager,
+            )
+            
+            if success and smart_response:
+                logger.info(f"[Pipeline] Smart-Path success: '{smart_response}' (speak={speak})")
+                if speak:
+                    self.state_machine.set_state(AssistantState.SPEAKING)
+                    if self.tts_engine:
+                        self.tts_engine(smart_response)
+                if not speak or not (self.audio_player and getattr(self.audio_player, 'is_playing', False) or self.state_machine.state == AssistantState.SPEAKING):
+                    self.state_machine.set_state(AssistantState.IDLE)
+                return {
+                    "fast_path": False,
+                    "smart_path": True,
+                    "transcription": text,
+                    "response": smart_response,
+                    "tool_result": tool_result,
+                }
+        except Exception as e:
+            logger.warning(f"[Pipeline] SMART PATH error, falling back to LLM: {e}")
+
+        # 3. LLM Streaming Path (Fallback)
         logger.info(f"[Pipeline] Nessun Fast-Path, invio all'LLM Streaming: '{text}' (speak={speak})")
         full_response = ""
         self.sentence_aggregator.reset()

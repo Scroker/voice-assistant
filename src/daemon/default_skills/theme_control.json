@@ -1,0 +1,12 @@
+{
+  "intent": "set_theme_dark",
+  "name": "Theme Control",
+  "triggers": [
+    "tema scuro",
+    "modalità scura",
+    "metti il tema scuro",
+    "voglio il tema scuro",
+    "attiva il tema scuro"
+  ],
+  "params": {"dark": true}
+}
