@@ -19,6 +19,7 @@
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/system-run-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/user-trash-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/vocal-assistant-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/cafe-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/web-browser-symbolic.svg</file>
 
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/apps/vocal-assistant-icon.svg</file>
@@ -48,6 +49,7 @@
     <file preprocess="xml-stripblanks">icons/system-run-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/user-trash-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/vocal-assistant-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/cafe-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/web-browser-symbolic.svg</file>
 
     <file preprocess="xml-stripblanks">dbus/org.local.VoiceAssistant.xml</file>

@@ -41,7 +41,7 @@ Adw.NavigationSplitView split_view {
 
             [prefix]
             Gtk.Image {
-              icon-name: "audio-input-microphone-symbolic";
+              icon-name: "cafe-symbolic";
               margin-end: 12;
             }
           }
@@ -227,12 +227,10 @@ Adw.NavigationSplitView split_view {
 
                   Adw.EntryRow wakeword_row {
                     title: _("Wakeword");
-                    subtitle: _("Word that activates the assistant (Vosk / Sherpa-ONNX)");
                   }
 
                   Adw.EntryRow sherpa_model_dir_row {
                     title: _("Sherpa-ONNX Model Directory");
-                    subtitle: _("Folder with encoder/decoder/joiner .onnx and tokens.txt — leave empty to auto-download");
                     visible: false;
                   }
                 }
@@ -669,58 +667,18 @@ Adw.NavigationSplitView split_view {
                   }
                 }
 
-                Adw.PreferencesGroup {
-                  title: _("Subfolders");
-
-                  Adw.ActionRow stt_path_row {
-                    title: _("Speech Recognition (STT)");
-                    subtitle: "–";
-                    [suffix]
-                    Gtk.Button open_stt_btn {
-                      icon-name: "folder-open-symbolic";
-                      valign: center;
-                      tooltip-text: _("Open in Files");
-                      styles ["flat"]
-                    }
-                  }
-
-                  Adw.ActionRow llm_path_row {
-                    title: _("Language Model (LLM)");
-                    subtitle: "–";
-                    [suffix]
-                    Gtk.Button open_llm_btn {
-                      icon-name: "folder-open-symbolic";
-                      valign: center;
-                      tooltip-text: _("Open in Files");
-                      styles ["flat"]
-                    }
-                  }
-
-                  Adw.ActionRow tts_path_row {
-                    title: _("Text-to-Speech (TTS)");
-                    subtitle: "–";
-                    [suffix]
-                    Gtk.Button open_tts_btn {
-                      icon-name: "folder-open-symbolic";
-                      valign: center;
-                      tooltip-text: _("Open in Files");
-                      styles ["flat"]
-                    }
-                  }
-                }
-
                 Adw.PreferencesGroup cache_group {
-                  title: _("Disk Usage");
+                  title: _("Cache &amp; Downloaded Models Management");
 
                   [header-suffix]
-                  Gtk.Button open_models_btn {
-                    label: _("Open in Files");
+                  Gtk.Button clean_unused_btn {
+                    label: _("Remove Unused");
                     valign: center;
-                    styles ["flat"]
+                    styles ["flat", "error"]
 
                     [prefix]
                     Gtk.Image {
-                      icon-name: "folder-open-symbolic";
+                      icon-name: "user-trash-symbolic";
                     }
                   }
                 }

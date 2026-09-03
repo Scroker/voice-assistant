@@ -13,10 +13,11 @@ import os
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw, Gio
+from gi.repository import Gtk, Adw, Gio, Gdk
 
 _SCHEMA = "org.gnome.shell.extensions.voice-assistant"
 _PREFS_UI = "/org/gnome/shell/extensions/voice-assistant/ui/prefs.ui"
+_ICON_RESOURCE_BASE = "/org/gnome/shell/extensions/voice-assistant/icons"
 
 
 def open_settings_window(parent=None, application=None) -> None:
@@ -45,6 +46,8 @@ class _SettingsWindow(Adw.Window):
             self.set_transient_for(transient_for)
             self.set_modal(False)
 
+        self._register_icons()
+
         try:
             self._settings = Gio.Settings.new(_SCHEMA)
         except Exception:
@@ -68,6 +71,28 @@ class _SettingsWindow(Adw.Window):
 
         self._setup_navigation()
         self._setup_bindings()
+
+    # ------------------------------------------------------------------
+    # Icon theme
+    # ------------------------------------------------------------------
+
+    def _register_icons(self) -> None:
+        display = Gdk.Display.get_default()
+        if not display:
+            return
+        try:
+            theme = Gtk.IconTheme.get_for_display(display)
+            # Resource path: GTK looks for {base}/hicolor/{size}/{type}/{name}.svg
+            theme.add_resource_path(_ICON_RESOURCE_BASE)
+            # Also search the installed extension directory on disk
+            icons_dir = os.path.expanduser(
+                "~/.local/share/gnome-shell/extensions/"
+                "voice-assistant@scroker.github.io/icons"
+            )
+            if os.path.exists(icons_dir):
+                theme.add_search_path(icons_dir)
+        except Exception as e:
+            print(f"[SettingsWindow] Icon registration failed: {e}")
 
     # ------------------------------------------------------------------
     # Navigation
@@ -292,26 +317,13 @@ class _SettingsWindow(Adw.Window):
         def _base() -> str:
             return self._settings.get_string("models-dir") or self._DEFAULT_MODELS_DIR
 
-        def _expand(path: str) -> str:
-            return os.path.expanduser(path)
+        def _full(subdir: str | None = None) -> str:
+            return os.path.join(os.path.expanduser(_base()), subdir) if subdir else os.path.expanduser(_base())
 
-        def _update_paths(*_):
-            base = _base()
-            exp = _expand(base)
-            row = self._b.get_object("models_path_row")
-            if row:
-                row.set_subtitle(base)
-            for widget_id, subdir in (
-                ("stt_path_row", "stt"),
-                ("llm_path_row", "llm"),
-                ("tts_path_row", "tts"),
-            ):
-                r = self._b.get_object(widget_id)
-                if r:
-                    r.set_subtitle(os.path.join(exp, subdir))
-
-        _update_paths()
-        self._settings.connect("changed::models-dir", _update_paths)
+        # --- Base directory row (from Blueprint) ---
+        base_row = self._b.get_object("models_path_row")
+        if base_row:
+            base_row.set_subtitle(_base())
 
         choose_btn = self._b.get_object("choose_path_btn")
         if choose_btn:
@@ -321,24 +333,148 @@ class _SettingsWindow(Adw.Window):
         if reset_btn:
             reset_btn.connect("clicked", lambda _: self._settings.reset("models-dir"))
 
-        # Per-subfolder "open in Files" buttons
-        def _make_opener(subdir: str | None = None):
-            def _open(_btn):
-                base = _expand(_base())
-                path = os.path.join(base, subdir) if subdir else base
-                os.makedirs(path, exist_ok=True)
-                Gio.AppInfo.launch_default_for_uri(f"file://{path}", None)
-            return _open
+        # Repurpose clean_unused_btn as a Refresh button
+        refresh_btn = self._b.get_object("clean_unused_btn")
+        if refresh_btn:
+            refresh_btn.set_label("Refresh")
+            refresh_btn.get_style_context().remove_class("error")
+            first_child = refresh_btn.get_first_child()
+            if first_child:
+                first_child.set_property("icon-name", "view-refresh-symbolic")
 
-        for btn_id, sub in (
-            ("open_stt_btn",    "stt"),
-            ("open_llm_btn",    "llm"),
-            ("open_tts_btn",    "tts"),
-            ("open_models_btn", None),
-        ):
-            btn = self._b.get_object(btn_id)
-            if btn:
-                btn.connect("clicked", _make_opener(sub))
+        models_page = self._b.get_object("models_page")
+        if not models_page:
+            return
+
+        # --- Dynamic model listing (built programmatically) ---
+        self._model_groups: list[Adw.PreferencesGroup] = []
+
+        def _fmt_size(n: int) -> str:
+            for unit in ("B", "KB", "MB", "GB"):
+                if n < 1024:
+                    return f"{n:.1f} {unit}"
+                n /= 1024
+            return f"{n:.1f} TB"
+
+        def _entry_size(path: str) -> int:
+            if os.path.isfile(path):
+                return os.path.getsize(path)
+            total = 0
+            try:
+                for e in os.scandir(path):
+                    total += _entry_size(e.path)
+            except OSError:
+                pass
+            return total
+
+        def _scan(subdir: str | None) -> list[tuple[str, str, int]]:
+            """Return list of (name, full_path, size_bytes) sorted by name."""
+            root = _full(subdir)
+            result = []
+            try:
+                for e in sorted(os.scandir(root), key=lambda x: x.name.lower()):
+                    if e.name.startswith('.'):
+                        continue
+                    result.append((e.name, e.path, _entry_size(e.path)))
+            except FileNotFoundError:
+                pass
+            return result
+
+        def _make_item_row(name: str, size: int) -> Adw.ActionRow:
+            row = Adw.ActionRow()
+            row.set_title(name)
+            row.set_subtitle(_fmt_size(size))
+            return row
+
+        def _build_wakeword_group() -> Adw.PreferencesGroup:
+            group = Adw.PreferencesGroup()
+            group.set_title("Wake Word")
+            engine = self._settings.get_string("wakeword-engine") or "vosk"
+
+            engine_row = Adw.ActionRow()
+            engine_row.set_title("Engine")
+            engine_row.set_subtitle({"vosk": "Vosk", "openwakeword": "OpenWakeWord", "sherpa-onnx": "Sherpa-ONNX"}.get(engine, engine))
+            group.add(engine_row)
+
+            if engine == "vosk":
+                ww = self._settings.get_string("wakeword") or "assistente"
+                model_row = Adw.ActionRow()
+                model_row.set_title("Keyword")
+                model_row.set_subtitle(ww)
+                group.add(model_row)
+                for name, _path, size in _scan("stt"):
+                    group.add(_make_item_row(name, size))
+            elif engine == "openwakeword":
+                kw = self._settings.get_string("oww-model") or "alexa"
+                model_row = Adw.ActionRow()
+                model_row.set_title("Keyword")
+                model_row.set_subtitle(f"{kw} (bundled)")
+                group.add(model_row)
+            elif engine == "sherpa-onnx":
+                model_dir = self._settings.get_string("sherpa-ww-model-dir") or ""
+                model_row = Adw.ActionRow()
+                model_row.set_title("Model directory")
+                model_row.set_subtitle(model_dir or "Not configured")
+                group.add(model_row)
+
+            return group
+
+        def _build_dir_group(title: str, subdir: str) -> Adw.PreferencesGroup:
+            group = Adw.PreferencesGroup()
+            group.set_title(title)
+
+            open_btn = Gtk.Button(
+                label="Open",
+                valign=Gtk.Align.CENTER,
+                has_frame=False,
+            )
+            sub = subdir
+            open_btn.connect("clicked", lambda _b: (
+                os.makedirs(_full(sub), exist_ok=True),
+                Gio.AppInfo.launch_default_for_uri(f"file://{_full(sub)}", None),
+            ))
+            group.set_header_suffix(open_btn)
+
+            items = _scan(subdir)
+            if items:
+                for name, _path, size in items:
+                    group.add(_make_item_row(name, size))
+            else:
+                empty_row = Adw.ActionRow()
+                empty_row.set_title("No models found")
+                empty_row.set_subtitle(_full(subdir))
+                group.add(empty_row)
+
+            return group
+
+        def _refresh(*_):
+            for g in self._model_groups:
+                try:
+                    models_page.remove(g)
+                except Exception:
+                    pass
+            self._model_groups.clear()
+
+            if base_row:
+                base_row.set_subtitle(_base())
+
+            for builder in (
+                lambda: _build_wakeword_group(),
+                lambda: _build_dir_group("Speech Recognition (STT)", "stt"),
+                lambda: _build_dir_group("Language Model (LLM)",     "llm"),
+                lambda: _build_dir_group("Text-to-Speech (TTS)",     "tts"),
+            ):
+                g = builder()
+                models_page.add(g)
+                self._model_groups.append(g)
+
+        _refresh()
+
+        if refresh_btn:
+            refresh_btn.connect("clicked", _refresh)
+
+        for key in ("models-dir", "wakeword-engine", "oww-model", "sherpa-ww-model-dir"):
+            self._settings.connect(f"changed::{key}", _refresh)
 
     def _on_choose_models_dir(self, _btn):
         chooser = Gtk.FileChooserNative(
