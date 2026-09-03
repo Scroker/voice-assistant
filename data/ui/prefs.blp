@@ -35,6 +35,17 @@ Adw.NavigationSplitView split_view {
             }
           }
 
+          Adw.ActionRow row_wakeword {
+            title: _("Wake Word");
+            activatable: true;
+
+            [prefix]
+            Gtk.Image {
+              icon-name: "audio-input-microphone-symbolic";
+              margin-end: 12;
+            }
+          }
+
           Adw.ActionRow row_stt {
             title: _("Speech Engine (STT)");
             activatable: true;
@@ -139,53 +150,143 @@ Adw.NavigationSplitView split_view {
                     title: _("Enable Voice Assistant");
                     subtitle: _("Enable or disable background listening");
                   }
+                }
+              }
 
-                  Adw.ComboRow lang_row {
-                    title: _("Assistant Language");
-                    subtitle: _("Select the main language for recognition and response");
-                    model: Gtk.StringList {
-                      strings: [
-                        "Italian (it)",
-                        "English (en)"
-                      ];
-                    };
+              Adw.PreferencesPage wakeword_page {
+                Adw.PreferencesGroup lang_group {
+                  title: _("Assistant Language");
+                  description: _("Language used for speech recognition and responses");
+
+                  Adw.ActionRow lang_it_row {
+                    title: _("Italian (it)");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton lang_it_radio {
+                      valign: center;
+                      margin-end: 12;
+                    }
                   }
 
-                  Adw.ComboRow wakeword_engine_row {
-                    title: _("Wakeword Engine");
-                    subtitle: _("Vosk: any word — OpenWakeWord: fixed keywords — Sherpa-ONNX: custom ONNX keyword spotter");
-                    model: Gtk.StringList {
-                      strings: [
-                        _("Vosk (custom word)"),
-                        _("OpenWakeWord (fixed keywords)"),
-                        _("Sherpa-ONNX (keyword spotting)")
-                      ];
-                    };
+                  Adw.ActionRow lang_en_row {
+                    title: _("English (en)");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton lang_en_radio {
+                      group: lang_it_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
                   }
+                }
+
+                Adw.PreferencesGroup wakeword_engine_group {
+                  title: _("Wakeword Engine");
+                  description: _("Vosk: any word — OpenWakeWord: fixed keywords — Sherpa-ONNX: custom ONNX keyword spotter");
+
+                  Adw.ActionRow ww_engine_vosk_row {
+                    title: _("Vosk (custom word)");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton ww_engine_vosk_radio {
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow ww_engine_oww_row {
+                    title: _("OpenWakeWord (fixed keywords)");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton ww_engine_oww_radio {
+                      group: ww_engine_vosk_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow ww_engine_sherpa_row {
+                    title: _("Sherpa-ONNX (keyword spotting)");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton ww_engine_sherpa_radio {
+                      group: ww_engine_vosk_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+                }
+
+                Adw.PreferencesGroup wakeword_config_group {
+                  title: _("Configuration");
 
                   Adw.EntryRow wakeword_row {
                     title: _("Wakeword");
                     subtitle: _("Word that activates the assistant (Vosk / Sherpa-ONNX)");
                   }
 
-                  Adw.ComboRow oww_model_row {
-                    title: _("OpenWakeWord Keyword");
-                    subtitle: _("Pre-trained keyword model to detect");
-                    visible: false;
-                    model: Gtk.StringList {
-                      strings: [
-                        "alexa",
-                        "hey_jarvis",
-                        "hey_mycroft",
-                        "hey_rhasspy"
-                      ];
-                    };
-                  }
-
                   Adw.EntryRow sherpa_model_dir_row {
                     title: _("Sherpa-ONNX Model Directory");
-                    subtitle: _("Folder with encoder.onnx, decoder.onnx, joiner.onnx, tokens.txt (leave empty to auto-download)");
+                    subtitle: _("Folder with encoder/decoder/joiner .onnx and tokens.txt — leave empty to auto-download");
                     visible: false;
+                  }
+                }
+
+                Adw.PreferencesGroup oww_keyword_group {
+                  title: _("OpenWakeWord Keyword");
+                  description: _("Pre-trained keyword model to detect");
+                  visible: false;
+
+                  Adw.ActionRow oww_alexa_row {
+                    title: _("alexa");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton oww_alexa_radio {
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow oww_hey_jarvis_row {
+                    title: _("hey_jarvis");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton oww_hey_jarvis_radio {
+                      group: oww_alexa_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow oww_hey_mycroft_row {
+                    title: _("hey_mycroft");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton oww_hey_mycroft_radio {
+                      group: oww_alexa_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
+                  }
+
+                  Adw.ActionRow oww_hey_rhasspy_row {
+                    title: _("hey_rhasspy");
+                    activatable: true;
+
+                    [prefix]
+                    Gtk.CheckButton oww_hey_rhasspy_radio {
+                      group: oww_alexa_radio;
+                      valign: center;
+                      margin-end: 12;
+                    }
                   }
                 }
               }

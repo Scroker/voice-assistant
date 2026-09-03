@@ -45,6 +45,7 @@ if gnome_extensions.found()
       'mkdir -p "$TMPDIR/schemas" && cp "@0@"/data/schemas/*.xml "$TMPDIR/schemas/" && glib-compile-schemas "$TMPDIR/schemas/" && '.format(src_root) +
       'gnome-extensions pack --force ' +
       '--extra-source=daemon ' +
+      '--extra-source=gui ' +
       '--extra-source=icons ' +
       '--extra-source=services ' +
       '--extra-source=dbus ' +

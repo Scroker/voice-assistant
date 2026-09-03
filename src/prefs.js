@@ -137,6 +137,7 @@ export default class VoiceAssistantPreferences extends ExtensionPreferences {
 
         const pages = [
             { id: 'general_page', page: builder.get_object('general_page'), title: _('General'), row: builder.get_object('row_general') },
+            { id: 'wakeword_page', page: builder.get_object('wakeword_page'), title: _('Wake Word'), row: builder.get_object('row_wakeword') },
             { id: 'stt_page', page: builder.get_object('stt_page'), title: _('Speech Engine (STT)'), row: builder.get_object('row_stt') },
             { id: 'llm_page', page: builder.get_object('llm_page'), title: _('Artificial Intelligence (LLM)'), row: builder.get_object('row_llm') },
             { id: 'tts_page', page: builder.get_object('tts_page'), title: _('Text-to-Speech (TTS)'), row: builder.get_object('row_tts') },

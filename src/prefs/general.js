@@ -8,60 +8,84 @@ export function setupGeneralPage(builder, settings, window, _, onModelsDirChange
     const enableSwitchRow = builder.get_object('enable_switch_row');
     if (enableSwitchRow) settings.bind('enabled', enableSwitchRow, 'active', Gio.SettingsBindFlags.DEFAULT);
 
-    const langRow = builder.get_object('lang_row');
-    if (langRow) {
-        let currentLang = settings.get_string('language') || 'it';
-        langRow.selected = (currentLang === 'en') ? 1 : 0;
-        langRow.connect('notify::selected', () => {
-            let newLang = (langRow.selected === 1) ? 'en' : 'it';
+    // Language radio buttons (wakeword_page)
+    const langItRadio = builder.get_object('lang_it_radio');
+    const langEnRadio = builder.get_object('lang_en_radio');
+    if (langItRadio && langEnRadio) {
+        const currentLang = settings.get_string('language') || 'it';
+        if (currentLang === 'en') langEnRadio.set_active(true);
+        else langItRadio.set_active(true);
+
+        const onLangChanged = () => {
+            const newLang = langEnRadio.get_active() ? 'en' : 'it';
             settings.set_string('language', newLang);
             if (typeof onModelsDirChanged === 'function') onModelsDirChanged();
-        });
+        };
+        langItRadio.connect('notify::active', onLangChanged);
+        langEnRadio.connect('notify::active', onLangChanged);
     }
 
-    const OWW_MODELS = ['alexa', 'hey_jarvis', 'hey_mycroft', 'hey_rhasspy'];
-    const ENGINE_VALUES = ['vosk', 'openwakeword', 'sherpa-onnx'];
+    // Wakeword engine radio buttons
+    const wwEngineVoskRadio = builder.get_object('ww_engine_vosk_radio');
+    const wwEngineOwwRadio = builder.get_object('ww_engine_oww_radio');
+    const wwEngineSherpaRadio = builder.get_object('ww_engine_sherpa_radio');
 
-    const wakewordEngineRow = builder.get_object('wakeword_engine_row');
+    // Wakeword config widgets
     const wakewordRow = builder.get_object('wakeword_row');
-    const owwModelRow = builder.get_object('oww_model_row');
     const sherpaModelDirRow = builder.get_object('sherpa_model_dir_row');
+    const owwKeywordGroup = builder.get_object('oww_keyword_group');
 
     const applyEngineVisibility = (engine) => {
         const isOww = engine === 'openwakeword';
         const isSherpa = engine === 'sherpa-onnx';
         if (wakewordRow) wakewordRow.set_visible(!isOww);
-        if (owwModelRow) owwModelRow.set_visible(isOww);
+        if (owwKeywordGroup) owwKeywordGroup.set_visible(isOww);
         if (sherpaModelDirRow) sherpaModelDirRow.set_visible(isSherpa);
     };
 
-    if (wakewordEngineRow) {
+    const getSelectedEngine = () => {
+        if (wwEngineOwwRadio?.get_active()) return 'openwakeword';
+        if (wwEngineSherpaRadio?.get_active()) return 'sherpa-onnx';
+        return 'vosk';
+    };
+
+    if (wwEngineVoskRadio && wwEngineOwwRadio && wwEngineSherpaRadio) {
         const currentEngine = settings.get_string('wakeword-engine') || 'vosk';
-        const idx = ENGINE_VALUES.indexOf(currentEngine);
-        wakewordEngineRow.selected = idx >= 0 ? idx : 0;
+        if (currentEngine === 'openwakeword') wwEngineOwwRadio.set_active(true);
+        else if (currentEngine === 'sherpa-onnx') wwEngineSherpaRadio.set_active(true);
+        else wwEngineVoskRadio.set_active(true);
         applyEngineVisibility(currentEngine);
 
-        wakewordEngineRow.connect('notify::selected', () => {
-            const newEngine = ENGINE_VALUES[wakewordEngineRow.selected] || 'vosk';
+        const onEngineChanged = () => {
+            if (!wwEngineVoskRadio.get_active() && !wwEngineOwwRadio.get_active() && !wwEngineSherpaRadio.get_active()) return;
+            const newEngine = getSelectedEngine();
             settings.set_string('wakeword-engine', newEngine);
             applyEngineVisibility(newEngine);
-        });
+        };
+        wwEngineVoskRadio.connect('notify::active', onEngineChanged);
+        wwEngineOwwRadio.connect('notify::active', onEngineChanged);
+        wwEngineSherpaRadio.connect('notify::active', onEngineChanged);
     }
 
     if (wakewordRow) settings.bind('wakeword', wakewordRow, 'text', Gio.SettingsBindFlags.DEFAULT);
-
-    if (owwModelRow) {
-        const currentOwwModel = settings.get_string('oww-model') || 'alexa';
-        const owwIdx = OWW_MODELS.indexOf(currentOwwModel);
-        owwModelRow.selected = owwIdx >= 0 ? owwIdx : 0;
-
-        owwModelRow.connect('notify::selected', () => {
-            const idx = owwModelRow.selected;
-            settings.set_string('oww-model', OWW_MODELS[idx] || 'alexa');
-        });
-    }
-
     if (sherpaModelDirRow) settings.bind('sherpa-ww-model-dir', sherpaModelDirRow, 'text', Gio.SettingsBindFlags.DEFAULT);
+
+    // OWW keyword radio buttons
+    const OWW_RADIOS = [
+        { id: 'oww_alexa_radio', value: 'alexa' },
+        { id: 'oww_hey_jarvis_radio', value: 'hey_jarvis' },
+        { id: 'oww_hey_mycroft_radio', value: 'hey_mycroft' },
+        { id: 'oww_hey_rhasspy_radio', value: 'hey_rhasspy' },
+    ];
+    const owwRadioWidgets = OWW_RADIOS.map(r => ({ ...r, widget: builder.get_object(r.id) }));
+    const currentOwwModel = settings.get_string('oww-model') || 'alexa';
+    owwRadioWidgets.forEach(r => {
+        if (!r.widget) return;
+        if (r.value === currentOwwModel) r.widget.set_active(true);
+        r.widget.connect('notify::active', () => {
+            if (r.widget.get_active()) settings.set_string('oww-model', r.value);
+        });
+    });
 
     // 2. Storage & Cache Management
     const modelsPathRow = builder.get_object('models_path_row');
