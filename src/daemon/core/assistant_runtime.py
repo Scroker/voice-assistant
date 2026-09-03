@@ -30,6 +30,30 @@ from skills.skill_executor import SkillExecutor
 
 logger = logging.getLogger("VoiceAssistant.AssistantRuntime")
 
+import re as _re
+
+# Mapping intent → (tool_name, static_args)
+# None come static_args = i parametri vengono costruiti dinamicamente
+_INTENT_TOOL_MAP: dict = {
+    "volume_up":       ("system_volume",     {"action": "increase", "level": 10}),
+    "volume_down":     ("system_volume",     {"action": "decrease", "level": 10}),
+    "mute":            ("system_volume",     {"action": "mute"}),
+    "unmute":          ("system_volume",     {"action": "unmute"}),
+    "get_time":        ("date_time",         {"format": "time"}),
+    "get_date":        ("date_time",         {"format": "date"}),
+    "get_datetime":    ("date_time",         {"format": "full"}),
+    "set_theme_dark":  ("dark_mode",         {"mode": "dark"}),
+    "set_theme_light": ("dark_mode",         {"mode": "light"}),
+    "theme_dark":      ("dark_mode",         {"mode": "dark"}),
+    "theme_light":     ("dark_mode",         {"mode": "light"}),
+    "media_play":      ("system_media",      {"action": "play"}),
+    "media_pause":     ("system_media",      {"action": "pause"}),
+    "media_next":      ("system_media",      {"action": "next"}),
+    "media_prev":      ("system_media",      {"action": "previous"}),
+    "brightness_up":   ("screen_brightness", {"action": "increase"}),
+    "brightness_down": ("screen_brightness", {"action": "decrease"}),
+}
+
 
 class AssistantRuntimeController:
     """Encapsulates wakeword detection, TTS interaction, and audio processing flow."""
@@ -63,90 +87,53 @@ class AssistantRuntimeController:
         if not self.owner.mcp_manager:
             return (False, "")
 
-        def execute_tool(tool_name, args):
+        def run_tool(tool_name, args):
             result = self.owner.mcp_manager.execute_tool(tool_name, args)
             if asyncio.iscoroutine(result):
                 result = run_async(result)
             return result
 
         try:
+            # --- Intent con parametri dinamici ---
             if intent_name == "set_volume":
-                vol = params.get("volume", 50)
-                res = execute_tool("system_volume", {"action": "set", "level": vol})
-                return (True, res)
-            elif intent_name == "volume_up":
-                res = execute_tool("system_volume", {"action": "increase", "level": 10})
-                return (True, res)
-            elif intent_name == "volume_down":
-                res = execute_tool("system_volume", {"action": "decrease", "level": 10})
-                return (True, res)
-            elif intent_name == "mute":
-                res = execute_tool("system_volume", {"action": "mute"})
-                return (True, res)
-            elif intent_name == "set_theme_dark":
-                res = execute_tool("dark_mode", {"mode": "dark"})
-                return (True, res)
-            elif intent_name == "set_theme_light":
-                res = execute_tool("dark_mode", {"mode": "light"})
-                return (True, res)
-            elif intent_name == "launch_app":
-                app = params.get("app", "firefox")
-                res = execute_tool("app_launcher", {"app_name": app})
-                return (True, res)
-            elif intent_name == "get_time":
-                res = execute_tool("date_time", {"format": "time"})
-                return (True, res)
-            elif intent_name == "get_date":
-                res = execute_tool("date_time", {"format": "date"})
-                return (True, res)
-            elif intent_name == "media_pause":
-                res = execute_tool("system_media", {"action": "pause"})
-                return (True, res)
-            elif intent_name == "media_play":
-                res = execute_tool("system_media", {"action": "play"})
-                return (True, res)
-            elif intent_name == "system_control":
-                if text:
-                    success, response = self._execute_skill("system_control", text)
-                    return (success, response)
-                action = str(params.get("action", params.get("mode", "") or "")).lower()
-                if action in {"volume_up", "increase", "up"}:
-                    res = execute_tool("system_volume", {"action": "increase", "level": 10})
-                    return (True, res)
-                if action in {"volume_down", "decrease", "down"}:
-                    res = execute_tool("system_volume", {"action": "decrease", "level": 10})
-                    return (True, res)
-                if action in {"mute", "silence", "silent"}:
-                    res = execute_tool("system_volume", {"action": "mute"})
-                    return (True, res)
-                if action in {"theme_dark", "dark", "set_theme_dark"}:
-                    res = execute_tool("dark_mode", {"mode": "dark"})
-                    return (True, res)
-                if action in {"theme_light", "light", "set_theme_light"}:
-                    res = execute_tool("dark_mode", {"mode": "light"})
-                    return (True, res)
-                app_name = params.get("app") or params.get("app_name") or "firefox"
-                if action in {"launch_app", "app", "open_app"}:
-                    res = execute_tool("app_launcher", {"app_name": app_name})
-                    return (True, res)
-                return (False, "")
-            elif intent_name == "theme_control":
-                if text:
-                    success, response = self._execute_skill("theme_control", text)
-                    return (success, response)
+                vol = max(0, min(100, int(params.get("volume", 50))))
+                return (True, run_tool("system_volume", {"action": "set", "level": vol}))
+
+            if intent_name == "launch_app":
+                app = params.get("app") or params.get("app_name") or ""
+                if not app and text:
+                    m = _re.search(
+                        r'(?:apri|avvia|lancia|open)\s+(?:il\s+|la\s+|le\s+|l\'|i\s+)?([\w\s]+)',
+                        text.lower()
+                    )
+                    if m:
+                        app = m.group(1).strip()
+                return (True, run_tool("app_launcher", {"app_name": app or "firefox"}))
+
+            if intent_name == "set_brightness":
+                lvl = max(0, min(100, int(params.get("level", 50))))
+                return (True, run_tool("screen_brightness", {"action": "set", "level": lvl}))
+
+            # --- Tema (gestisce anche i parametri bool legacy) ---
+            if intent_name in ("set_theme_dark", "set_theme_light", "theme_control"):
+                dark = params.get("dark")
                 mode = params.get("mode")
-                if mode is None and params.get("dark") is not None:
-                    mode = "dark" if params.get("dark") else "light"
-                mode = str(mode).lower() if mode is not None else "dark"
-                if mode in {"dark", "night", "black"}:
-                    res = execute_tool("dark_mode", {"mode": "dark"})
-                    return (True, res)
-                if mode in {"light", "day", "white"}:
-                    res = execute_tool("dark_mode", {"mode": "light"})
-                    return (True, res)
-                return (False, "")
+                if dark is None and mode is None and intent_name == "theme_control":
+                    return (False, "")
+                if dark is not None:
+                    mode = "dark" if dark else "light"
+                mode = str(mode or "dark").lower()
+                mode = "dark" if mode in {"dark", "night", "black", "scuro", "set_theme_dark", "theme_dark"} else "light"
+                return (True, run_tool("dark_mode", {"mode": mode}))
+
+            # --- Tabella statica ---
+            mapping = _INTENT_TOOL_MAP.get(intent_name)
+            if mapping:
+                tool_name, static_args = mapping
+                return (True, run_tool(tool_name, dict(static_args or {})))
+
         except Exception as e:
-            logger.error(f"Errore esecuzione Fast-Path MCP: {e}")
+            logger.error(f"Errore Fast-Path intent '{intent_name}': {e}")
 
         return (False, "")
 

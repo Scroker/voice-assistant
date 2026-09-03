@@ -646,10 +646,10 @@ Adw.NavigationSplitView split_view {
               Adw.PreferencesPage models_page {
                 Adw.PreferencesGroup {
                   title: _("Storage Location");
-                  description: _("Change the local directory where downloaded models are stored.");
+                  description: _("Base directory for all downloaded models. Subfolders are created automatically.");
 
                   Adw.ActionRow models_path_row {
-                    title: _("Models Directory");
+                    title: _("Base Directory");
 
                     [suffix]
                     Gtk.Button choose_path_btn {
@@ -669,18 +669,58 @@ Adw.NavigationSplitView split_view {
                   }
                 }
 
+                Adw.PreferencesGroup {
+                  title: _("Subfolders");
+
+                  Adw.ActionRow stt_path_row {
+                    title: _("Speech Recognition (STT)");
+                    subtitle: "–";
+                    [suffix]
+                    Gtk.Button open_stt_btn {
+                      icon-name: "folder-open-symbolic";
+                      valign: center;
+                      tooltip-text: _("Open in Files");
+                      styles ["flat"]
+                    }
+                  }
+
+                  Adw.ActionRow llm_path_row {
+                    title: _("Language Model (LLM)");
+                    subtitle: "–";
+                    [suffix]
+                    Gtk.Button open_llm_btn {
+                      icon-name: "folder-open-symbolic";
+                      valign: center;
+                      tooltip-text: _("Open in Files");
+                      styles ["flat"]
+                    }
+                  }
+
+                  Adw.ActionRow tts_path_row {
+                    title: _("Text-to-Speech (TTS)");
+                    subtitle: "–";
+                    [suffix]
+                    Gtk.Button open_tts_btn {
+                      icon-name: "folder-open-symbolic";
+                      valign: center;
+                      tooltip-text: _("Open in Files");
+                      styles ["flat"]
+                    }
+                  }
+                }
+
                 Adw.PreferencesGroup cache_group {
-                  title: _("Cache &amp; Downloaded Models Management");
+                  title: _("Disk Usage");
 
                   [header-suffix]
-                  Gtk.Button clean_unused_btn {
-                    label: _("Remove Unused");
+                  Gtk.Button open_models_btn {
+                    label: _("Open in Files");
                     valign: center;
-                    styles ["flat", "error"]
+                    styles ["flat"]
 
                     [prefix]
                     Gtk.Image {
-                      icon-name: "user-trash-symbolic";
+                      icon-name: "folder-open-symbolic";
                     }
                   }
                 }

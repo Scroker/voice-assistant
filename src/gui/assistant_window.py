@@ -7,7 +7,6 @@ Metodi chiamati: ProcessTextInput, TriggerListening, OpenSettings.
 """
 
 import os
-import subprocess
 import threading
 
 import gi
@@ -262,15 +261,8 @@ class AssistantWindow(Adw.ApplicationWindow):
         self._call_daemon("TriggerListening")
 
     def _on_open_settings(self, widget: Gtk.Widget) -> None:
-        if self._proxy:
-            self._call_daemon("OpenSettings")
-            return
-        try:
-            subprocess.Popen(
-                ["gnome-extensions", "prefs", "voice-assistant@scroker.github.io"]
-            )
-        except Exception as e:
-            print(f"[AssistantWindow] Errore apertura impostazioni: {e}")
+        from settings_window import open_settings_window
+        open_settings_window(self)
 
     def _on_close_request(self, window: Adw.ApplicationWindow) -> bool:
         """Nasconde la finestra invece di distruggerla (riapertura veloce)."""

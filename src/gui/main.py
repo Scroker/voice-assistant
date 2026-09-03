@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-# Voice Assistant GUI — Standalone GTK4/Libadwaita Application
-# Connects to the daemon via D-Bus (org.local.VoiceAssistant) and exposes
-# a chat window with streaming token display and voice input controls.
 import sys
 import os
 
@@ -10,7 +7,6 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gio, Adw
 
-# Ensure the gui/ directory is on the path so assistant_window can be imported
 _GUI_DIR = os.path.dirname(os.path.abspath(__file__))
 if _GUI_DIR not in sys.path:
     sys.path.insert(0, _GUI_DIR)
@@ -21,19 +17,31 @@ from assistant_window import AssistantWindow
 def main() -> int:
     app = Adw.Application(
         application_id="org.local.VoiceAssistant.GUI",
-        flags=Gio.ApplicationFlags.FLAGS_NONE,
+        flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
     )
 
-    def on_activate(app_instance: Adw.Application) -> None:
-        # If a window already exists (single-instance activation), just re-present it.
-        existing = app_instance.get_windows()
-        if existing:
-            existing[0].present()
-            return
-        win = AssistantWindow(application=app_instance)
-        win.present()
+    def on_command_line(app_instance: Adw.Application, cl: Gio.ApplicationCommandLine) -> int:
+        args = cl.get_arguments()
+        cl.done()
 
-    app.connect("activate", on_activate)
+        if '--open-settings' in args:
+            from settings_window import open_settings_window
+            parent = next(
+                (w for w in app_instance.get_windows() if isinstance(w, AssistantWindow)),
+                None,
+            )
+            open_settings_window(parent, application=app_instance)
+        else:
+            existing = [w for w in app_instance.get_windows() if isinstance(w, AssistantWindow)]
+            if existing:
+                existing[0].present()
+            else:
+                win = AssistantWindow(application=app_instance)
+                win.present()
+
+        return 0
+
+    app.connect("command-line", on_command_line)
     return app.run(sys.argv)
 
 

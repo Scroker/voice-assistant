@@ -15,6 +15,7 @@ Performance Metrics Integration:
         # Log output will include operation_id for tracing
 """
 import re
+import json
 import logging
 from typing import Callable, Optional, Dict, Any, List, Tuple
 from .state import StateMachine, AssistantState
@@ -132,6 +133,26 @@ class FastPathDispatcher:
     def __init__(self, intent_handler: Optional[Callable[[str, Dict[str, Any]], Tuple[bool, str]]] = None):
         self.intent_handler = intent_handler
         self.vector_matcher = VectorIntentMatcher(SkillRegistry.from_default_directory())
+        self._skill_patterns = self._load_skill_patterns()
+
+    def _load_skill_patterns(self):
+        """Carica pattern regex e tool routing dai file di skill."""
+        import json as _json
+        registry = SkillRegistry.from_default_directory()
+        patterns = []
+        for skill in registry.skills:
+            pattern = skill.get("pattern", "")
+            if not pattern:
+                continue
+            patterns.append({
+                "pattern": pattern,
+                "intent": skill.get("intent", ""),
+                "tool": skill.get("tool", ""),
+                "args": skill.get("args") or {},
+                "param_extract": skill.get("param_extract", ""),
+                "param_key": skill.get("param_key", ""),
+            })
+        return patterns
 
     def dispatch(self, text: str) -> Tuple[bool, Optional[str], Dict[str, Any], Optional[str]]:
         """
@@ -179,6 +200,43 @@ class FastPathDispatcher:
                         logger.error(f"[FastPath] Errore esecuzione handler intent {intent_name}: {e}")
 
                 return (True, intent_name, params, response_text)
+
+        # 2b. Skill-defined patterns (loaded from .md files)
+        for sp in self._skill_patterns:
+            m = re.search(sp["pattern"], clean_text)
+            if not m:
+                continue
+            params: dict = dict(sp["args"])
+            if sp["param_extract"] and sp["param_key"]:
+                pm = re.search(sp["param_extract"], clean_text)
+                if pm:
+                    params[sp["param_key"]] = pm.group(1).strip()
+            intent_name = sp["intent"]
+            if self.intent_handler:
+                try:
+                    success, custom_resp = self.intent_handler(intent_name, params, clean_text)
+                    if success:
+                        return (True, intent_name, params, custom_resp or "")
+                except Exception as e:
+                    logger.error(f"[FastPath] Errore skill pattern '{intent_name}': {e}")
+            return (True, intent_name, params, "")
+
+        # 2c. Catch-all per "apri/avvia [nome app]" non catturato dai pattern statici
+        m_app_generic = re.search(
+            r'(?:apri|avvia|lancia)\s+(?:il\s+|la\s+|le\s+|l\'|i\s+)?([\w\s]{2,30})$',
+            clean_text
+        )
+        if m_app_generic:
+            app_name = m_app_generic.group(1).strip()
+            if app_name and not re.search(r'\b(?:il|la|le|lo|volume|suono|audio|luminosità)\b', app_name):
+                params_app = {"app": app_name}
+                if self.intent_handler:
+                    try:
+                        success, resp = self.intent_handler("launch_app", params_app, clean_text)
+                        if success:
+                            return (True, "launch_app", params_app, resp or f"Apro {app_name}.")
+                    except Exception as e:
+                        logger.error(f"[FastPath] Errore catch-all app launch: {e}")
 
         semantic_match = self.vector_matcher.match(clean_text)
         if semantic_match:
@@ -248,6 +306,83 @@ class PipelineController:
             except Exception as e:
                 logger.error(f"[Pipeline] Errore sintesi TTS della frase '{sentence}': {e}")
 
+    def _try_llm_tool_select(self, text: str) -> Optional[str]:
+        """Medium path: chiede all'LLM quale tool usare, senza generare testo libero.
+
+        Restituisce la risposta del tool come stringa, o None se non applicabile.
+        """
+        if not self.llm_streamer or not self.mcp_manager:
+            return None
+
+        schemas = self.mcp_manager.get_tools_schema()
+        if not schemas:
+            return None
+
+        tool_list = "\n".join(
+            f"- {s['function']['name']}: {s['function']['description']}"
+            for s in schemas
+        )
+        prompt = (
+            "Strumenti disponibili:\n"
+            f"{tool_list}\n\n"
+            f"Richiesta utente: \"{text}\"\n\n"
+            "Rispondi SOLO con JSON: {\"tool\": \"nome_tool\", \"args\": {}} "
+            "oppure {\"tool\": null} se nessun tool è adatto. "
+            "Nessun altro testo."
+        )
+
+        try:
+            response_tokens = []
+            for token in self.llm_streamer(prompt):
+                response_tokens.append(str(token))
+                joined = "".join(response_tokens)
+                # Stop early once we have a complete JSON object
+                if joined.count("{") > 0 and joined.count("{") == joined.count("}"):
+                    break
+                if len(response_tokens) > 80:
+                    break
+
+            raw = "".join(response_tokens)
+            import re as _re
+            m = _re.search(r'\{[^{}]*\}', raw, _re.DOTALL)
+            if not m:
+                return None
+
+            payload = json.loads(m.group())
+            tool_name = payload.get("tool")
+            if not tool_name:
+                return None
+
+            args = payload.get("args") or {}
+            result = self.mcp_manager.execute_tool(tool_name, args)
+
+            if hasattr(result, '__await__') or (hasattr(result, '__class__') and result.__class__.__name__ == 'coroutine'):
+                import asyncio, threading
+                holder: Dict[str, Any] = {}
+
+                def _run_coro():
+                    try:
+                        holder["result"] = asyncio.run(result)
+                    except Exception as exc:
+                        holder["error"] = exc
+
+                t = threading.Thread(target=_run_coro, daemon=True)
+                t.start()
+                t.join(timeout=10)
+                if "error" in holder:
+                    logger.warning(f"[MediumPath] Tool async error: {holder['error']}")
+                    return None
+                result = holder.get("result", "")
+
+            response = str(result).strip() if result else None
+            if response:
+                logger.info(f"[MediumPath] Tool '{tool_name}' selected by LLM: '{response}'")
+            return response
+
+        except Exception as e:
+            logger.warning(f"[MediumPath] LLM tool selection failed: {e}")
+            return None
+
     def process_text_input(self, text: str, speak: bool = True) -> Dict[str, Any]:
         """
         Elabora il testo trascritto dall'STT o inviato da GUI.
@@ -280,6 +415,24 @@ class PipelineController:
                 "transcription": text,
                 "response": response_text
             }
+
+        # 1.5. Medium Path: LLM tool selection (structured output, no free text)
+        if self.mcp_manager and self.llm_streamer:
+            medium_response = self._try_llm_tool_select(text)
+            if medium_response:
+                logger.info(f"[Pipeline] Medium-Path match: '{medium_response}' (speak={speak})")
+                if speak:
+                    self.state_machine.set_state(AssistantState.SPEAKING)
+                    if self.tts_engine:
+                        self.tts_engine(medium_response)
+                if not speak or not (self.audio_player and getattr(self.audio_player, 'is_playing', False) or self.state_machine.state == AssistantState.SPEAKING):
+                    self.state_machine.set_state(AssistantState.IDLE)
+                return {
+                    "fast_path": False,
+                    "medium_path": True,
+                    "transcription": text,
+                    "response": medium_response,
+                }
 
         # 2. SMART PATH Check (with RAG, Memory, LLM) - only if MCP is available
         if self.mcp_manager:

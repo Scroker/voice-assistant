@@ -168,7 +168,12 @@ class SkillRegistry:
                 metadata[key] = values
                 continue
 
-            if value.startswith("[") and value.endswith("]"):
+            if value.startswith("{") and value.endswith("}"):
+                try:
+                    metadata[key] = json.loads(value)
+                except Exception:
+                    metadata[key] = value
+            elif value.startswith("[") and value.endswith("]"):
                 try:
                     metadata[key] = json.loads(value)
                 except Exception:
@@ -192,6 +197,12 @@ class SkillRegistry:
             "intent": metadata.get("intent", path.stem.lower().replace("-", "_")),
             "source": str(path),
             "_body": body,
+            # NUOVI CAMPI:
+            "tool": metadata.get("tool", ""),
+            "args": metadata.get("args", {}),
+            "pattern": metadata.get("pattern", ""),
+            "param_extract": metadata.get("param_extract", ""),
+            "param_key": metadata.get("param_key", ""),
         }
         return skill
 
