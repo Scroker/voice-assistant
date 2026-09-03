@@ -333,14 +333,11 @@ class _SettingsWindow(Adw.Window):
         if reset_btn:
             reset_btn.connect("clicked", lambda _: self._settings.reset("models-dir"))
 
-        # Repurpose clean_unused_btn as a Refresh button
+        # Repurpose clean_unused_btn as a Refresh button (GTK4 API)
         refresh_btn = self._b.get_object("clean_unused_btn")
         if refresh_btn:
             refresh_btn.set_label("Refresh")
-            refresh_btn.get_style_context().remove_class("error")
-            first_child = refresh_btn.get_first_child()
-            if first_child:
-                first_child.set_property("icon-name", "view-refresh-symbolic")
+            refresh_btn.remove_css_class("error")
 
         models_page = self._b.get_object("models_page")
         if not models_page:
