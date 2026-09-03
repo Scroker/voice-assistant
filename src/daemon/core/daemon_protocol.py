@@ -45,6 +45,15 @@ class DaemonOwner(Protocol):
     # Wake Word
     # ------------------------------------------------------------------
     wakeword: str
+    wakeword_engine: str                  # "vosk" | "openwakeword"
+    oww_model_name: str                   # e.g. "alexa", "hey_jarvis"
+    oww_model_instance: Any              # openwakeword.model.Model | None
+    _oww_buffer: list                    # accumulation buffer for OWW frames
+
+    # Sherpa-ONNX keyword spotter
+    sherpa_ww_model_dir: str
+    sherpa_spotter: Any                  # sherpa_onnx.KeywordSpotter | None
+    sherpa_stream: Any                   # sherpa_onnx stream | None
     ww_recognizer: Any                    # vosk.KaldiRecognizer | None
     ww_model: Any                         # vosk.Model | None
     ww_provider: Any                      # providers.vosk_provider.VoskProvider

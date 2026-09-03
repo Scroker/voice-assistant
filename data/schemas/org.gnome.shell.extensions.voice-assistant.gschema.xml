@@ -9,7 +9,22 @@
     <key name="wakeword" type="s">
       <default>'assistente'</default>
       <summary>Wakeword per l'assistente</summary>
-      <description>La parola chiave che il demone ascolterà per attivarsi.</description>
+      <description>La parola chiave che il demone ascolterà per attivarsi (usata solo con motore Vosk).</description>
+    </key>
+    <key name="wakeword-engine" type="s">
+      <default>'vosk'</default>
+      <summary>Motore di rilevamento wakeword</summary>
+      <description>Seleziona il motore: 'vosk' (parola personalizzata), 'openwakeword' (modelli pre-addestrati) oppure 'sherpa-onnx' (keyword spotting ONNX).</description>
+    </key>
+    <key name="oww-model" type="s">
+      <default>'alexa'</default>
+      <summary>Modello OpenWakeWord</summary>
+      <description>Nome del modello pre-addestrato OpenWakeWord da usare come wakeword.</description>
+    </key>
+    <key name="sherpa-ww-model-dir" type="s">
+      <default>''</default>
+      <summary>Directory modello Sherpa-ONNX</summary>
+      <description>Cartella contenente encoder.onnx, decoder.onnx, joiner.onnx e tokens.txt per il keyword spotter Sherpa-ONNX. Se vuota, viene scaricato automaticamente il modello predefinito.</description>
     </key>
     <key name="stt-provider" type="s">
       <default>'vosk'</default>

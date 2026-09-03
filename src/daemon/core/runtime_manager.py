@@ -69,6 +69,9 @@ class DaemonRuntimeManager:
                 pass
 
         self.owner.vosk_ww_model = "vosk-model-small-it-0.22" if self.owner.language == "it" else "vosk-model-small-en-us-0.15"
+        self.owner.wakeword_engine = self.owner.settings.get_string("wakeword-engine") or "vosk"
+        self.owner.oww_model_name = self.owner.settings.get_string("oww-model") or "alexa"
+        self.owner.sherpa_ww_model_dir = self.owner.settings.get_string("sherpa-ww-model-dir") or ""
 
         try:
             extra_str = self.owner.settings.get_string("stt-extra")
@@ -78,6 +81,9 @@ class DaemonRuntimeManager:
 
         self.owner.settings.connect("changed::language", self.owner.on_settings_changed)
         self.owner.settings.connect("changed::wakeword", self.owner.on_settings_changed)
+        self.owner.settings.connect("changed::wakeword-engine", self.owner.on_settings_changed)
+        self.owner.settings.connect("changed::oww-model", self.owner.on_settings_changed)
+        self.owner.settings.connect("changed::sherpa-ww-model-dir", self.owner.on_settings_changed)
         self.owner.settings.connect("changed::stt-provider", self.owner.on_settings_changed)
         self.owner.settings.connect("changed::stt-model", self.owner.on_settings_changed)
         self.owner.settings.connect("changed::stt-hardware", self.owner.on_settings_changed)
@@ -98,25 +104,121 @@ class DaemonRuntimeManager:
             logger.warning(f"Impossibile inizializzare notify2: {e}")
 
     def initialize_wakeword(self):
-        def _load_ww():
-            from providers.vosk_provider import VoskProvider
-            from vosk import KaldiRecognizer
+        engine = getattr(self.owner, 'wakeword_engine', 'vosk')
+        if engine == 'openwakeword':
+            threading.Thread(target=self._load_oww, daemon=True).start()
+        elif engine == 'sherpa-onnx':
+            threading.Thread(target=self._load_sherpa_ww, daemon=True).start()
+        else:
+            threading.Thread(target=self._load_vosk_ww, daemon=True).start()
+
+    def _load_vosk_ww(self):
+        from providers.vosk_provider import VoskProvider
+        from vosk import KaldiRecognizer
+        try:
+            def progress_cb(pct):
+                try:
+                    self.owner.DownloadProgress(pct)
+                except Exception:
+                    pass
+
+            self.owner.ww_provider = VoskProvider(self.owner.vosk_ww_model, "cpu", {}, progress_callback=progress_cb, models_dir=self.owner.models_dir)
+            self.owner.ww_model = self.owner.ww_provider.model
+            self.owner.ww_recognizer = KaldiRecognizer(self.owner.ww_model, 16000)
+            logger.info(f"Motore Wake Word (Vosk: {self.owner.vosk_ww_model}) inizializzato con successo.")
+        except Exception as e:
+            logger.error(f"Errore inizializzazione Wake Word Vosk: {e}", exc_info=True)
+            self.owner.ww_recognizer = None
+
+    def _load_sherpa_ww(self):
+        try:
+            import sherpa_onnx
+        except ImportError:
+            logger.error("sherpa-onnx non installato. Installa con: pip install sherpa-onnx")
+            self.owner.sherpa_spotter = None
+            return
+
+        model_dir = (getattr(self.owner, 'sherpa_ww_model_dir', '') or '').strip()
+        if not model_dir:
+            # Auto-download del modello KWS predefinito (gigaspeech 3.3M, English)
+            models_base = getattr(self.owner, 'models_dir', '') or os.path.expanduser("~/.local/share/voice-assistant/models")
+            model_dir = os.path.join(models_base, "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01")
+            if not os.path.isdir(model_dir):
+                self._download_sherpa_kws_model(model_dir)
+
+        encoder = os.path.join(model_dir, "encoder-epoch-12-avg-2-chunk-16-left-64.onnx")
+        decoder = os.path.join(model_dir, "decoder-epoch-12-avg-2.onnx")
+        joiner  = os.path.join(model_dir, "joiner-epoch-12-avg-2.onnx")
+        tokens  = os.path.join(model_dir, "tokens.txt")
+
+        for f in (encoder, decoder, joiner, tokens):
+            if not os.path.isfile(f):
+                logger.error(f"File Sherpa-ONNX mancante: {f}")
+                self.owner.sherpa_spotter = None
+                return
+
+        keyword = getattr(self.owner, 'wakeword', 'assistente')
+        keywords_path = os.path.join(model_dir, "_kws_keyword.txt")
+        try:
+            with open(keywords_path, 'w', encoding='utf-8') as fh:
+                fh.write(keyword + "\n")
+        except Exception as e:
+            logger.error(f"Impossibile scrivere keywords file Sherpa: {e}")
+            self.owner.sherpa_spotter = None
+            return
+
+        try:
+            spotter = sherpa_onnx.KeywordSpotter(
+                tokens=tokens,
+                encoder=encoder,
+                decoder=decoder,
+                joiner=joiner,
+                keywords_file=keywords_path,
+                num_threads=1,
+                provider="cpu",
+            )
+            self.owner.sherpa_spotter = spotter
+            self.owner.sherpa_stream = spotter.create_stream()
+            logger.info(f"Motore Wake Word (Sherpa-ONNX, keyword: '{keyword}') inizializzato.")
+        except Exception as e:
+            logger.error(f"Errore inizializzazione Sherpa-ONNX: {e}", exc_info=True)
+            self.owner.sherpa_spotter = None
+
+    def _download_sherpa_kws_model(self, model_dir: str):
+        import urllib.request
+        base = "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+        files = {
+            "encoder-epoch-12-avg-2-chunk-16-left-64.onnx": f"{base}/encoder-epoch-12-avg-2-chunk-16-left-64.onnx",
+            "decoder-epoch-12-avg-2.onnx": f"{base}/decoder-epoch-12-avg-2.onnx",
+            "joiner-epoch-12-avg-2.onnx": f"{base}/joiner-epoch-12-avg-2.onnx",
+            "tokens.txt": f"{base}/tokens.txt",
+        }
+        os.makedirs(model_dir, exist_ok=True)
+        for fname, url in files.items():
+            dest = os.path.join(model_dir, fname)
+            if os.path.isfile(dest):
+                continue
+            logger.info(f"Download Sherpa-ONNX: {fname}...")
             try:
-                def progress_cb(pct):
-                    try:
-                        self.owner.DownloadProgress(pct)
-                    except Exception:
-                        pass
-
-                self.owner.ww_provider = VoskProvider(self.owner.vosk_ww_model, "cpu", {}, progress_callback=progress_cb, models_dir=self.owner.models_dir)
-                self.owner.ww_model = self.owner.ww_provider.model
-                self.owner.ww_recognizer = KaldiRecognizer(self.owner.ww_model, 16000)
-                logger.info(f"Motore Wake Word (Vosk: {self.owner.vosk_ww_model}) inizializzato con successo.")
+                urllib.request.urlretrieve(url, dest)
             except Exception as e:
-                logger.error(f"Errore inizializzazione Wake Word: {e}", exc_info=True)
-                self.owner.ww_recognizer = None
+                logger.error(f"Errore download {fname}: {e}")
 
-        threading.Thread(target=_load_ww, daemon=True).start()
+    def _load_oww(self):
+        try:
+            import openwakeword
+            from openwakeword.model import Model
+            openwakeword.utils.download_models()
+            model_name = getattr(self.owner, 'oww_model_name', 'alexa')
+            self.owner.oww_model_instance = Model(
+                wakeword_models=[model_name],
+                inference_framework="onnx",
+            )
+            self.owner._oww_buffer = []
+            logger.info(f"Motore Wake Word (OpenWakeWord: {model_name}) inizializzato con successo.")
+        except Exception as e:
+            logger.error(f"Errore inizializzazione OpenWakeWord: {e}", exc_info=True)
+            self.owner.oww_model_instance = None
 
     def initialize_services(self):
         self.owner.audio_player = AudioPlayer(on_playback_finished=self.owner._on_playback_finished)

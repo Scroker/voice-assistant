@@ -19,8 +19,49 @@ export function setupGeneralPage(builder, settings, window, _, onModelsDirChange
         });
     }
 
+    const OWW_MODELS = ['alexa', 'hey_jarvis', 'hey_mycroft', 'hey_rhasspy'];
+    const ENGINE_VALUES = ['vosk', 'openwakeword', 'sherpa-onnx'];
+
+    const wakewordEngineRow = builder.get_object('wakeword_engine_row');
     const wakewordRow = builder.get_object('wakeword_row');
+    const owwModelRow = builder.get_object('oww_model_row');
+    const sherpaModelDirRow = builder.get_object('sherpa_model_dir_row');
+
+    const applyEngineVisibility = (engine) => {
+        const isOww = engine === 'openwakeword';
+        const isSherpa = engine === 'sherpa-onnx';
+        if (wakewordRow) wakewordRow.set_visible(!isOww);
+        if (owwModelRow) owwModelRow.set_visible(isOww);
+        if (sherpaModelDirRow) sherpaModelDirRow.set_visible(isSherpa);
+    };
+
+    if (wakewordEngineRow) {
+        const currentEngine = settings.get_string('wakeword-engine') || 'vosk';
+        const idx = ENGINE_VALUES.indexOf(currentEngine);
+        wakewordEngineRow.selected = idx >= 0 ? idx : 0;
+        applyEngineVisibility(currentEngine);
+
+        wakewordEngineRow.connect('notify::selected', () => {
+            const newEngine = ENGINE_VALUES[wakewordEngineRow.selected] || 'vosk';
+            settings.set_string('wakeword-engine', newEngine);
+            applyEngineVisibility(newEngine);
+        });
+    }
+
     if (wakewordRow) settings.bind('wakeword', wakewordRow, 'text', Gio.SettingsBindFlags.DEFAULT);
+
+    if (owwModelRow) {
+        const currentOwwModel = settings.get_string('oww-model') || 'alexa';
+        const owwIdx = OWW_MODELS.indexOf(currentOwwModel);
+        owwModelRow.selected = owwIdx >= 0 ? owwIdx : 0;
+
+        owwModelRow.connect('notify::selected', () => {
+            const idx = owwModelRow.selected;
+            settings.set_string('oww-model', OWW_MODELS[idx] || 'alexa');
+        });
+    }
+
+    if (sherpaModelDirRow) settings.bind('sherpa-ww-model-dir', sherpaModelDirRow, 'text', Gio.SettingsBindFlags.DEFAULT);
 
     // 2. Storage & Cache Management
     const modelsPathRow = builder.get_object('models_path_row');

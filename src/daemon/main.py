@@ -92,10 +92,23 @@ class VoiceAssistant(object):
         self.extra_config: dict = {}
         self.vosk_ww_model = ""
 
-        # Wake-word engine (populated by DaemonRuntimeManager.initialize_wakeword in a thread)
+        # Wake-word engine selection
+        self.wakeword_engine = "vosk"   # "vosk" | "openwakeword"
+        self.oww_model_name = "alexa"
+
+        # Vosk wake-word (populated by DaemonRuntimeManager._load_vosk_ww in a thread)
         self.ww_provider = None
         self.ww_model = None
         self.ww_recognizer = None
+
+        # OpenWakeWord (populated by DaemonRuntimeManager._load_oww in a thread)
+        self.oww_model_instance = None
+        self._oww_buffer: list = []
+
+        # Sherpa-ONNX keyword spotter (populated by DaemonRuntimeManager._load_sherpa_ww)
+        self.sherpa_ww_model_dir = ""
+        self.sherpa_spotter = None
+        self.sherpa_stream = None
 
         # STT provider (populated by load_provider)
         self.provider = None

@@ -151,8 +151,41 @@ Adw.NavigationSplitView split_view {
                     };
                   }
 
+                  Adw.ComboRow wakeword_engine_row {
+                    title: _("Wakeword Engine");
+                    subtitle: _("Vosk: any word — OpenWakeWord: fixed keywords — Sherpa-ONNX: custom ONNX keyword spotter");
+                    model: Gtk.StringList {
+                      strings: [
+                        _("Vosk (custom word)"),
+                        _("OpenWakeWord (fixed keywords)"),
+                        _("Sherpa-ONNX (keyword spotting)")
+                      ];
+                    };
+                  }
+
                   Adw.EntryRow wakeword_row {
                     title: _("Wakeword");
+                    subtitle: _("Word that activates the assistant (Vosk / Sherpa-ONNX)");
+                  }
+
+                  Adw.ComboRow oww_model_row {
+                    title: _("OpenWakeWord Keyword");
+                    subtitle: _("Pre-trained keyword model to detect");
+                    visible: false;
+                    model: Gtk.StringList {
+                      strings: [
+                        "alexa",
+                        "hey_jarvis",
+                        "hey_mycroft",
+                        "hey_rhasspy"
+                      ];
+                    };
+                  }
+
+                  Adw.EntryRow sherpa_model_dir_row {
+                    title: _("Sherpa-ONNX Model Directory");
+                    subtitle: _("Folder with encoder.onnx, decoder.onnx, joiner.onnx, tokens.txt (leave empty to auto-download)");
+                    visible: false;
                   }
                 }
               }

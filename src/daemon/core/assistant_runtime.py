@@ -217,6 +217,35 @@ class AssistantRuntimeController:
                 GLib.idle_add(self.owner.set_state, "idle")
             elif not new_enabled and self.owner._state != "disabled":
                 GLib.idle_add(self.owner.set_state, "disabled")
+        elif key == "wakeword-engine":
+            new_engine = settings.get_string(key) or "vosk"
+            if new_engine != getattr(self.owner, 'wakeword_engine', 'vosk'):
+                self.owner.wakeword_engine = new_engine
+                self.owner.ww_recognizer = None
+                self.owner.oww_model_instance = None
+                self.owner._oww_buffer = []
+                self.owner.sherpa_spotter = None
+                self.owner.sherpa_stream = None
+                self.owner.runtime_manager.initialize_wakeword()
+                logger.info(f"Motore wakeword cambiato a: {new_engine}")
+        elif key == "oww-model":
+            new_model = settings.get_string(key) or "alexa"
+            if new_model != getattr(self.owner, 'oww_model_name', 'alexa'):
+                self.owner.oww_model_name = new_model
+                if getattr(self.owner, 'wakeword_engine', 'vosk') == 'openwakeword':
+                    self.owner.oww_model_instance = None
+                    self.owner._oww_buffer = []
+                    self.owner.runtime_manager.initialize_wakeword()
+                    logger.info(f"Modello OpenWakeWord cambiato a: {new_model}")
+        elif key == "sherpa-ww-model-dir":
+            new_dir = settings.get_string(key) or ""
+            if new_dir != getattr(self.owner, 'sherpa_ww_model_dir', ''):
+                self.owner.sherpa_ww_model_dir = new_dir
+                if getattr(self.owner, 'wakeword_engine', 'vosk') == 'sherpa-onnx':
+                    self.owner.sherpa_spotter = None
+                    self.owner.sherpa_stream = None
+                    self.owner.runtime_manager.initialize_wakeword()
+                    logger.info(f"Directory modello Sherpa-ONNX cambiata: {new_dir}")
         elif key == "mcp-registry-url" and getattr(self.owner, "mcp_manager", None):
             self.owner.mcp_manager.set_registry_url(settings.get_string(key))
         elif key == "mcp-enabled" and getattr(self.owner, "mcp_manager", None):
@@ -251,6 +280,60 @@ class AssistantRuntimeController:
         except Exception as e:
             logger.warning(f"Errore reset ww_recognizer: {e}")
             self.owner.ww_recognizer = None
+
+    def _check_sherpa_wakeword(self, data: bytes):
+        """Invia chunk PCM a Sherpa-ONNX KeywordSpotter in modalità streaming."""
+        import numpy as np
+        spotter = getattr(self.owner, 'sherpa_spotter', None)
+        stream = getattr(self.owner, 'sherpa_stream', None)
+        if spotter is None or stream is None:
+            return
+        if not data:
+            return
+
+        samples = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+        try:
+            stream.accept_waveform(sample_rate=16000, waveform=samples)
+            while spotter.is_ready(stream):
+                spotter.decode(stream)
+            result = spotter.get_result(stream)
+            keyword = getattr(result, 'keyword', result) if not isinstance(result, str) else result
+            if keyword and keyword.strip():
+                logger.info(f"Sherpa-ONNX: keyword '{keyword.strip()}' rilevata!")
+                stream.reset()
+                self.trigger_assistant()
+        except Exception as e:
+            logger.warning(f"Errore Sherpa-ONNX detect: {e}")
+
+    def _check_oww_wakeword(self, data: bytes):
+        """Accumula chunk PCM e li invia a OpenWakeWord ogni 1280 campioni (80ms)."""
+        import numpy as np
+        oww = getattr(self.owner, 'oww_model_instance', None)
+        if oww is None:
+            return
+
+        buf: list = self.owner._oww_buffer
+        if data:
+            chunk = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+            buf.extend(chunk.tolist())
+
+        OWW_FRAME = 1280
+        while len(buf) >= OWW_FRAME:
+            frame = np.array(buf[:OWW_FRAME], dtype=np.float32)
+            del buf[:OWW_FRAME]
+            try:
+                prediction = oww.predict(frame)
+                model_name = getattr(self.owner, 'oww_model_name', 'alexa')
+                score = prediction.get(model_name, 0.0)
+                if score > 0.5:
+                    logger.info(f"OpenWakeWord: '{model_name}' rilevata (score={score:.2f})")
+                    self.owner._oww_buffer = buf
+                    self.trigger_assistant()
+                    return
+            except Exception as e:
+                logger.warning(f"Errore OWW predict: {e}")
+
+        self.owner._oww_buffer = buf
 
     def trigger_assistant(self):
         import time
@@ -308,6 +391,13 @@ class AssistantRuntimeController:
                     continue
 
                 if self.owner._state in ("idle", "speaking", "processing", "AssistantState.IDLE", "AssistantState.SPEAKING", "AssistantState.PROCESSING"):
+                    engine = getattr(self.owner, 'wakeword_engine', 'vosk')
+                    if engine == 'openwakeword':
+                        self._check_oww_wakeword(data)
+                        continue
+                    if engine == 'sherpa-onnx':
+                        self._check_sherpa_wakeword(data)
+                        continue
                     if self.owner.ww_recognizer:
                         import json as json_mod
                         wakeword_lower = self.owner.wakeword.lower().strip()
@@ -339,11 +429,12 @@ class AssistantRuntimeController:
                             matched_ww = next((v for v in ww_variants if v in words), None)
                         else:
                             matched_ww = next((v for v in ww_variants if v in words or (len(v) >= 4 and v in recognized_str)), None)
-                            if not matched_ww and len(wakeword_lower) >= 3:
+                            if not matched_ww and len(wakeword_lower) >= 4:
+                                min_word_len = max(4, len(wakeword_lower) - 3)
                                 for w in words:
-                                    if len(w) >= 3:
+                                    if len(w) >= min_word_len:
                                         ratio = difflib.SequenceMatcher(None, ww_no_h, w.replace('h', '')).ratio()
-                                        if ratio >= 0.75:
+                                        if ratio >= 0.80:
                                             matched_ww = w
                                             break
 

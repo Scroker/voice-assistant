@@ -8,3 +8,8 @@ llama-cpp-python
 piper-tts
 keyring
 notify2
+# OpenWakeWord (motore wakeword alternativo con modelli pre-addestrati)
+openwakeword
+onnxruntime
+# Sherpa-ONNX (keyword spotting ONNX con modelli personalizzabili)
+sherpa-onnx
