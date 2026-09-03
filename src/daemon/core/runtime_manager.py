@@ -181,7 +181,7 @@ class DaemonRuntimeManager:
         is_enabled = self.owner.settings.get_boolean("enabled")
         self.owner.set_state("idle" if is_enabled else "disabled")
 
-        self.owner._report_initial_context()
+        self._report_initial_context()
 
     def ensure_stt_provider(self, target_state: str):
         """Reload the STT provider on demand after idle memory reclamation."""

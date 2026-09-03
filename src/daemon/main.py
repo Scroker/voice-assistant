@@ -69,12 +69,59 @@ class VoiceAssistant(object):
     def __init__(self):
         self._daemon_start_time = time.time()
         self._inhibitor = PowerInhibitor()
-        self._state = "disabled" # Parte disabilitato o idle? Mettiamo disabled per sicurezza
+
+        # Core state
+        self._state = "disabled"
         self._listening = False
         self._stream = None
         self.q = q
-        self._downloading_models = {}
-        self._cancel_requests = set()
+
+        # Download / cancel tracking
+        self._downloading_models: dict = {}
+        self._cancel_requests: set = set()
+        self._active_notifs: dict = {}
+
+        # Settings (populated by DaemonRuntimeManager.load_settings)
+        self.settings = None
+        self.wakeword = ""
+        self.provider_name = ""
+        self.model_name = ""
+        self.hardware = "cpu"
+        self.models_dir = ""
+        self.language = "it"
+        self.extra_config: dict = {}
+        self.vosk_ww_model = ""
+
+        # Wake-word engine (populated by DaemonRuntimeManager.initialize_wakeword in a thread)
+        self.ww_provider = None
+        self.ww_model = None
+        self.ww_recognizer = None
+
+        # STT provider (populated by load_provider)
+        self.provider = None
+        self._stt_load_pending = False
+        self._pending_state_after_provider_load = None
+        self._load_id = 0
+
+        # Audio processing state
+        self.audio_filter = None
+        self.audio_player = None
+        self._audio_thread = None
+        self._ignore_audio_until: float = 0.0
+        self._listening_start_time = None
+        self._last_speech_time = None
+        self._last_partial_text = ""
+        self._last_partial_change_time = None
+        self._reload_timer = None
+
+        # Services (populated by DaemonRuntimeManager.initialize_services / initialize_pipeline)
+        self.tts_manager = None
+        self.mcp_manager = None
+        self.llm_service = None
+        self.state_machine = None
+        self.pipeline_controller = None
+        self._model_idle_watch_id = None
+
         self.model_manager = ModelManager()
         self.lifecycle = DaemonLifecycle(self)
         self.provider_manager = ProviderManager(self)
@@ -101,48 +148,7 @@ class VoiceAssistant(object):
         return self.provider_manager.has_installed_models()
 
     def load_provider(self, load_id):
-        provider_manager = getattr(self, 'provider_manager', None)
-        if isinstance(provider_manager, ProviderManager):
-            return provider_manager.load_provider(load_id)
-
-        local_provider_name = getattr(self, 'provider_name', None)
-        local_model_name = getattr(self, 'model_name', None)
-        local_hardware = getattr(self, 'hardware', 'cpu')
-        local_extra = dict(getattr(self, 'extra_config', {}) or {})
-        settings_obs = getattr(self, '_settings_observer', None)
-        if settings_obs:
-            local_extra.setdefault('api_key', settings_obs.get('llm-api-key', ''))
-            local_extra.setdefault('language', settings_obs.get('language', 'it'))
-
-        if local_provider_name is None or local_model_name is None:
-            raise ValueError("provider_name and model_name are required to load a provider")
-
-        if hasattr(self, '_cancel_requests'):
-            self._cancel_requests.discard(f"{local_provider_name}:{local_model_name}")
-
-        if not hasattr(self, '_downloading_models') or self._downloading_models is None:
-            self._downloading_models = {}
-
-        key_str = f"{local_provider_name}:{local_model_name}"
-        try:
-            provider = get_provider(
-                local_provider_name,
-                local_model_name,
-                local_hardware,
-                local_extra,
-                models_dir=getattr(self, 'models_dir', None),
-            )
-            self.provider = provider
-            self.model_manager.register_instance(
-                "stt",
-                provider,
-                lambda: setattr(self, "provider", None),
-            )
-            self._downloading_models.pop(key_str, None)
-            return provider
-        except Exception:
-            self._downloading_models.pop(key_str, None)
-            raise
+        return self.provider_manager.load_provider(load_id)
 
     @dbus_signal
     def StateChanged(self, new_state: str):
@@ -244,7 +250,7 @@ class VoiceAssistant(object):
             bundle_path = DiagnosticBundler.generate(
                 settings=self.settings,
                 state=self._state,
-                daemon_start_time=getattr(self, '_daemon_start_time', None)
+                daemon_start_time=self._daemon_start_time
             )
             return bundle_path
         except Exception as e:
