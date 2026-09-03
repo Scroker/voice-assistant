@@ -34,5 +34,15 @@ class TestJSSyntax(unittest.TestCase):
                 self.assertNotIn("initGettext", content,
                                  f"Uso deprecato di 'initGettext' trovato in {filename}")
 
+    def test_quick_toggle_is_owned_by_extension(self):
+        """Il toggle deve sopravvivere indipendentemente dal SystemIndicator."""
+        filepath = os.path.join(ROOT_DIR, "src", "extension.js")
+        with open(filepath, "r", encoding="utf-8") as source_file:
+            source = source_file.read()
+
+        self.assertNotIn("this.quickSettingsItems.push(this._toggle)", source)
+        self.assertIn("this._quickToggle = new VoiceAssistantQuickToggle(this);", source)
+        self.assertIn("this._quickToggle.destroy();", source)
+
 if __name__ == '__main__':
     unittest.main()

@@ -45,6 +45,7 @@ Il processo viene avviato da `start.sh` tramite systemd e si registra sul Sessio
 | `core/power.py` | Gestisce la sospensione del sistema e gli inhibitor logind/GNOME durante i download e lo stato attivo |
 | `core/audio_runtime.py` | Verifica e inizializza l’AEC PipeWire, il dispositivo audio e la stream di input |
 | `core/lifecycle.py` | Concentra gestione dello stato, notifiche e emissione dei segnali D-Bus |
+| `core/model_manager.py` | Registra modelli in-process, applica la policy idle e coordina il reclaim RAM/VRAM |
 | `core/provider_manager.py` | Gestisce caricamento provider, download e cleanup dei modelli |
 | `core/service_bootstrap.py` | Pubblica l’oggetto D-Bus e avvia il loop di eventi |
 | `core/runtime_manager.py` | Inizializza settings, wakeword, servizi, pipeline e avvia i thread background |
@@ -141,6 +142,18 @@ self.settings.connect("changed::models-dir", self.on_settings_changed)
 ```
 
 La wakeword viene aggiornata istantaneamente. Le altre chiavi triggerano un **reload debounced** a 500 ms tramite `_schedule_reload()` + `threading.Timer`, per evitare ricaricamenti multipli quando l'utente cambia opzioni in rapida sequenza. Ogni `load_provider()` opera in un thread dedicato con un `load_id` incrementale per isolare le concorrenze.
+
+### Lifecycle dei modelli e reclaim memoria
+
+`VoiceAssistant` crea un solo `ModelManager` e lo passa ai servizi che possiedono risorse in-process. Il manager registra il provider STT selezionato, il runner GGUF locale e la voce Piper solo quando sono effettivamente caricati. A ogni stato attivo (`listening`, `processing`, `speaking`) il timer di inattività viene aggiornato.
+
+Un timer GLib esegue il controllo ogni 30 secondi. Dopo 300 secondi senza attività, il manager richiama le callback di unload dei proprietari, esegue la garbage collection, svuota le cache CUDA/XPU se disponibili e tenta `malloc_trim(0)` su Linux. I file dei modelli restano su disco: vengono liberati soltanto gli handle in RAM/VRAM.
+
+- **STT**: il riferimento del daemon viene rilasciato e il provider viene ricaricato in background alla richiesta di ascolto successiva.
+- **LLM GGUF locale**: vengono azzerati l'handle `llama.cpp` e il path attivo; il caricamento successivo resta lazy.
+- **Piper TTS**: vengono azzerati la voce ONNX e il relativo nome; la voce viene caricata al prossimo `speak()`.
+- **Wakeword Vosk**: resta residente per mantenere l'ascolto continuo.
+- **EmbeddingService**: usa vettori sparsi in memoria, non un modello neurale, e non richiede questa policy.
 
 ---
 

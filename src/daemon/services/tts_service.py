@@ -41,9 +41,10 @@ class PiperTTSProvider(BaseTTSProvider):
         "en_GB-alan-low": ("en/en_GB/alan/low/en_GB-alan-low.onnx", "en/en_GB/alan/low/en_GB-alan-low.onnx.json"),
     }
 
-    def __init__(self, models_dir: Optional[str] = None):
+    def __init__(self, models_dir: Optional[str] = None, model_manager: Optional[Any] = None):
         self.models_dir = models_dir or os.path.expanduser("~/.local/share/voice-assistant/models/tts")
         os.makedirs(self.models_dir, exist_ok=True)
+        self.model_manager = model_manager
         self._loaded_voice = None
         self._loaded_voice_name = None
         self._lock = threading.Lock()
@@ -88,10 +89,18 @@ class PiperTTSProvider(BaseTTSProvider):
             voice = PiperVoice.load(onnx_path, config_path=json_path)
             self._loaded_voice = voice
             self._loaded_voice_name = voice_name
+            if self.model_manager:
+                self.model_manager.register_instance("tts", self, self.unload_voice)
             return voice
         except ImportError:
             logger.warning("[PiperTTS] Modulo 'piper-tts' non installato in Python.")
             return None
+
+    def unload_voice(self):
+        """Release the cached Piper ONNX voice while keeping downloaded assets intact."""
+        with self._lock:
+            self._loaded_voice = None
+            self._loaded_voice_name = None
 
     def synthesize(self, text: str, voice: Optional[str] = None, speed: float = 1.0) -> Optional[bytes]:
         if not text or not text.strip():
@@ -277,7 +286,8 @@ class TTSServiceManager:
     Manager for TTS synthesis, routing to Piper, eSpeak, OpenAI, System, or custom providers
     and piping audio to the AudioPlayer.
     """
-    def __init__(self, audio_player: Optional[Any] = None, settings_observer: Optional[Any] = None):
+    def __init__(self, audio_player: Optional[Any] = None, settings_observer: Optional[Any] = None,
+                 model_manager: Optional[Any] = None):
         self.audio_player = audio_player
         self.settings_observer = settings_observer
 
@@ -286,7 +296,7 @@ class TTSServiceManager:
             api_key = self.settings_observer.get("llm-api-key", "")
 
         self.providers: Dict[str, BaseTTSProvider] = {
-            "piper": PiperTTSProvider(),
+            "piper": PiperTTSProvider(model_manager=model_manager),
             "espeak": EspeakTTSProvider(),
             "openai": OpenAITTSProvider(api_key=api_key),
             "system": SystemTTSProvider(),

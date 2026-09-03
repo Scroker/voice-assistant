@@ -4,6 +4,8 @@ import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 
+from .credentials import MCPCredentialStore
+
 logger = logging.getLogger("VoiceAssistant.MCPClient")
 
 class ExternalMCPClient:
@@ -14,6 +16,7 @@ class ExternalMCPClient:
         self.command = command
         self.args = args or []
         self.env = env or {}
+        self.credential_store = MCPCredentialStore()
         self.process: Optional[asyncio.subprocess.Process] = None
         self._request_id = 0
 
@@ -24,7 +27,10 @@ class ExternalMCPClient:
     async def start(self) -> bool:
         """Starts the external MCP server process via stdio transport."""
         try:
-            full_env = {**sys.modules["os"].environ, **self.env}
+            full_env = {
+                **sys.modules["os"].environ,
+                **self.credential_store.resolve_environment(self.env),
+            }
             self.process = await asyncio.create_subprocess_exec(
                 self.command,
                 *self.args,

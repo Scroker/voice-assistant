@@ -18,6 +18,9 @@
     <method name="GetDownloadingModels">
       <arg type="s" direction="out" name="models_json"/>
     </method>
+    <method name="GetResourceMetrics">
+      <arg type="s" direction="out" name="metrics_json"/>
+    </method>
     <method name="DownloadModel">
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
@@ -33,6 +36,51 @@
     </method>
     <method name="GenerateDiagnosticBundle">
       <arg type="s" direction="out" name="bundle_path"/>
+    </method>
+    <method name="GetMarketplaceFeatured">
+      <arg type="s" direction="out" name="servers_json"/>
+    </method>
+    <method name="SearchMarketplace">
+      <arg type="s" direction="in" name="query"/>
+      <arg type="s" direction="out" name="results_json"/>
+    </method>
+    <method name="GetServerDetails">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="s" direction="out" name="details_json"/>
+    </method>
+    <method name="GetMarketplaceCategories">
+      <arg type="s" direction="out" name="categories_json"/>
+    </method>
+    <method name="FilterMarketplaceByCategory">
+      <arg type="s" direction="in" name="category"/>
+      <arg type="s" direction="out" name="results_json"/>
+    </method>
+    <method name="InstallMCPServer">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="s" direction="in" name="server_config_json"/>
+      <arg type="s" direction="in" name="env_vars_json"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="UninstallMCPServer">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="TestMCPServer">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="UpdateServerConfig">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="s" direction="in" name="env_vars_json"/>
+      <arg type="b" direction="in" name="enabled"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="GetInstalledServers">
+      <arg type="s" direction="out" name="servers_json"/>
     </method>
     <method name="ShowWindow">
     </method>

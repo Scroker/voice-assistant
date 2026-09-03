@@ -281,32 +281,35 @@ class PipelineController:
                 "response": response_text
             }
 
-        # 2. SMART PATH Check (with RAG, Memory, LLM)
-        logger.info(f"[Pipeline] Fast-Path no match, attempting SMART PATH: '{text}' (speak={speak})")
-        try:
-            success, smart_response, tool_result = self.smart_path.execute_smart_path(
-                text,
-                llm_streamer=self.llm_streamer,
-                mcp_manager=self.mcp_manager,
-            )
-            
-            if success and smart_response:
-                logger.info(f"[Pipeline] Smart-Path success: '{smart_response}' (speak={speak})")
-                if speak:
-                    self.state_machine.set_state(AssistantState.SPEAKING)
-                    if self.tts_engine:
-                        self.tts_engine(smart_response)
-                if not speak or not (self.audio_player and getattr(self.audio_player, 'is_playing', False) or self.state_machine.state == AssistantState.SPEAKING):
-                    self.state_machine.set_state(AssistantState.IDLE)
-                return {
-                    "fast_path": False,
-                    "smart_path": True,
-                    "transcription": text,
-                    "response": smart_response,
-                    "tool_result": tool_result,
-                }
-        except Exception as e:
-            logger.warning(f"[Pipeline] SMART PATH error, falling back to LLM: {e}")
+        # 2. SMART PATH Check (with RAG, Memory, LLM) - only if MCP is available
+        if self.mcp_manager:
+            logger.info(f"[Pipeline] Fast-Path no match, attempting SMART PATH: '{text}' (speak={speak})")
+            try:
+                success, smart_response, tool_result = self.smart_path.execute_smart_path(
+                    text,
+                    llm_streamer=self.llm_streamer,
+                    mcp_manager=self.mcp_manager,
+                    token_callback=getattr(self, 'on_token_callback', None),
+                    sentence_callback=self._on_sentence_ready if speak else None,
+                )
+                
+                if success and smart_response:
+                    logger.info(f"[Pipeline] Smart-Path success: '{smart_response}' (speak={speak})")
+                    if speak:
+                        self.state_machine.set_state(AssistantState.SPEAKING)
+                    if not speak or not (self.audio_player and getattr(self.audio_player, 'is_playing', False) or self.state_machine.state == AssistantState.SPEAKING):
+                        self.state_machine.set_state(AssistantState.IDLE)
+                    return {
+                        "fast_path": False,
+                        "smart_path": True,
+                        "transcription": text,
+                        "response": smart_response,
+                        "tool_result": tool_result,
+                    }
+            except Exception as e:
+                logger.warning(f"[Pipeline] SMART PATH error, falling back to LLM: {e}")
+        else:
+            logger.debug("[Pipeline] MCP Manager not available, skipping SMART PATH")
 
         # 3. LLM Streaming Path (Fallback)
         logger.info(f"[Pipeline] Nessun Fast-Path, invio all'LLM Streaming: '{text}' (speak={speak})")

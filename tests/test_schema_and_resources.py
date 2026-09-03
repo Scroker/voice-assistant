@@ -58,6 +58,34 @@ class TestSchemaAndResources(unittest.TestCase):
         iface = root.find("interface")
         self.assertIsNotNone(iface)
         self.assertEqual(iface.attrib.get("name"), "org.local.VoiceAssistant")
+        self.assertIsNotNone(iface.find("method[@name='GetResourceMetrics']"))
+
+    def test_model_idle_timeout_keys(self):
+        schema_path = os.path.join(
+            ROOT_DIR, "data", "schemas", "org.gnome.shell.extensions.voice-assistant.gschema.xml"
+        )
+        schema = ET.parse(schema_path).getroot().find("schema")
+        keys = {key.attrib["name"]: key.findtext("default") for key in schema.findall("key")}
+
+        self.assertEqual(keys["idle-unload-timeout"], "300")
+        self.assertEqual(keys["stt-idle-unload-timeout"], "0")
+        self.assertEqual(keys["llm-idle-unload-timeout"], "180")
+        self.assertEqual(keys["tts-idle-unload-timeout"], "0")
+        self.assertEqual(keys["mcp-registry-url"], "'https://api.smithery.ai'")
+
+    def test_mcp_enabled_is_schema_key_and_bound_in_preferences(self):
+        schema_path = os.path.join(
+            ROOT_DIR, "data", "schemas", "org.gnome.shell.extensions.voice-assistant.gschema.xml"
+        )
+        schema = ET.parse(schema_path).getroot().find("schema")
+        keys = {key.attrib["name"]: key.findtext("default") for key in schema.findall("key")}
+        self.assertEqual(keys["mcp-enabled"], "true")
+
+        mcp_js_path = os.path.join(ROOT_DIR, "src", "prefs", "mcp.js")
+        with open(mcp_js_path, "r", encoding="utf-8") as source_file:
+            source = source_file.read()
+
+        self.assertIn("settings.bind('mcp-enabled', mcpToggle, 'active'", source)
 
 if __name__ == '__main__':
     unittest.main()

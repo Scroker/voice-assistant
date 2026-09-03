@@ -64,6 +64,23 @@ class TestCorePipeline(unittest.TestCase):
         matched, intent, params, resp = dispatcher.dispatch("Spiegami la teoria della relatività generale")
         self.assertFalse(matched)
 
+    def test_fast_path_dispatcher_passes_text_to_intent_handler(self):
+        calls = []
+
+        def handler(intent, params, text):
+            calls.append((intent, params, text))
+            return True, "Volume aggiornato via MCP"
+
+        dispatcher = FastPathDispatcher(intent_handler=handler)
+
+        matched, intent, params, response = dispatcher.dispatch("Alza il volume")
+
+        self.assertTrue(matched)
+        self.assertEqual(intent, "volume_up")
+        self.assertEqual(response, "Volume aggiornato via MCP")
+        self.assertEqual(calls[0][0], "volume_up")
+        self.assertEqual(calls[0][2], "alza il volume")
+
     def test_pipeline_controller_fast_path_flow(self):
         """Verifica il flusso del PipelineController con esecuzione Fast-Path."""
         state_machine = StateMachine()
@@ -105,6 +122,38 @@ class TestCorePipeline(unittest.TestCase):
         self.assertEqual(result["response"], "Questa è una risposta di prova. Spero sia chiara.")
         self.assertEqual(sentences_spoken, ["Questa è una risposta di prova.", "Spero sia chiara."])
         self.assertEqual(state_machine.state, AssistantState.IDLE)
+
+    def test_pipeline_controller_smart_path_streams_to_gui_and_tts(self):
+        state_machine = StateMachine()
+        tokens = []
+        spoken = []
+
+        def dummy_llm_stream(prompt):
+            yield "Uso un tool. "
+            yield '{"tool": "system_volume", "args": {"action": "increase", "level": 10}}'
+
+        mcp_manager = MagicMock()
+        mcp_manager.execute_tool.return_value = "Volume alzato."
+
+        controller = PipelineController(
+            state_machine=state_machine,
+            llm_streamer=dummy_llm_stream,
+            tts_engine=spoken.append,
+            mcp_manager=mcp_manager,
+        )
+        controller.on_token_callback = tokens.append
+
+        result = controller.process_text_input("gestisci questo comando complesso", speak=True)
+
+        visible = "".join(tokens)
+        self.assertTrue(result["smart_path"])
+        self.assertIn("Uso un tool.", result["response"])
+        self.assertIn("Volume alzato.", visible)
+        self.assertNotIn('"tool"', visible)
+        self.assertEqual(spoken, ["Uso un tool.", "Volume alzato."])
+        mcp_manager.execute_tool.assert_called_once_with(
+            "system_volume", {"action": "increase", "level": 10}
+        )
 
 if __name__ == '__main__':
     unittest.main()

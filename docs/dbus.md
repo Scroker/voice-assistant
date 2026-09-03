@@ -54,6 +54,9 @@ sequenceDiagram
     <method name="GetDownloadingModels">
       <arg type="s" direction="out" name="models_json"/>
     </method>
+    <method name="GetResourceMetrics">
+      <arg type="s" direction="out" name="metrics_json"/>
+    </method>
     <method name="DownloadModel">
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
@@ -107,6 +110,20 @@ Ritorna una mappa dei modelli attualmente in fase di scaricamento ed il relativo
   }
   ```
 
+  ### `GetResourceMetrics() → string (JSON)`
+  Restituisce le metriche del processo daemon e lo stato dei modelli in-process. `rss_bytes` e `vms_bytes` provengono da `/proc/self/status`; le metriche GPU sono disponibili per CUDA/XPU quando PyTorch le supporta.
+
+  ```json
+  {
+    "rss_bytes": 314572800,
+    "vms_bytes": 1073741824,
+    "gpu_allocated_bytes": 0,
+    "gpu_reserved_bytes": 0,
+    "loaded_models": {"stt": true, "llm": false, "tts": true, "embedding": false},
+    "idle_timeouts": {"stt": 300, "llm": 180, "tts": 300}
+  }
+  ```
+
 ### `DownloadModel(provider: string, model: string)`
 Avvia in un thread dedicato in background lo scaricamento del modello specificato, attivando l'inibitore di sospensione del sistema.
 
@@ -141,6 +158,12 @@ gdbus call --session \
   --dest org.local.VoiceAssistant \
   --object-path /org/local/VoiceAssistant \
   --method org.local.VoiceAssistant.GetAvailableModels "vosk"
+
+# Ottenere le metriche runtime di memoria
+gdbus call --session \
+  --dest org.local.VoiceAssistant \
+  --object-path /org/local/VoiceAssistant \
+  --method org.local.VoiceAssistant.GetResourceMetrics
 
 # Monitorare i segnali D-Bus in tempo reale
 gdbus monitor --session \

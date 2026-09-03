@@ -14,6 +14,12 @@ L'architettura MCP del Voice Assistant supporta:
 3. **Dynamic Prompt Injection**: Iniezione automatica degli schemi dei tool abilitati e del timestamp di sistema aggiornato nel `system_prompt` dell'LLM.
 4. **Server MCP Esterni (Stdio / SSE)**: Possibilità di collegare server MCP esterni definiti in `~/.config/voice-assistant/mcp_servers.json`.
 
+### Marketplace Smithery
+
+La discovery del marketplace usa l'API pubblica documentata di Smithery: `https://api.smithery.ai/servers`. Le ricerche usano il parametro semantico/full-text `q`; se il catalogo non è raggiungibile, l'interfaccia mantiene i preset locali. Un token opzionale può essere fornito al daemon tramite `SMITHERY_API_KEY`.
+
+I risultati Smithery possono descrivere connessioni HTTP gestite o bundle MCPB oltre ai server stdio locali. La UI li rende ricercabili, ma l'installazione one-click resta disponibile solo per definizioni con un comando stdio (`npx`, `uvx` o Python). Le connessioni gestite Smithery richiedono ancora un adapter HTTP/OAuth nel runtime MCP.
+
 ---
 
 ## 🛠️ Elenco dei 8 Tool Nativi MCP Integrati

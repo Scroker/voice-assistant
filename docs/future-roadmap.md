@@ -152,8 +152,8 @@ Before invoking heavy LLM inference, the transcribed speech text is checked agai
 - **If No High Match**: The query is routed to Stage 2.
 
 > [!IMPORTANT]
-> **Stato Attuale (v0.2)**: `FastPathDispatcher` (`src/daemon/core/pipeline.py`) è implementato con matching deterministico basato su Regex (<1ms).
-> **Evoluzione Futura (TODO)**: Estensione di `FastPathDispatcher` mediante il layer `VectorIntentMatcher` (`services/embedding_service.py`) per calcolo di Cosine Similarity su frasi informali/colloquiali.
+> **Stato Attuale**: `FastPathDispatcher` (`src/daemon/core/pipeline.py`) combina matching deterministico Regex con `VectorIntentMatcher` e `SkillRegistry`.
+> Il matching semantico oggi è offline e leggero, basato su vettori sparsi/token overlap; l'evoluzione futura è sostituire o affiancare questo layer con embeddings neurali reali per tool MCP, SKILL.md e frasi colloquiali.
 
 #### Stage 2: Token Streaming & Parallel GUI Rendering
 As tokens arrive asynchronously from the LLM provider (`local_provider`, `ollama_provider`, `openai_provider`, `anthropic_provider`):
@@ -288,8 +288,8 @@ Keeping heavy neural networks (Whisper STT, GGUF LLMs, ONNX TTS, FastEmbed) perm
 | Component | Active Memory | Unload Strategy | Reload Latency |
 | :--- | :--- | :--- | :--- |
 | **Wakeword / VAD** | ~30MB (RAM) | **Never Unloaded** (Must listen continuously in background) | 0ms |
-| **STT (Whisper / Vosk)** | ~200MB–1GB (VRAM/RAM) | Unload after 5 min idle (`idle-unload-timeout`) | ~150ms |
-| **In-Daemon LLM (llama.cpp GGUF)**| ~1GB–4GB (VRAM/RAM) | Immediate unload on IDLE state or after 3 min idle | ~300ms |
+| **STT (Whisper / Vosk)** | ~200MB–1GB (VRAM/RAM) | Unload after 5 min idle | ~150ms |
+| **In-Daemon LLM (llama.cpp GGUF)**| ~1GB–4GB (VRAM/RAM) | Unload after 5 min idle | ~300ms |
 | **Embedding Engine (`fastembed`)** | ~40MB (RAM) | Kept in RAM if Fast Semantic Dispatch enabled; else unloaded | ~50ms |
 | **TTS (Piper / Kokoro ONNX)** | ~80MB (RAM) | Unload after 5 min idle | ~80ms |
 
@@ -297,7 +297,7 @@ Keeping heavy neural networks (Whisper STT, GGUF LLMs, ONNX TTS, FastEmbed) perm
 
 ### 4.3 Multi-Vendor GPU VRAM Purging Protocol (`core/model_manager.py`)
 
-Linux systems run on a wide range of hardware (NVIDIA CUDA, AMD ROCm/HIP, AMD/Intel Vulkan, Intel SYCL). When transitioning to `IDLE`, `ModelManager` executes a cross-vendor VRAM/RAM reclamation protocol:
+Linux systems run on a wide range of hardware (NVIDIA CUDA, AMD ROCm/HIP, AMD/Intel Vulkan, Intel SYCL). `ModelManager` is active in the daemon runtime: it registers loaded STT, local GGUF LLM and Piper TTS owners, refreshes their inactivity timestamp during active states, and checks the idle policy every 30 seconds. After 300 seconds without activity it invokes each owner's unload callback before executing the cross-vendor VRAM/RAM reclamation protocol.
 
 ```python
 import gc
@@ -350,83 +350,58 @@ The daemon exposes real-time RAM/VRAM memory metrics over D-Bus (`GetResourceMet
 
 ---
 
-## 4.5 Gap Realistici tra Roadmap e Stato Attuale del Progetto
+## 4.5 Stato Reale, Gap e Priorita
 
-La roadmap descrive un’evoluzione ambiziosa verso un assistente vocale modulare, semantico e streaming-first. Il codice attuale ha già realizzato la base di un MVP valido, ma esistono differenze concrete tra il piano architetturale e l’implementazione effettiva.
+La roadmap descrive il passaggio da assistente locale funzionante a piattaforma vocale estendibile. Il codice attuale ha gia superato la fase MVP: molti blocchi architetturali esistono, sono testati in isolamento e sono collegati al runtime principale. La parte ancora critica e l'integrazione end-to-end: alcune feature sono presenti come componenti, ma non sempre sono il percorso produttivo principale.
 
-### Stato attuale osservabile
+### Implementato o sostanzialmente presente
 
-Il progetto presenta già:
-- wakeword e riconoscimento vocale con provider multipli (Vosk/Whisper)
-- gestione settings live via GSettings
-- pipeline di fast-path per comandi diretti
-- supporto MCP nativo e server esterni configurabili
-- servizio LLM con streaming e tool-call parsing
-- classi di supporto per memoria, pipeline e modello, anche se non ancora integrate in modo completo
+- Modularizzazione daemon: `main.py` e oggi un bootstrap leggero; runtime, lifecycle, audio, provider, model manager e pipeline sono in moduli dedicati.
+- Fast Path: regex deterministicche piu semantic fallback offline via `VectorIntentMatcher` e `SkillRegistry`.
+- SMART PATH: memory conversazionale, RAG store in-memory, prompt builder, parser tool-call e skill registry.
+- MCP: 8 tool nativi, configurazione server esterni, registry Smithery/fallback locale, installer e metodi D-Bus.
+- Resource management: `ModelManager` con unload STT/LLM/TTS, timeout GSettings e metriche `GetResourceMetrics()`.
+- UI preferences: pagine LLM/STT/TTS/MCP, marketplace MCP, metriche runtime e toggle `mcp-enabled`.
+- Test automatici: unit test per pipeline, Smart Path, skills, MCP, model manager, runtime, GUI, schema, risorse e adapter streaming.
 
-Tuttavia, la struttura attuale è ancora molto più vicina a un monolite funzionale che a un sistema pienamente modulare.
+### Parziale o sperimentale
 
-### Progressi reali ottenuti con il refactor iniziale
+1. **Streaming pipeline avanzata**
+   - `StreamingPipelineEngine` e `StreamingPipelineController` esistono, ma il runtime principale inizializza ancora `PipelineController`.
+   - L'adapter e stato riallineato ai nomi reali del daemon (`pipeline_controller.fast_path`, `llm_service.stream_tokens`, `tts_manager`, `audio_player`), ma resta da promuovere a percorso runtime ufficiale.
 
-Il lavoro di modularizzazione ha già separato alcune responsabilità dal file principale:
-- `PowerInhibitor` è stato estratto in `src/daemon/core/power.py`
-- la gestione del microfono e del modulo PipeWire AEC è stata spostata in `src/daemon/core/audio_runtime.py`
-- la logica di lifecycle e transizioni di stato è stata isolata in `src/daemon/core/lifecycle.py`
-- la gestione dei provider STT/LLM, download e annullamento modelli è stata raccolta in `src/daemon/core/provider_manager.py`
+2. **SMART PATH streaming**
+   - Il ramo SMART PATH costruisce contesto, chiama LLM e tool, ma oggi consuma lo stream in memoria prima di parsare la risposta.
+   - Mancano parsing incrementale dei tool-call, sospensione del TTS durante JSON tecnico e reiniezione del risultato tool nello stream finale.
 
-Questo riduce il carico di `src/daemon/main.py` e allinea il progetto verso la struttura voluta dalla roadmap, senza cambiare il comportamento produttivo del demone.
+3. **Semantic dispatch**
+   - Il matching semantico esiste, ma e volutamente leggero e token-based.
+   - Mancano embeddings neurali reali, indicizzazione vettoriale persistente e dynamic top-K filtering degli schemi MCP nel prompt.
 
-> [!NOTE]
-> Verifica eseguita: `python3 -m py_compile src/daemon/main.py src/daemon/core/power.py src/daemon/core/audio_runtime.py src/daemon/core/lifecycle.py src/daemon/core/provider_manager.py` → esito positivo (exit code 0).
+4. **RAG locale**
+   - Il RAG store e in-memory ed e adatto a contesto recente.
+   - Mancano storage persistente, indicizzazione documenti utente, sorgenti configurabili, refresh incrementale e UI per permessi/scope.
 
-### Gap principali
+5. **MCP marketplace**
+   - Discovery/installazione sono presenti.
+   - Restano da completare health status, version management, upgrade, risoluzione dipendenze, adapter OAuth/HTTP per connessioni remote gestite e gestione credenziali piu ricca.
 
-1. **Modularizzazione incompleta**
-   - Il cuore del sistema continua a risiedere in `src/daemon/main.py`.
-   - La logica di audio, STT, wakeword, TTS, LLM, download e D-Bus è ancora fortemente accoppiata.
-   - La roadmap propone una separazione chiara tra `core/`, `audio/`, `services/`, `mcp/`, `skills/` e `gui/`, ma il codice attuale non ha ancora raggiunto quell’assetto.
+### Mancante o da decidere
 
-2. **Streaming pipeline avanzata solo parzialmente implementata**
-   - Esistono `SentenceAggregator` e `FastPathDispatcher`, ma non una pipeline concorrente completa con: GUI live, TTS chunked, queue audio, multi-stage execution e controllo di interruzione.
-   - Il sistema è più vicino a un modello semplificato “token-by-token + sintesi finale” che a un flusso realmente streaming e concorrente.
+- Event loop unificato `asyncio` + GLib: il codice usa ancora principalmente thread + `asyncio.run()` nei punti di bridge.
+- Policy di cancellazione uniforme per STT/LLM/TTS/audio playback e tool-call lunghi.
+- Directory provider separate (`services/llm_providers`, `embedding_providers`) come da architettura proposta: oggi i provider LLM sono ancora concentrati in `services/llm_service.py`.
+- UI avanzata per skills, RAG e diagnostica performance.
+- CI completa con sessione D-Bus mockata e dry-run GJS/Gtk piu vicino a GNOME reale.
 
-3. **Vector intent matching assente**
-   - Il fast-path è basato su regex e pattern deterministici, non su embeddings semantici.
-   - Non sono presenti componenti come `embedding_service.py`, `vector_store.py`, `skill_registry.py` o `VectorIntentMatcher` operativi.
-   - Questo limita fortemente la capacità di gestire frasi colloquiali, varianti linguistiche e comandi indiretti senza LLM.
+### Priorita consigliate
 
-4. **MCP marketplace e tool discovery non ancora mature**
-   - La configurazione `mcp_servers.json` è presente e supportata, così come la registrazione di tool nativi.
-   - Ma la roadmap prevede discovery remota, marketplace, installazione 1-click e gestione avanzata di server esterni; oggi questo è incompleto o solo abbozzato.
-
-5. **ModelManager non ancora integrato come entità di runtime**
-   - Il file `core/model_manager.py` esiste, ma è più un componente di supporto che una componente attiva del lifecycle del daemon.
-   - Non è ancora usato come motore di lazy-loading, unload automatico e gestione memory in contesto reale della sessione.
-
-6. **Skills engine e workflow declarativi mancanti**
-   - La roadmap descrive un sistema di `SKILL.md` con parser YAML e executor offline.
-   - Non esiste ancora un vero registry di skill, parsing dichiarativo e meccanismo di trigger basato su intent/embedding.
-
-### Implicazione pratica
-
-Il progetto ha già superato la fase “prototipo tecnico” e si sta muovendo verso un assistente vocale locale utile. Tuttavia, per raggiungere il livello descritto nella roadmap serve un secondo step di maturazione:
-- separare davvero i componenti,
-- introdurre semantic dispatch,
-- realizzare pipeline streaming concorrente,
-- integrare un vero lifecycle di risorse e tool discovery,
-- trasformare il sistema da “funzionale” a “architetturalmente sostenibile”.
-
-### Priorità consigliate
-
-1. **Alta priorità**: modularizzazione di `main.py` e centralizzazione dello state machine
-2. **Alta priorità**: completamento della pipeline streaming reale (GUI + TTS + audio queue)
-3. **Alta priorità**: semantic fast-path via embeddings / skill matching
-4. **Media priorità**: marketplace MCP e UI di configurazione
-5. **Media priorità**: ModelManager integrato nel lifecycle runtime
-6. **Bassa/Media priorità**: skill engine declarative e documentazione di estensione
-
-> [!IMPORTANT]
-> La roadmap non rappresenta un obiettivo astratto: è la mappa del passaggio dal MVP attuale a un assistente realmente scalabile, performante e facilmente estendibile. Il lavoro più critico oggi è consolidare l’architettura, non solo aggiungere feature.
+1. Promuovere o archiviare esplicitamente `StreamingPipelineEngine`: scegliere un solo percorso runtime ufficiale.
+2. Rendere SMART PATH realmente streaming: token GUI, sentence TTS, tool parsing incrementale e risultato tool reinserito nel completamento.
+3. Introdurre embeddings reali come feature opzionale, mantenendo il fallback token-based offline.
+4. Persistenza RAG e scope documentali configurabili.
+5. Maturare MCP marketplace: health, update, dependency checks, remote/OAuth adapters e credenziali.
+6. Separare provider LLM/embedding in pacchetti dedicati solo quando la crescita del codice lo richiede davvero.
 
 ---
 
@@ -600,28 +575,30 @@ All user-configurable options across modules are unified under `org.gnome.shell.
 
 | Category | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **STT** | `stt-engine` | `string` | `'whisper'` | Speech-to-text engine (`vosk`, `whisper`, `remote`) |
-| **STT** | `stt-model` | `string` | `'whisper-base-it'` | Currently active STT model |
-| **STT** | `hardware-acceleration` | `string` | `'cpu'` | Compute device (`cpu`, `cuda`, `vulkan`) |
-| **STT** | `silence-timeout` | `double` | `2.0` | Seconds of silence before finalizing speech input |
-| **STT** | `wakeword-enabled` | `boolean` | `true` | Enable background wakeword detection |
-| **STT** | `wakeword-phrase` | `string` | `'computer'` | Wakeword activation trigger string |
-| **LLM** | `llm-mode` | `string` | `'ollama'` | LLM provider (`disabled`, `local`, `ollama`, `openai`, `anthropic`) |
-| **LLM** | `llm-model-name` | `string` | `'llama3.2'` | Model name or GGUF filename |
+| **STT** | `stt-provider` | `string` | `'vosk'` | Speech-to-text provider (`vosk`, `whisper`, `openai_cloud`, `groq_cloud`) |
+| **STT** | `stt-model` | `string` | `'vosk-model-small-it-0.22'` | Currently active STT model |
+| **STT** | `stt-hardware` | `string` | `'cpu'` | Compute device (`cpu`, `cuda`) |
+| **STT** | `stt-extra` | `string` | `'{}'` | Provider-specific JSON configuration |
+| **STT** | `wakeword` | `string` | `'assistente'` | Wakeword activation trigger string |
+| **System** | `enabled` | `boolean` | `true` | Enable background wakeword detection |
+| **LLM** | `llm-mode` | `string` | `'local'` | LLM provider (`local`, `ollama`, `openai`, `anthropic`, `http`) |
+| **LLM** | `llm-model` | `string` | `'llama3.2:3b'` | Model name or GGUF filename |
+| **LLM** | `llm-endpoint` | `string` | `'http://localhost:11434'` | Local or remote LLM endpoint |
 | **LLM** | `llm-temperature` | `double` | `0.3` | Generation temperature (0.0 to 1.0) |
-| **LLM** | `llm-system-prompt` | `string` | `''` | Custom instructions / assistant persona |
-| **LLM** | `openai-api-key` | `string` | `''` | OpenAI API authentication key |
-| **LLM** | `anthropic-api-key` | `string` | `''` | Anthropic API authentication key |
-| **TTS** | `tts-engine` | `string` | `'piper'` | Text-to-speech engine (`disabled`, `piper`, `espeak`) |
+| **LLM** | `llm-system-prompt` | `string` | Italian default prompt | Custom instructions / assistant persona |
+| **LLM** | `llm-api-key` | `string` | `''` | API authentication key for cloud providers |
+| **TTS** | `tts-provider` | `string` | `'piper'` | Text-to-speech provider (`piper`, `espeak`, `openai`, `system`) |
 | **TTS** | `tts-voice` | `string` | `'it_IT-paola-medium'` | Active speech synthesis voice |
-| **TTS** | `tts-speech-rate` | `double` | `1.0` | Playback speed multiplier (0.5x to 2.0x) |
-| **MCP** | `mcp-tools-enabled` | `boolean` | `true` | Master toggle for native & external tool calling |
-| **MCP** | `mcp-registry-url` | `string` | `'https://registry.smithery.ai'` | Remote MCP Marketplace index URL |
-| **RAG** | `rag-enabled` | `boolean` | `false` | Enable local file vector indexing and RAG |
-| **RAG** | `semantic-dispatch-enabled` | `boolean` | `true` | Sub-10ms direct command execution via vector similarity |
-| **Skills** | `skills-enabled` | `boolean` | `true` | Enable SKILL.md markdown skills engine |
-| **System** | `idle-unload-timeout` | `int` | `300` | Seconds of inactivity before unloading VRAM/RAM models |
-| **System** | `global-shortcut` | `string` | `'<Super>v'` | GNOME keybinding to toggle listening |
+| **TTS** | `tts-speed` | `double` | `1.0` | Playback speed multiplier |
+| **TTS** | `tts-enabled` | `boolean` | `true` | Enable spoken responses |
+| **Resources** | `idle-unload-timeout` | `int` | `300` | Global idle unload timeout |
+| **Resources** | `stt-idle-unload-timeout` | `int` | `0` | STT-specific idle timeout override |
+| **Resources** | `llm-idle-unload-timeout` | `int` | `180` | LLM-specific idle timeout override |
+| **Resources** | `tts-idle-unload-timeout` | `int` | `0` | TTS-specific idle timeout override |
+| **MCP** | `mcp-enabled` | `boolean` | `true` | Master toggle for native & external tool calling |
+| **MCP** | `mcp-registry-url` | `string` | `'https://api.smithery.ai'` | Remote MCP Marketplace API URL |
+| **MCP** | `mcp-servers` | `string` | Built-in GNOME server JSON | Configured MCP servers |
+| **System** | `toggle-shortcut` | `string array` | `['<Super>v']` | GNOME keybinding to toggle listening |
 
 ---
 
@@ -731,6 +708,7 @@ To maintain code stability across GNOME Shell versions (GNOME 45–48+) and prev
 | **Audio & VAD** | Silence detection timeouts & non-blocking player queue | `tests/test_audio.py` |
 | **Model Downloader** | Async download monitoring, cancellation, & progress signals | `tests/test_services_downloader.py` |
 | **Streaming Pipeline** | Sentence boundary aggregator (`.`, `!`, `?`, `\n`) & LLM stream | `tests/test_core_pipeline.py` |
+| **Streaming Adapter** | Adapter compatibility with runtime daemon attributes | `tests/test_pipeline_integration_adapter.py` |
 | **Runtime & Bootstrap** | Core module initialization, provider loading, signal handling | `tests/test_core_runtime.py` |
 | **Assistant Runtime** | Wakeword detection, audio loop resilience, STT integration | `tests/test_assistant_runtime.py` |
 | **Listening Loop** | Partial speech timeouts, provider safety, chime sample rate | `tests/test_listening_loop_resilience.py` |
@@ -847,5 +825,3 @@ To ensure the assistant only responds when explicitly addressed and ignores back
    - Non-matching side-talk (e.g. *"Passami il caffè"*, *"Arrivo subito"*) is silently dropped without generating an LLM response.
 3. **Selective VAD Energy Threshold**:
    - Apply a stricter speech energy threshold during Auto-Listen windows to ignore off-axis or distant room voices.
-
-

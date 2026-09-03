@@ -40,6 +40,10 @@ class DaemonLifecycle:
 
         self.owner._state = state_str
 
+        model_manager = getattr(self.owner, "model_manager", None)
+        if model_manager and state_str in ("listening", "speaking", "processing"):
+            model_manager.update_active_timestamp()
+
         def _do_set_state():
             self.owner.StateChanged(state_str)
             logger.info(f"Stato UI cambiato in: {state_str}")
@@ -53,6 +57,12 @@ class DaemonLifecycle:
                 logger.info("Microfono disattivato (hardware chiuso).")
                 self.owner._close_stream()
             elif state_str in ("idle", "listening", "speaking", "processing"):
+                if state_str == "listening" and not getattr(self.owner, "provider", None):
+                    runtime_manager = getattr(self.owner, "runtime_manager", None)
+                    if runtime_manager:
+                        self.owner._state = "loading"
+                        runtime_manager.ensure_stt_provider(state_str)
+                        return False
                 self.owner._create_stream()
                 if self.owner._stream and not getattr(self.owner._stream, 'active', False):
                     logger.info("Microfono attivato (in ascolto).")

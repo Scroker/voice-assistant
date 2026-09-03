@@ -111,10 +111,35 @@
       <summary>Abilitazione sintesi vocale</summary>
       <description>Se vero, l'assistente leggerà a voce le risposte generate.</description>
     </key>
+    <key name="idle-unload-timeout" type="i">
+      <default>300</default>
+      <summary>Timeout unload modelli</summary>
+      <description>Secondi di inattività prima di liberare i modelli in memoria.</description>
+    </key>
+    <key name="stt-idle-unload-timeout" type="i">
+      <default>0</default>
+      <summary>Timeout unload STT</summary>
+      <description>Override opzionale in secondi per il provider STT; zero usa il timeout globale.</description>
+    </key>
+    <key name="llm-idle-unload-timeout" type="i">
+      <default>180</default>
+      <summary>Timeout unload LLM</summary>
+      <description>Override opzionale in secondi per il modello LLM locale; zero usa il timeout globale.</description>
+    </key>
+    <key name="tts-idle-unload-timeout" type="i">
+      <default>0</default>
+      <summary>Timeout unload TTS</summary>
+      <description>Override opzionale in secondi per la voce TTS; zero usa il timeout globale.</description>
+    </key>
     <key name="mcp-enabled" type="b">
       <default>true</default>
       <summary>Abilitazione Protocollo MCP</summary>
       <description>Abilita l'integrazione del Model Context Protocol per gli strumenti e le azioni dell'assistente.</description>
+    </key>
+    <key name="mcp-registry-url" type="s">
+      <default>'https://api.smithery.ai'</default>
+      <summary>URL registry MCP</summary>
+      <description>Endpoint API del marketplace MCP usato per discovery e ricerca server.</description>
     </key>
     <key name="mcp-servers" type="s">
       <default>'[{"id":"gnome-system","name":"Controllo Sistema GNOME","command":"internal","enabled":true}]'</default>

@@ -136,9 +136,10 @@ class LocalGGUFProvider:
     DEFAULT_MODEL_REPO = "bartowski/Llama-3.2-1B-Instruct-GGUF"
     DEFAULT_MODEL_FILE = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 
-    def __init__(self, models_dir: Optional[str] = None):
+    def __init__(self, models_dir: Optional[str] = None, model_manager: Optional[Any] = None):
         self.models_dir = models_dir or os.path.expanduser("~/.local/share/voice-assistant/models/llm")
         os.makedirs(self.models_dir, exist_ok=True)
+        self.model_manager = model_manager
         self._llm = None
         self._loaded_model_path = None
 
@@ -161,6 +162,8 @@ class LocalGGUFProvider:
                 verbose=False
             )
             self._loaded_model_path = model_path
+            if self.model_manager:
+                self.model_manager.register_instance("llm", self, self.unload_model)
             return self._llm
         except ImportError:
             logger.error("[LocalGGUF] Il modulo 'llama-cpp-python' non è ancora installato.")
@@ -169,12 +172,19 @@ class LocalGGUFProvider:
             logger.error(f"[LocalGGUF] Errore inizializzazione llama-cpp: {e}")
             raise e
 
+    def unload_model(self):
+        """Release the in-process llama.cpp handle while retaining the model file on disk."""
+        self._llm = None
+        self._loaded_model_path = None
+
     def is_model_present(self, filename: str = DEFAULT_MODEL_FILE) -> bool:
         """Verifica se il file GGUF è già presente sul disco locale."""
         model_path = os.path.join(self.models_dir, filename)
         return os.path.exists(model_path) and os.path.getsize(model_path) > 50000000
 
     def stream_tokens(self, prompt: str, system_prompt: str = "") -> Generator[str, None, None]:
+        if self.model_manager:
+            self.model_manager.update_active_timestamp()
         if not self.is_model_present():
             logger.info("[LocalGGUF] Primo avvio: il modello GGUF non è presente. Avvio download...")
             yield "Sto scaricando il modello di intelligenza artificiale locale per la prima volta. Attendere prego."
@@ -217,10 +227,11 @@ class LLMServiceManager:
     Manager for LLM Streaming Services.
     Routes to Local GGUF, Ollama, OpenAI (GPT-4o/DeepSeek/Groq), or Anthropic Claude.
     """
-    def __init__(self, settings_observer: Optional[Any] = None, mcp_manager: Optional[Any] = None):
+    def __init__(self, settings_observer: Optional[Any] = None, mcp_manager: Optional[Any] = None,
+                 model_manager: Optional[Any] = None):
         self.settings_observer = settings_observer
         self.mcp_manager = mcp_manager
-        self.local_gguf_provider = LocalGGUFProvider()
+        self.local_gguf_provider = LocalGGUFProvider(model_manager=model_manager)
 
     def get_config(self) -> Dict[str, Any]:
         mode = "local" # Default: "local" (GGUF in-daemon) or "ollama" / "openai" / "anthropic" / "http"

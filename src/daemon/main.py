@@ -42,6 +42,7 @@ from core.provider_manager import ProviderManager
 from core.service_bootstrap import register_dbus_service, run_event_loop
 from core.runtime_manager import DaemonRuntimeManager
 from core.assistant_runtime import AssistantRuntimeController
+from core.model_manager import ModelManager
 from core.logger import setup_logger, install_global_exception_hooks, ErrorCollector, DiagnosticBundler, EnvironmentSnapshot, ERROR_REPORTS_DIR
 import logging
 
@@ -70,16 +71,18 @@ class VoiceAssistant(object):
         self._state = "disabled" # Parte disabilitato o idle? Mettiamo disabled per sicurezza
         self._listening = False
         self._stream = None
+        self.q = q
         self._downloading_models = {}
         self._cancel_requests = set()
+        self.model_manager = ModelManager()
         self.lifecycle = DaemonLifecycle(self)
         self.provider_manager = ProviderManager(self)
         self.runtime_manager = DaemonRuntimeManager(self)
         self.assistant_runtime = AssistantRuntimeController(self)
         self.runtime_manager.bootstrap()
 
-    def _handle_fast_path_intent(self, intent_name: str, params: Dict[str, Any]) -> Tuple[bool, str]:
-        return self.assistant_runtime._handle_fast_path_intent(intent_name, params)
+    def _handle_fast_path_intent(self, intent_name: str, params: Dict[str, Any], text: str = "") -> Tuple[bool, str]:
+        return self.assistant_runtime._handle_fast_path_intent(intent_name, params, text)
 
     def get(self, key: str, default: Any = None) -> Any:
         return self.assistant_runtime.get(key, default)
@@ -129,6 +132,11 @@ class VoiceAssistant(object):
                 models_dir=getattr(self, 'models_dir', None),
             )
             self.provider = provider
+            self.model_manager.register_instance(
+                "stt",
+                provider,
+                lambda: setattr(self, "provider", None),
+            )
             self._downloading_models.pop(key_str, None)
             return provider
         except Exception:
@@ -203,6 +211,10 @@ class VoiceAssistant(object):
         """Ritorna una stringa JSON con i modelli attualmente in fase di scaricamento e la relativa percentuale."""
         return json.dumps(self._downloading_models)
 
+    def GetResourceMetrics(self) -> str:
+        """Ritorna metriche di memoria del daemon e dei modelli in-process in formato JSON."""
+        return json.dumps(self.model_manager.get_resource_metrics())
+
     def GetErrorReports(self) -> str:
         """Ritorna i report degli errori memorizzati in formato JSON."""
         reports = ErrorCollector.list_reports(limit=20)
@@ -271,6 +283,89 @@ class VoiceAssistant(object):
         logger.info(f"[D-Bus] Ricevuto testo da input GUI: '{text}'")
         import threading
         threading.Thread(target=self._process_text, args=(text, False), daemon=True).start()
+
+    @staticmethod
+    def _run_mcp_operation(operation, *args):
+        """Resolve an MCP coroutine in the synchronous dasbus handler thread."""
+        return asyncio.run(operation(*args))
+
+    def get_marketplace_featured(self) -> str:
+        """Returns the featured MCP servers JSON list."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return json.dumps([])
+        return self._run_mcp_operation(self.mcp_manager.get_marketplace_featured) if hasattr(self.mcp_manager, 'get_marketplace_featured') else json.dumps([])
+
+    def search_marketplace(self, query: str) -> str:
+        """Searches the marketplace for a query string."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return json.dumps([])
+        if hasattr(self.mcp_manager, 'search_marketplace'):
+            return self._run_mcp_operation(self.mcp_manager.search_marketplace, query)
+        return json.dumps([])
+
+    def get_server_details(self, server_name: str) -> str:
+        """Returns the details of a given MCP server."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return json.dumps({})
+        if hasattr(self.mcp_manager, 'get_server_details'):
+            return self._run_mcp_operation(self.mcp_manager.get_server_details, server_name)
+        return json.dumps({})
+
+    def get_marketplace_categories(self) -> str:
+        """Returns the available marketplace categories."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return json.dumps([])
+        if hasattr(self.mcp_manager, 'get_marketplace_categories'):
+            return self._run_mcp_operation(self.mcp_manager.get_marketplace_categories)
+        return json.dumps([])
+
+    def filter_marketplace_by_category(self, category: str) -> str:
+        """Returns the servers matching a category."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return json.dumps([])
+        if hasattr(self.mcp_manager, 'filter_marketplace_by_category'):
+            return self._run_mcp_operation(self.mcp_manager.filter_marketplace_by_category, category)
+        return json.dumps([])
+
+    def install_mcp_server(self, server_name: str, server_config: str, env_vars: str = ""):
+        """Installs an MCP server via the configured manager."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return False, "MCP manager non inizializzato"
+        if hasattr(self.mcp_manager, 'install_mcp_server'):
+            return self._run_mcp_operation(self.mcp_manager.install_mcp_server, server_name, server_config, env_vars)
+        return False, "install_mcp_server non supportato"
+
+    def uninstall_mcp_server(self, server_name: str):
+        """Uninstalls a configured MCP server."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return False, "MCP manager non inizializzato"
+        if hasattr(self.mcp_manager, 'uninstall_mcp_server'):
+            return self._run_mcp_operation(self.mcp_manager.uninstall_mcp_server, server_name)
+        return False, "uninstall_mcp_server non supportato"
+
+    def test_mcp_server(self, server_name: str):
+        """Runs a quick smoke test for a configured MCP server."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return False, "MCP manager non inizializzato"
+        if hasattr(self.mcp_manager, 'test_mcp_server'):
+            return self._run_mcp_operation(self.mcp_manager.test_mcp_server, server_name)
+        return False, "test_mcp_server non supportato"
+
+    def update_server_config(self, server_name: str, env_vars: str, enabled: bool):
+        """Updates a server's runtime config in the manager."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return False, "MCP manager non inizializzato"
+        if hasattr(self.mcp_manager, 'update_server_config'):
+            return self._run_mcp_operation(self.mcp_manager.update_server_config, server_name, env_vars, enabled)
+        return False, "update_server_config non supportato"
+
+    def get_installed_servers(self) -> str:
+        """Returns the installed MCP servers list."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return json.dumps([])
+        if hasattr(self.mcp_manager, 'get_installed_servers'):
+            return self._run_mcp_operation(self.mcp_manager.get_installed_servers)
+        return json.dumps([])
 
     def _on_llm_token(self, token: str):
         """Callback invocata a ogni token generato dall'LLM per aggiornare la GUI e la D-Bus stream."""

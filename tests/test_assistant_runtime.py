@@ -66,6 +66,30 @@ class TestAssistantRuntime(unittest.TestCase):
         self.assertEqual(result, "ok")
         owner.mcp_manager.execute_tool.assert_called_once_with("system_volume", {"action": "increase", "level": 10})
 
+    def test_fast_path_intent_resolves_async_mcp_tool(self):
+        owner = DummyOwner()
+
+        async def execute_tool(tool_name, args):
+            return f"{tool_name}:{args['format']}"
+
+        owner.mcp_manager.execute_tool.side_effect = execute_tool
+        controller = AssistantRuntimeController(owner)
+
+        matched, result = controller._handle_fast_path_intent("get_time", {})
+
+        self.assertTrue(matched)
+        self.assertEqual(result, "date_time:time")
+
+    def test_mcp_enabled_setting_updates_manager(self):
+        owner = DummyOwner()
+        controller = AssistantRuntimeController(owner)
+        settings = MagicMock()
+        settings.get_boolean.return_value = False
+
+        controller.on_settings_changed(settings, "mcp-enabled")
+
+        self.assertFalse(owner.mcp_manager.enabled)
+
     def test_trigger_assistant_starts_listening_and_resets_provider(self):
         owner = DummyOwner()
         owner.q.put(b"junk")

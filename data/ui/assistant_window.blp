@@ -3,69 +3,150 @@ using Adw 1;
 
 template $AssistantWindow : Adw.ApplicationWindow {
   title: _("Assistente Vocale");
-  default-width: 460;
-  default-height: 600;
+  default-width: 640;
+  default-height: 480;
 
-  content: Adw.ToolbarView toolbar_view {
-    [top]
-    Adw.HeaderBar {
-      title-widget: Adw.WindowTitle {
-        title: _("Assistente Vocale");
-        subtitle: _("AI Locale & Offline");
-      };
+  Adw.Breakpoint {
+    condition ("max-width: 400sp")
 
-      [end]
-      Gtk.Button settings_btn {
-        icon-name: "emblem-system-symbolic";
-        tooltip-text: _("Impostazioni assistente");
-      }
+    setters {
+      split_view.collapsed: true;
     }
+  }
 
-    content: Adw.Clamp {
-      maximum-size: 680;
+  content: Adw.OverlaySplitView split_view {
+    show-sidebar: bind show_sidebar_button.active;
 
-      child: Gtk.ScrolledWindow scrolled {
-        hscrollbar-policy: never;
-        vexpand: true;
-
-        child: Gtk.Box chat_box {
-          orientation: vertical;
-          margin-top: 12;
-          margin-bottom: 12;
+    sidebar: Adw.ToolbarView {
+      [top]
+      Adw.HeaderBar {
+        title-widget: Adw.WindowTitle {
+          title: _("Assistente Vocale");
+          subtitle: _("AI Locale & Offline");
         };
+      }
+      
+      [bottom]
+      Gtk.Box {
+        Gtk.Button  {
+          tooltip-text: _("User");
+          styles ["flat"]
+          hexpand: true;
+          child: Gtk.Box {
+            Adw.Avatar {
+              size: 30;
+            }
+            Adw.WindowTitle {
+              title: _('Giorgio Dramis');
+            }
+          };
+        }
+        Gtk.Button settings_btn {
+          styles ["flat"]
+          width-request: 40;
+          icon-name: "emblem-system-symbolic";
+          tooltip-text: _("Impostazioni assistente");
+        }
+      }
+
+      content: Gtk.Box {
+        orientation: vertical;
+        Adw.ViewSwitcherSidebar {
+          vexpand: true;
+          stack: stack_pages;
+        }
+        
+        Adw.Sidebar {
+          Adw.SidebarSection {
+            title: "Addons";
+            Adw.SidebarItem {
+              icon-name: "preferences-other-symbolic";
+              title: "MCP";
+            }
+            Adw.SidebarItem {
+              icon-name: "starred-symbolic";
+              title: "Skills";
+            }
+          }
+        }
       };
     };
 
-    [bottom]
-    Adw.Clamp {
-      maximum-size: 680;
-
-      child: Gtk.Box {
-        orientation: horizontal;
-        spacing: 8;
-        margin-top: 8;
-        margin-bottom: 12;
-        margin-start: 12;
-        margin-end: 12;
-
-        Gtk.Entry entry {
-          placeholder-text: _("Scrivi un messaggio o fai una domanda...");
-          hexpand: true;
-          styles ["pill"]
+    content: Adw.ToolbarView toolbar_view {
+      [top]
+      Adw.HeaderBar {
+        [start]
+        ToggleButton show_sidebar_button {
+          icon-name: "sidebar-show-symbolic";
+          tooltip-text: _("Toggle Sidebar");
+          active: bind split_view.show-sidebar;
         }
+      }
+      content: Adw.ViewStack stack_pages {
+        Adw.ViewStackPage {
+          name: "Chat";
+          icon-name: "chat-message-new-symbolic";
+          title: "Chat";
+          child: Adw.ToolbarView {
+            Adw.Clamp {
+              maximum-size: 680;
 
-        Gtk.Button send_btn {
-          icon-name: "paper-plane-symbolic";
-          tooltip-text: _("Invia messaggio");
-          styles ["suggested-action", "circular"]
-        }
+              child: Gtk.ScrolledWindow scrolled {
+                hscrollbar-policy: never;
+                vexpand: true;
 
-        Gtk.Button mic_btn {
-          icon-name: "audio-input-microphone-symbolic";
-          tooltip-text: _("Avvia ascolto vocale (Push-to-Talk)");
-          styles ["circular"]
+                child: Gtk.Box chat_box {
+                  orientation: vertical;
+                  margin-top: 12;
+                  margin-bottom: 12;
+                };
+              };
+            }
+
+            [bottom]
+            Adw.Clamp {
+              maximum-size: 680;
+
+              child: Gtk.Box {
+                orientation: horizontal;
+                spacing: 8;
+                margin-top: 8;
+                margin-bottom: 12;
+                margin-start: 12;
+                margin-end: 12;
+
+                Gtk.Entry entry {
+                  placeholder-text: _("Scrivi un messaggio o fai una domanda...");
+                  hexpand: true;
+
+                  styles [
+                    "pill",
+                  ]
+                }
+
+                Gtk.Button send_btn {
+                  icon-name: "paper-plane-symbolic";
+                  tooltip-text: _("Invia messaggio");
+
+                  styles [
+                    "suggested-action",
+                    "circular",
+                  ]
+                }
+
+                Gtk.Button mic_btn {
+                  icon-name: "audio-input-microphone-symbolic";
+                  tooltip-text: _("Avvia ascolto vocale (Push-to-Talk)");
+
+                  styles [
+                    "circular",
+                  ]
+                }
+              };
+            }
+          };
         }
       };
-    }
+    };
   };
 }

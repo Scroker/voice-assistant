@@ -1,5 +1,6 @@
 """Interaction runtime helpers for wakeword, audio loop and text processing."""
 
+import asyncio
 import difflib
 import json
 import logging
@@ -58,41 +59,69 @@ class AssistantRuntimeController:
         if not self.owner.mcp_manager:
             return (False, "")
 
+        def execute_tool(tool_name, args):
+            result = self.owner.mcp_manager.execute_tool(tool_name, args)
+            if not asyncio.iscoroutine(result):
+                return result
+
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                holder = {}
+
+                def run():
+                    try:
+                        holder["result"] = asyncio.run(result)
+                    except Exception as exc:
+                        holder["error"] = exc
+
+                thread = threading.Thread(target=run, daemon=True)
+                thread.start()
+                thread.join()
+                if "error" in holder:
+                    raise holder["error"]
+                return holder.get("result", "")
+
+            return asyncio.run(result)
+
         try:
             if intent_name == "set_volume":
                 vol = params.get("volume", 50)
-                res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "set", "level": vol})
+                res = execute_tool("system_volume", {"action": "set", "level": vol})
                 return (True, res)
             elif intent_name == "volume_up":
-                res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "increase", "level": 10})
+                res = execute_tool("system_volume", {"action": "increase", "level": 10})
                 return (True, res)
             elif intent_name == "volume_down":
-                res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "decrease", "level": 10})
+                res = execute_tool("system_volume", {"action": "decrease", "level": 10})
                 return (True, res)
             elif intent_name == "mute":
-                res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "mute"})
+                res = execute_tool("system_volume", {"action": "mute"})
                 return (True, res)
             elif intent_name == "set_theme_dark":
-                res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "dark"})
+                res = execute_tool("dark_mode", {"mode": "dark"})
                 return (True, res)
             elif intent_name == "set_theme_light":
-                res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "light"})
+                res = execute_tool("dark_mode", {"mode": "light"})
                 return (True, res)
             elif intent_name == "launch_app":
                 app = params.get("app", "firefox")
-                res = self.owner.mcp_manager.execute_tool("app_launcher", {"app_name": app})
+                res = execute_tool("app_launcher", {"app_name": app})
                 return (True, res)
             elif intent_name == "get_time":
-                res = self.owner.mcp_manager.execute_tool("date_time", {"action": "time"})
+                res = execute_tool("date_time", {"format": "time"})
                 return (True, res)
             elif intent_name == "get_date":
-                res = self.owner.mcp_manager.execute_tool("date_time", {"action": "date"})
+                res = execute_tool("date_time", {"format": "date"})
                 return (True, res)
             elif intent_name == "media_pause":
-                res = self.owner.mcp_manager.execute_tool("system_media", {"action": "pause"})
+                res = execute_tool("system_media", {"action": "pause"})
                 return (True, res)
             elif intent_name == "media_play":
-                res = self.owner.mcp_manager.execute_tool("system_media", {"action": "play"})
+                res = execute_tool("system_media", {"action": "play"})
                 return (True, res)
             elif intent_name == "system_control":
                 if text:
@@ -100,23 +129,23 @@ class AssistantRuntimeController:
                     return (success, response)
                 action = str(params.get("action", params.get("mode", "") or "")).lower()
                 if action in {"volume_up", "increase", "up"}:
-                    res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "increase", "level": 10})
+                    res = execute_tool("system_volume", {"action": "increase", "level": 10})
                     return (True, res)
                 if action in {"volume_down", "decrease", "down"}:
-                    res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "decrease", "level": 10})
+                    res = execute_tool("system_volume", {"action": "decrease", "level": 10})
                     return (True, res)
                 if action in {"mute", "silence", "silent"}:
-                    res = self.owner.mcp_manager.execute_tool("system_volume", {"action": "mute"})
+                    res = execute_tool("system_volume", {"action": "mute"})
                     return (True, res)
                 if action in {"theme_dark", "dark", "set_theme_dark"}:
-                    res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "dark"})
+                    res = execute_tool("dark_mode", {"mode": "dark"})
                     return (True, res)
                 if action in {"theme_light", "light", "set_theme_light"}:
-                    res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "light"})
+                    res = execute_tool("dark_mode", {"mode": "light"})
                     return (True, res)
                 app_name = params.get("app") or params.get("app_name") or "firefox"
                 if action in {"launch_app", "app", "open_app"}:
-                    res = self.owner.mcp_manager.execute_tool("app_launcher", {"app_name": app_name})
+                    res = execute_tool("app_launcher", {"app_name": app_name})
                     return (True, res)
                 return (False, "")
             elif intent_name == "theme_control":
@@ -128,10 +157,10 @@ class AssistantRuntimeController:
                     mode = "dark" if params.get("dark") else "light"
                 mode = str(mode).lower() if mode is not None else "dark"
                 if mode in {"dark", "night", "black"}:
-                    res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "dark"})
+                    res = execute_tool("dark_mode", {"mode": "dark"})
                     return (True, res)
                 if mode in {"light", "day", "white"}:
-                    res = self.owner.mcp_manager.execute_tool("dark_mode", {"mode": "light"})
+                    res = execute_tool("dark_mode", {"mode": "light"})
                     return (True, res)
                 return (False, "")
         except Exception as e:
@@ -206,6 +235,17 @@ class AssistantRuntimeController:
                 GLib.idle_add(self.owner.set_state, "idle")
             elif not new_enabled and self.owner._state != "disabled":
                 GLib.idle_add(self.owner.set_state, "disabled")
+        elif key == "mcp-registry-url" and getattr(self.owner, "mcp_manager", None):
+            self.owner.mcp_manager.set_registry_url(settings.get_string(key))
+        elif key == "mcp-enabled" and getattr(self.owner, "mcp_manager", None):
+            self.owner.mcp_manager.enabled = settings.get_boolean(key)
+        elif key in {"idle-unload-timeout", "stt-idle-unload-timeout", "llm-idle-unload-timeout", "tts-idle-unload-timeout"}:
+            self.owner.model_manager.idle_timeout_sec = settings.get_int("idle-unload-timeout")
+            self.owner.model_manager.set_idle_timeouts({
+                "stt": settings.get_int("stt-idle-unload-timeout"),
+                "llm": settings.get_int("llm-idle-unload-timeout"),
+                "tts": settings.get_int("tts-idle-unload-timeout"),
+            })
 
     def reset_wakeword_recognizer(self):
         ww_model = getattr(self.owner, 'ww_model', None)

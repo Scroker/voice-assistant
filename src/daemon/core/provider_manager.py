@@ -129,8 +129,19 @@ class ProviderManager:
 
             if load_id == getattr(self.owner, '_load_id', 0):
                 self.owner.provider = new_provider
+                model_manager = getattr(self.owner, "model_manager", None)
+                if model_manager:
+                    model_manager.register_instance(
+                        "stt",
+                        new_provider,
+                        lambda: setattr(self.owner, "provider", None),
+                    )
+                pending_state = getattr(self.owner, "_pending_state_after_provider_load", None)
+                self.owner._pending_state_after_provider_load = None
+                self.owner._stt_load_pending = False
                 is_enabled = self.owner.settings.get_boolean("enabled")
-                GLib.idle_add(self.owner.set_state, "idle" if is_enabled else "disabled")
+                next_state = pending_state if is_enabled and pending_state else ("idle" if is_enabled else "disabled")
+                GLib.idle_add(self.owner.set_state, next_state)
                 return new_provider
             else:
                 logger.info(f"Download di {local_provider_name} ({local_model_name}) completato in background, ma l'utente ha selezionato un altro modello nel frattempo.")
@@ -152,6 +163,7 @@ class ProviderManager:
                 notif.update("Voice Assistant", msg, icon)
                 GLib.idle_add(self._show_notification, notif)
             if load_id == getattr(self.owner, '_load_id', 0):
+                self.owner._stt_load_pending = False
                 is_enabled = self.owner.settings.get_boolean("enabled")
                 GLib.idle_add(self.owner.set_state, "idle" if is_enabled else "disabled")
 

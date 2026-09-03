@@ -33,3 +33,69 @@
     background-color: #3584e4;
     color: #ffffff;
 }
+
+.mcp-header-box {
+    background-color: rgba(46, 52, 54, 0.35);
+    border-radius: 8px;
+    padding: 12px 14px;
+    border: 1px solid rgba(238, 238, 236, 0.08);
+}
+
+.mcp-section {
+    background-color: rgba(46, 52, 54, 0.38);
+    border: 1px solid rgba(238, 238, 236, 0.08);
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.mcp-search {
+    border-radius: 12px;
+}
+
+.mcp-card {
+    background-color: rgba(46, 52, 54, 0.55);
+    border: 1px solid rgba(238, 238, 236, 0.08);
+    border-radius: 8px;
+    padding: 0 0 12px 0;
+}
+
+.mcp-card-title {
+    font-weight: bold;
+}
+
+.mcp-badge,
+.mcp-status-pill,
+.mcp-installed-pill,
+.mcp-available-pill {
+    border-radius: 99px;
+    padding: 4px 8px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.mcp-badge,
+.mcp-status-pill {
+    background-color: rgba(53, 132, 228, 0.15);
+    color: #ffffff;
+}
+
+.mcp-installed-pill {
+    background-color: rgba(46, 194, 126, 0.18);
+    color: #2ec27e;
+}
+
+.mcp-available-pill {
+    background-color: rgba(98, 160, 234, 0.16);
+    color: #62a0ea;
+}
+
+.mcp-primary-button {
+    border-radius: 99px;
+    padding: 0 12px;
+}
+
+.mcp-info-box {
+    background-color: rgba(53, 132, 228, 0.08);
+    border: 1px solid rgba(238, 238, 236, 0.06);
+    border-radius: 8px;
+}

@@ -125,16 +125,14 @@ class StreamingPipelineController:
 
     def _create_audio_source(self) -> Optional[Callable]:
         """Create audio source callback from owner's audio input."""
-        if not hasattr(self.owner, 'q'):
+        audio_queue = getattr(self.owner, "q", None)
+        if audio_queue is None:
             return None
 
         def audio_source():
             """Read audio chunk from queue."""
             try:
-                # Get chunk from audio queue (non-blocking)
-                chunk_data = self.owner.q.get_nowait()
-                
-                # Convert to AudioChunk
+                chunk_data = audio_queue.get_nowait()
                 from core.streaming_pipeline import AudioChunk
                 return AudioChunk(
                     pcm_data=chunk_data,
@@ -148,7 +146,7 @@ class StreamingPipelineController:
 
     def _create_stt_processor(self) -> Optional[Callable]:
         """Create STT processor callback from owner's provider."""
-        if not hasattr(self.owner, 'provider'):
+        if not hasattr(self.owner, "provider"):
             return None
 
         def stt_processor(audio_chunk):
@@ -159,8 +157,17 @@ class StreamingPipelineController:
             from core.streaming_pipeline import STTResult
             
             try:
-                # Process with owner's STT provider
                 result = self.owner.provider.process_chunk(audio_chunk.pcm_data)
+
+                if isinstance(result, tuple):
+                    final_text, partial_text = result if len(result) >= 2 else (result[0], "")
+                    return STTResult(
+                        partial_text=partial_text or "",
+                        final_text=final_text or "",
+                        confidence=0.0,
+                        is_final=bool(final_text),
+                        timestamp=time.time()
+                    )
                 
                 return STTResult(
                     partial_text=result.get("partial_text", ""),
@@ -177,19 +184,29 @@ class StreamingPipelineController:
 
     def _create_intent_dispatcher(self) -> Optional[Callable]:
         """Create intent dispatcher callback."""
-        if not hasattr(self.owner, 'fast_path'):
+        fast_path = getattr(self.owner, "fast_path", None)
+        if fast_path is None and getattr(self.owner, "pipeline_controller", None):
+            fast_path = getattr(self.owner.pipeline_controller, "fast_path", None)
+        if fast_path is None:
             return None
 
         def intent_dispatcher(text: str) -> Dict[str, Any]:
             """Check for fast-path intents."""
             try:
-                matched, intent_name, params, _ = self.owner.fast_path.dispatch(text)
+                matched, intent_name, params, response = fast_path.dispatch(text)
                 
                 if matched:
-                    # Execute fast-path intent
-                    success, response = self.owner.fast_path_controller._handle_fast_path_intent(
-                        intent_name, params, text
-                    )
+                    if hasattr(self.owner, "_handle_fast_path_intent"):
+                        try:
+                            success, response = self.owner._handle_fast_path_intent(intent_name, params)
+                        except TypeError:
+                            success, response = self.owner._handle_fast_path_intent(intent_name, params, text)
+                    elif hasattr(self.owner, "assistant_runtime"):
+                        success, response = self.owner.assistant_runtime._handle_fast_path_intent(
+                            intent_name, params, text
+                        )
+                    else:
+                        success = True
                     return {
                         "matched": matched,
                         "intent": intent_name,
@@ -206,15 +223,19 @@ class StreamingPipelineController:
 
     def _create_llm_streamer(self) -> Optional[Callable]:
         """Create LLM streamer callback."""
-        if not hasattr(self.owner, 'llm_service'):
+        llm_service = getattr(self.owner, "llm_service", None)
+        if llm_service is None:
             return None
 
         def llm_streamer(user_text: str):
             """Stream LLM response tokens."""
             try:
-                # Use owner's LLM service for streaming
-                for token in self.owner.llm_service.stream_response(user_text):
-                    # Notify GUI of token
+                stream = (
+                    llm_service.stream_tokens(user_text)
+                    if hasattr(llm_service, "stream_tokens")
+                    else llm_service.stream_response(user_text)
+                )
+                for token in stream:
                     if hasattr(self.owner, '_on_llm_token'):
                         self.owner._on_llm_token(token)
                     
@@ -227,7 +248,8 @@ class StreamingPipelineController:
 
     def _create_tts_synthesizer(self) -> Optional[Callable]:
         """Create TTS synthesizer callback."""
-        if not hasattr(self.owner, 'tts_service'):
+        tts_service = getattr(self.owner, "tts_service", None) or getattr(self.owner, "tts_manager", None)
+        if tts_service is None:
             return None
 
         def tts_synthesizer(text: str):
@@ -238,14 +260,25 @@ class StreamingPipelineController:
             from core.streaming_pipeline import AudioOutput
             
             try:
-                # Use owner's TTS service
-                wav_data, duration_ms = self.owner.tts_service.synthesize(text)
+                duration_ms = 0
+                if hasattr(tts_service, "synthesize"):
+                    result = tts_service.synthesize(text)
+                    if isinstance(result, tuple):
+                        wav_data, duration_ms = result
+                    else:
+                        wav_data = result
+                elif hasattr(tts_service, "speak"):
+                    ok = tts_service.speak(text)
+                    if not ok:
+                        return None
+                    wav_data = b""
+                else:
+                    return None
                 
                 return AudioOutput(
-                    wav_data=wav_data,
+                    wav_data=wav_data or b"",
                     sample_rate=22050,
-                    duration_ms=duration_ms,
-                    timestamp=time.time()
+                    duration_ms=duration_ms or max(len(text) * 45, 250),
                 )
             except Exception as e:
                 logger.error(f"[Pipeline.TTS] Synthesis error: {e}")
@@ -255,18 +288,23 @@ class StreamingPipelineController:
 
     def _create_audio_player(self) -> Optional[Callable]:
         """Create audio player callback."""
-        if not hasattr(self.owner, 'audio_player'):
+        player = getattr(self.owner, "audio_player", None)
+        if player is None:
             return None
 
         def audio_player(audio_output):
             """Play audio output."""
             try:
-                # Queue audio for playback
-                self.owner.audio_player.enqueue_playback(audio_output.wav_data)
+                if hasattr(player, "play_wav_bytes"):
+                    player.play_wav_bytes(audio_output.wav_data)
+                elif hasattr(player, "enqueue_audio"):
+                    player.enqueue_audio(audio_output.wav_data, audio_output.sample_rate)
+                elif hasattr(player, "enqueue_playback"):
+                    player.enqueue_playback(audio_output.wav_data)
+                else:
+                    return
                 
-                # Notify on completion
                 if hasattr(self.owner, '_on_playback_finished'):
-                    # Schedule callback after audio duration
                     threading.Timer(
                         audio_output.duration_ms / 1000.0,
                         self.owner._on_playback_finished

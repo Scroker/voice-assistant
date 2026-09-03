@@ -94,6 +94,25 @@ graph TD
 | **Consumata da** | `prefs.js`, `main.py`, `VoskProvider`, `WhisperProvider` |
 | **Comportamento** | Triggera reload debounced del provider |
 
+### Policy di unload modelli — `int`
+
+| Chiave | Default | Descrizione |
+|---|---:|---|
+| `idle-unload-timeout` | `300` | Timeout globale, in secondi, per liberare modelli in-process inattivi |
+| `stt-idle-unload-timeout` | `0` | Override STT; `0` usa il timeout globale |
+| `llm-idle-unload-timeout` | `180` | Override per GGUF locale; lo rende più aggressivo rispetto al default globale |
+| `tts-idle-unload-timeout` | `0` | Override TTS; `0` usa il timeout globale |
+
+Le modifiche sono applicate senza riavviare il daemon. Il controllo idle viene eseguito ogni 30 secondi e libera soltanto gli handle in RAM/VRAM: i file dei modelli non vengono rimossi.
+
+### `mcp-registry-url` — `string`
+
+| Proprietà | Valore |
+|---|---|
+| **Default** | `'https://api.smithery.ai'` |
+| **Descrizione** | Endpoint del marketplace MCP usato per discovery e ricerca server |
+| **Comportamento** | Aggiorna `MCPManager` immediatamente, senza riavvio del daemon |
+
 ### `toggle-shortcut` — `array of strings`
 
 | Proprietà | Valore |
@@ -121,6 +140,9 @@ gsettings set org.gnome.shell.extensions.voice-assistant stt-model "base"
 
 # Modifica la scorciatoia da tastiera nativa
 gsettings set org.gnome.shell.extensions.voice-assistant toggle-shortcut "['<Super><Shift>v']"
+
+# Riduce a 2 minuti il timeout del GGUF locale
+gsettings set org.gnome.shell.extensions.voice-assistant llm-idle-unload-timeout 120
 
 # Ripristina tutte le impostazioni ai valori di fabbrica
 gsettings reset-recursively org.gnome.shell.extensions.voice-assistant

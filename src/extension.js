@@ -317,16 +317,9 @@ const VoiceAssistantSystemIndicator = GObject.registerClass(
             this._indicator = this._addIndicator();
             this._indicator.gicon = this._customGIcon;
             this._indicator.style_class = 'system-status-icon voice-assistant-indicator';
-
-            this._toggle = new VoiceAssistantQuickToggle(extension);
-            this.quickSettingsItems.push(this._toggle);
         }
 
         updateUiState(state) {
-            if (this._toggle) {
-                this._toggle.updateUiState(state);
-            }
-
             if (!this._indicator) return;
 
             if (state === 'disabled') {
@@ -366,7 +359,6 @@ const VoiceAssistantSystemIndicator = GObject.registerClass(
         }
 
         destroy() {
-            this._toggle = null;
             this._indicator = null;
             super.destroy();
         }
@@ -423,10 +415,14 @@ export default class VoiceAssistantExtension extends Extension {
     }
 
     _syncIndicators() {
-        // Quick Settings Indicator (integra l'icona nel blocco di sistema e il toggle nei Quick Settings)
         if (!this._quickIndicator) {
             this._quickIndicator = new VoiceAssistantSystemIndicator(this);
             Main.panel.statusArea.quickSettings.addExternalIndicator(this._quickIndicator);
+        }
+
+        if (!this._quickToggle) {
+            this._quickToggle = new VoiceAssistantQuickToggle(this);
+            Main.panel.statusArea.quickSettings.menu.addItem(this._quickToggle, 2);
         }
 
         this._updateUiState(this._lastState);
@@ -542,14 +538,17 @@ export default class VoiceAssistantExtension extends Extension {
         if (this._quickIndicator) {
             this._quickIndicator.updateUiState(state);
         }
+        if (this._quickToggle) {
+            this._quickToggle.updateUiState(state);
+        }
     }
 
     _updateDownloadProgress(pName, mName, percent) {
-        if (this._quickIndicator && this._quickIndicator._toggle) {
+        if (this._quickToggle) {
             if (percent >= 0 && percent < 100) {
-                this._quickIndicator._toggle.subtitle = _(`Download ${pName} (${mName}): ${percent}%`);
+                this._quickToggle.subtitle = _(`Download ${pName} (${mName}): ${percent}%`);
             } else {
-                this._quickIndicator.updateUiState(this._lastState);
+                this._quickToggle.updateUiState(this._lastState);
             }
         }
     }
@@ -592,6 +591,11 @@ export default class VoiceAssistantExtension extends Extension {
         if (this._quickIndicator) {
             this._quickIndicator.destroy();
             this._quickIndicator = null;
+        }
+
+        if (this._quickToggle) {
+            this._quickToggle.destroy();
+            this._quickToggle = null;
         }
 
         if (this._resource) {

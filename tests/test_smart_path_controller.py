@@ -90,6 +90,49 @@ class TestSmartPathController(unittest.TestCase):
         self.assertIsNotNone(response)
         mock_mcp.execute_tool.assert_called_once()
 
+    def test_execute_smart_path_streams_visible_tokens_and_hides_tool_json(self):
+        controller = SmartPathController()
+        visible_tokens = []
+        spoken_sentences = []
+
+        mock_llm = MagicMock(
+            return_value=[
+                "Aumento il volume. ",
+                '{"tool": "system_volume", "args": {"action": "increase", "level": 10}}',
+            ]
+        )
+        mock_mcp = MagicMock()
+        mock_mcp.execute_tool.return_value = "Volume alzato."
+
+        success, response, result = controller.execute_smart_path(
+            "Alza il volume",
+            llm_streamer=mock_llm,
+            mcp_manager=mock_mcp,
+            token_callback=visible_tokens.append,
+            sentence_callback=spoken_sentences.append,
+        )
+
+        visible = "".join(visible_tokens)
+        self.assertTrue(success)
+        self.assertEqual(result, "Volume alzato.")
+        self.assertIn("Aumento il volume.", response)
+        self.assertIn("Volume alzato.", visible)
+        self.assertNotIn('"tool"', visible)
+        self.assertIn("Aumento il volume.", spoken_sentences)
+        self.assertIn("Volume alzato.", spoken_sentences)
+        mock_mcp.execute_tool.assert_called_once_with(
+            "system_volume", {"action": "increase", "level": 10}
+        )
+
+    def test_parse_llm_response_accepts_actual_date_time_schema(self):
+        controller = SmartPathController()
+        response = '{"tool": "date_time", "args": {"format": "time"}}'
+
+        tool_calls, _ = controller.parse_llm_response(response)
+
+        self.assertEqual(len(tool_calls), 1)
+        self.assertEqual(tool_calls[0].tool_name, "date_time")
+
     def test_execute_smart_path_without_llm_fails(self):
         controller = SmartPathController()
 

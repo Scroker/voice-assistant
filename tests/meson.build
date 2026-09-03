@@ -40,6 +40,11 @@ test('test_core_pipeline', python3,
   workdir: meson.project_source_root()
 )
 
+test('test_pipeline_integration_adapter', python3,
+  args: [files('test_pipeline_integration_adapter.py')],
+  workdir: meson.project_source_root()
+)
+
 test('test_services_tts', python3,
   args: [files('test_services_tts.py')],
   workdir: meson.project_source_root()

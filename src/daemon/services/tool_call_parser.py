@@ -55,6 +55,8 @@ class ToolCallParser:
             "date_time",
             "screen_brightness",
             "system_media",
+            "system_power",
+            "clipboard",
         ]
 
     def parse(self, text: str) -> Tuple[Optional[ToolCall], str]:
@@ -146,7 +148,7 @@ class ToolCallParser:
             return True
 
         elif tool_name == "dark_mode":
-            if "action" not in args or "mode" not in args:
+            if "mode" not in args:
                 return False
             return args["mode"].lower() in {"dark", "light"}
 
@@ -154,9 +156,9 @@ class ToolCallParser:
             return "app_name" in args
 
         elif tool_name == "date_time":
-            if "action" not in args:
+            if "format" not in args:
                 return False
-            return args["action"].lower() in {"time", "date"}
+            return args["format"].lower() in {"time", "date", "full"}
 
         elif tool_name == "screen_brightness":
             if "action" not in args:
@@ -169,6 +171,6 @@ class ToolCallParser:
         elif tool_name == "system_media":
             if "action" not in args:
                 return False
-            return args["action"].lower() in {"play", "pause", "next", "previous"}
+            return args["action"].lower() in {"play", "pause", "play-pause", "next", "previous", "stop"}
 
         return True
