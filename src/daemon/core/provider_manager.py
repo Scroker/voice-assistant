@@ -1,5 +1,7 @@
 """Provider bootstrap, model download and lifecycle helpers for the daemon."""
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -9,13 +11,15 @@ import threading
 import notify2
 from gi.repository import GLib
 
+from core.daemon_protocol import DaemonOwner
+
 logger = logging.getLogger("VoiceAssistant.ProviderManager")
 
 
 class ProviderManager:
     """Encapsulates STT provider lifecycle and model download management."""
 
-    def __init__(self, owner):
+    def __init__(self, owner: DaemonOwner):
         self.owner = owner
 
     def _show_notification(self, notif):

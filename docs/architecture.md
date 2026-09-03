@@ -14,7 +14,7 @@ graph TD
         ext <-->|GSettings| prefs
     end
 
-    subgraph Python_Daemon ["Python Daemon (systemd user service)"]
+    subgraph Python_Daemon ["Python Daemon (systemd user service — zero GTK)"]
         main["main.py — VoiceAssistant<br/>(dasbus @dbus_interface)"]
         subgraph Providers ["providers/"]
             base["base.py — STTProvider"]
@@ -24,11 +24,17 @@ graph TD
             base --> whisper
         end
         main --> Providers
-        main <--> gui["gui/assistant_window.py<br/>(GTK4 Chat GUI Window)"]
+    end
+
+    subgraph GUI_App ["GUI App (processo separato, avviata on-demand)"]
+        gui["gui/main.py<br/>(Adw.Application)"]
+        win["gui/assistant_window.py<br/>(Adw.ApplicationWindow)"]
+        gui --> win
     end
 
     ext <-->|D-Bus Session Bus| main
     prefs -->|GSettings Direct Bind| main
+    win <-->|"D-Bus: metodi + segnali<br/>(TranscriptReceived, ResponseTokenStreamed)"| main
 ```
 
 ---
@@ -50,6 +56,8 @@ Il processo viene avviato da `start.sh` tramite systemd e si registra sul Sessio
 | `core/service_bootstrap.py` | Pubblica l’oggetto D-Bus e avvia il loop di eventi |
 | `core/runtime_manager.py` | Inizializza settings, wakeword, servizi, pipeline e avvia i thread background |
 | `core/assistant_runtime.py` | Gestisce wakeword, audio loop, trigger assistant e processing del testo |
+| `core/daemon_protocol.py` | `typing.Protocol` `DaemonOwner`: contratto tipizzato tra `VoiceAssistant` e i suoi controller |
+| `core/async_bridge.py` | Background event loop persistente; `run_async(coro)` per bridging async→sync senza `asyncio.run()` |
 | `VoiceAssistant` (classe) | Oggetto D-Bus principale; coordina i componenti e espone i metodi e i segnali |
 
 ### Entry Point — `main.py`
@@ -95,6 +103,8 @@ stateDiagram-v2
 |---|---|---|
 | `StateChanged(s)` | `new_state: string` | Ogni transizione di stato |
 | `DownloadProgress(s, s, i)` | `provider: string, model: string, percent: int` | Durante il download di un modello (granularità 1%) |
+| `TranscriptReceived(s, b)` | `text: string, is_final: bool` | STT produce testo parziale (`is_final=False`) o finale (`True`) |
+| `ResponseTokenStreamed(s, b)` | `token: string, is_complete: bool` | LLM emette un token (`is_complete=False`) o segnala fine stream (`True`) |
 
 ### Metodi D-Bus
 
@@ -103,8 +113,11 @@ stateDiagram-v2
 | `ToggleListening() → b` | Ritorna `bool` | Alterna tra `disabled` e `idle` |
 | `GetAvailableModels(s) → s` | `provider: string` | Restituisce il JSON dei modelli installati e disponibili |
 | `GetDownloadingModels() → s` | N/A | Restituisce il JSON dei download in corso |
+| `GetResourceMetrics() → s` | N/A | Restituisce JSON con RSS, VRAM e stato modelli in-process |
 | `DownloadModel(s, s)` | `provider: string, model: string` | Avvia il download in background di un modello |
 | `CancelDownload(s, s)` | `provider: string, model: string` | Annulla un download in corso e pulisce i file parziali |
+| `ShowWindow()` | N/A | Avvia la GUI standalone (subprocess `gui/start.sh`) |
+| `ProcessTextInput(s)` | `text: string` | Elabora testo dalla GUI in modalità silenziosa (senza TTS) |
 
 ### Wake Word Engine
 
@@ -157,7 +170,44 @@ Un timer GLib esegue il controllo ogni 30 secondi. Dopo 300 secondi senza attivi
 
 ---
 
-## 2. L'Estensione GNOME Shell (`src/extension.js`)
+## 2. La GUI Standalone (`src/gui/`)
+
+La finestra di chat è un'applicazione GTK4/Libadwaita **separata dal daemon**, avviata on-demand tramite il metodo D-Bus `ShowWindow()`. Gira come processo indipendente e non condivide memoria con il daemon.
+
+| File | Ruolo |
+|---|---|
+| `gui/main.py` | Entry point: crea `Adw.Application(application_id="org.local.VoiceAssistant.GUI")`. GApplication gestisce il single-instancing: una seconda invocazione porta in primo piano la finestra già aperta. |
+| `gui/assistant_window.py` | `Adw.ApplicationWindow` con chat a bolle. Si connette al daemon via `Gio.DBusProxy` asincrono (callback `_on_proxy_ready`). |
+| `gui/start.sh` | Avvia la GUI riutilizzando il venv del daemon (`daemon/venv/bin/python3`), senza necessità di un venv separato. |
+
+### Flusso D-Bus dalla GUI
+
+```mermaid
+sequenceDiagram
+    participant GUI as gui/assistant_window.py
+    participant Bus as D-Bus Session Bus
+    participant Daemon as main.py (Daemon)
+
+    GUI->>Bus: Gio.DBusProxy.new_for_bus() (asincrono)
+    Bus-->>GUI: _on_proxy_ready(proxy)
+
+    Note over GUI: Utente invia testo
+    GUI->>Bus: ProcessTextInput("apri firefox")
+    Bus->>Daemon: Elabora in modalità silenziosa
+    Daemon->>Bus: Emit ResponseTokenStreamed(token, False) ×N
+    Daemon->>Bus: Emit ResponseTokenStreamed("", True)
+    Bus-->>GUI: _on_dbus_signal → append_assistant_token / _close_current_bubble
+
+    Note over Daemon: Wakeword rilevata
+    Daemon->>Bus: Emit TranscriptReceived(text, True)
+    Bus-->>GUI: _on_dbus_signal → add_user_message(text)
+```
+
+La GUI distingue **fast-path** da **LLM streaming** tramite il flag `_streaming_active`: se `is_complete=True` arriva senza token precedenti, è una risposta completa immediata; altrimenti è la fine di uno stream progressivo.
+
+---
+
+## 3. L'Estensione GNOME Shell (`src/extension.js`)
 
 ### Ciclo di Vita
 
@@ -210,7 +260,7 @@ L'estensione registra la scorciatoia da tastiera globale configurabile tramite l
 
 ---
 
-## 3. Le Preferenze (`src/prefs.js` & `data/ui/prefs.blp`)
+## 4. Le Preferenze (`src/prefs.js` & `data/ui/prefs.blp`)
 
 L'interfaccia delle preferenze utilizza un'architettura **dichiarativa separata**:
 
@@ -227,7 +277,7 @@ Il cambio di provider resetta automaticamente il modello ai valori predefiniti.
 
 ---
 
-## 4. Provider STT
+## 5. Provider STT
 
 ### Interfaccia Base (`providers/base.py`)
 
@@ -267,7 +317,7 @@ get_provider(provider_name, model, hardware, extra, progress_callback) -> STTPro
 
 ---
 
-## 5. Servizi Systemd e D-Bus
+## 6. Servizi Systemd e D-Bus
 
 ### Template di Servizio (`data/services/`)
 
@@ -303,13 +353,14 @@ Il `Type=dbus` garantisce che systemd consideri il servizio "avviato" solo quand
 ### Script di Avvio (`start.sh`)
 
 1. Crea un virtualenv con `--system-site-packages` (per accedere a PyGObject di sistema)
-2. Installa le dipendenze da `requirements.txt`
-3. Crea una copia reale del binario Python rinominata `VoiceAssistant` per far apparire il nome corretto nelle impostazioni audio di GNOME (Pipewire/ALSA usano il nome dell'eseguibile)
-4. `exec` del processo Python per rimpiazzare lo script bash
+2. Controlla i moduli richiesti usando `$DIR/venv/bin/python3` esplicito — non dipende dal `python3` nel PATH dopo `activate`, che su alcune distribuzioni punta ancora al Python di sistema
+3. Se mancano moduli, installa le dipendenze da `requirements.txt` con `--prefer-binary` (evita compilazione C/C++ di `llama-cpp-python` e `piper-tts`) e `--extra-index-url` per wheel GGUF pre-compilate
+4. Crea `venv/bin/VoiceAssistant` come copia reale del binario Python (`readlink -f` + `cp`) per far apparire il nome corretto nelle impostazioni audio di GNOME (Pipewire/ALSA usano il nome dell'eseguibile)
+5. `exec` del processo `VoiceAssistant` per rimpiazzare lo script bash
 
 ---
 
-## 6. Storage dei Modelli
+## 7. Storage dei Modelli
 
 Tutti i modelli risiedono in `~/.local/share/voice-assistant/models/` (o percorso configurato in `models-dir`):
 
@@ -326,7 +377,7 @@ Ogni modello ha una cartella dedicata con nome leggibile. La UI delle preferenze
 
 ---
 
-## 7. Build System e Packaging (Meson & Blueprint)
+## 8. Build System e Packaging (Meson & Blueprint)
 
 Il progetto usa Meson + Ninja integrato con `blueprint-compiler`.
 
@@ -356,20 +407,28 @@ Il progetto usa Meson + Ninja integrato con `blueprint-compiler`.
 ├── services/
 │   ├── voice-assistant.service.in
 │   └── org.local.VoiceAssistant.service.in
-└── daemon/
-    ├── main.py
-    ├── start.sh
-    ├── requirements.txt
-    └── providers/
-        ├── __init__.py
-        ├── base.py
-        ├── vosk_provider.py
-        └── whisper_provider.py
+├── daemon/
+│   ├── main.py
+│   ├── start.sh
+│   ├── requirements.txt
+│   ├── core/
+│   │   ├── daemon_protocol.py   ← typing.Protocol DaemonOwner
+│   │   ├── async_bridge.py      ← background event loop per MCP coroutine
+│   │   └── ...
+│   └── providers/
+│       ├── __init__.py
+│       ├── base.py
+│       ├── vosk_provider.py
+│       └── whisper_provider.py
+└── gui/
+    ├── main.py                  ← Adw.Application entry point
+    ├── assistant_window.py      ← Adw.ApplicationWindow (chat a bolle)
+    └── start.sh                 ← avvia la GUI riutilizzando daemon/venv
 ```
 
 ---
 
-## 7. Model Context Protocol (MCP) & Tool Nativi
+## 9. Model Context Protocol (MCP) & Tool Nativi
 
 Il Voice Assistant integra un'architettura **MCP (Model Context Protocol)** gestita da `MCPManager` (`src/daemon/mcp/manager.py`) per estendere le capacità del modello LLM e consentire l'esecuzione di comandi su GNOME Desktop.
 

@@ -1,3 +1,4 @@
+# Voice Assistant — dipendenze Python del demone
 dasbus
 vosk
 sounddevice
@@ -6,3 +7,4 @@ huggingface-hub
 llama-cpp-python
 piper-tts
 keyring
+notify2

@@ -1,5 +1,7 @@
 """Runtime audio device and PipeWire helper for the Voice Assistant daemon."""
 
+from __future__ import annotations
+
 import logging
 import subprocess
 
@@ -8,13 +10,15 @@ try:
 except ImportError:  # pragma: no cover - optional runtime dependency
     sd = None
 
+from core.daemon_protocol import DaemonOwner
+
 logger = logging.getLogger("VoiceAssistant.Audio")
 
 
 class AudioRuntimeController:
     """Centralizes microphone stream creation and PipeWire AEC setup."""
 
-    def __init__(self, owner, queue_ref, audio_callback):
+    def __init__(self, owner: DaemonOwner, queue_ref, audio_callback):
         self.owner = owner
         self.queue_ref = queue_ref
         self.audio_callback = audio_callback

@@ -1,9 +1,13 @@
 """Lifecycle helpers that keep the daemon state and UI notifications out of main.py."""
 
+from __future__ import annotations
+
 import logging
 import time
 
 from gi.repository import GLib
+
+from core.daemon_protocol import DaemonOwner
 
 logger = logging.getLogger("VoiceAssistant.Lifecycle")
 
@@ -11,7 +15,7 @@ logger = logging.getLogger("VoiceAssistant.Lifecycle")
 class DaemonLifecycle:
     """Encapsulates daemon state transitions, notifications and progress callbacks."""
 
-    def __init__(self, owner):
+    def __init__(self, owner: DaemonOwner):
         self.owner = owner
 
     def emit_download_progress(self, provider: str, model_name: str, percent: int):

@@ -65,6 +65,10 @@ sequenceDiagram
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
     </method>
+    <method name="ShowWindow"/>
+    <method name="ProcessTextInput">
+      <arg type="s" direction="in" name="text"/>
+    </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
     </signal>
@@ -72,6 +76,14 @@ sequenceDiagram
       <arg type="s" name="provider"/>
       <arg type="s" name="model"/>
       <arg type="i" name="percent"/>
+    </signal>
+    <signal name="TranscriptReceived">
+      <arg type="s" name="text"/>
+      <arg type="b" name="is_final"/>
+    </signal>
+    <signal name="ResponseTokenStreamed">
+      <arg type="s" name="token"/>
+      <arg type="b" name="is_complete"/>
     </signal>
   </interface>
 </node>
@@ -130,6 +142,12 @@ Avvia in un thread dedicato in background lo scaricamento del modello specificat
 ### `CancelDownload(provider: string, model: string)`
 Annulla il download in corso per il modello indicato, sblocca gli inibitori di sospensione e rimuove le cartelle parziali dal disco.
 
+### `ShowWindow()`
+Avvia la GUI standalone (`gui/start.sh`) come subprocess separato. Se la GUI è già aperta, GApplication la porta in primo piano automaticamente senza aprire una seconda finestra.
+
+### `ProcessTextInput(text: string)`
+Elabora il testo inviato dalla GUI in modalità silenziosa (`speak=False`): la pipeline esegue Fast-Path → Smart-Path → LLM senza TTS. I token vengono trasmessi in tempo reale via il segnale `ResponseTokenStreamed`.
+
 ---
 
 ## Dettaglio Segnali
@@ -141,6 +159,18 @@ Emesso ad ogni transizione di stato del daemon.
 ### `DownloadProgress(provider: string, model: string, percent: int)`
 Emesso in tempo reale dal thread di monitoraggio durante il download di un modello.
 - **Range**: `percent` compreso tra `0` e `100`.
+
+### `TranscriptReceived(text: string, is_final: bool)`
+Emesso durante il riconoscimento vocale (STT).
+- `is_final=False`: testo parziale instabile (in aggiornamento mentre l'utente parla).
+- `is_final=True`: frase completa riconosciuta.
+- La GUI mostra il messaggio dell'utente nella chat solo quando `is_final=True`.
+
+### `ResponseTokenStreamed(token: string, is_complete: bool)`
+Emesso durante la generazione della risposta.
+- `is_complete=False`: token LLM intermedio da appendere nella bolla di risposta.
+- `is_complete=True, token=""`: fine dello stream LLM — chiude la bolla aperta.
+- `is_complete=True, token!=""`: risposta fast-path completa in un singolo segnale (nessuno stream precedente).
 
 ---
 

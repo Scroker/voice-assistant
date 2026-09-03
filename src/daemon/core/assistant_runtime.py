@@ -1,5 +1,7 @@
 """Interaction runtime helpers for wakeword, audio loop and text processing."""
 
+from __future__ import annotations
+
 import asyncio
 import difflib
 import json
@@ -21,6 +23,8 @@ except Exception:  # pragma: no cover - optional in minimal test envs
 
     GLib = _DummyGLib()
 
+from core.async_bridge import run_async
+from core.daemon_protocol import DaemonOwner
 from skills.skill_registry import SkillRegistry
 from skills.skill_executor import SkillExecutor
 
@@ -30,7 +34,7 @@ logger = logging.getLogger("VoiceAssistant.AssistantRuntime")
 class AssistantRuntimeController:
     """Encapsulates wakeword detection, TTS interaction, and audio processing flow."""
 
-    def __init__(self, owner):
+    def __init__(self, owner: DaemonOwner):
         self.owner = owner
         self.skill_registry = SkillRegistry.from_default_directory()
 
@@ -61,31 +65,9 @@ class AssistantRuntimeController:
 
         def execute_tool(tool_name, args):
             result = self.owner.mcp_manager.execute_tool(tool_name, args)
-            if not asyncio.iscoroutine(result):
-                return result
-
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            if loop and loop.is_running():
-                holder = {}
-
-                def run():
-                    try:
-                        holder["result"] = asyncio.run(result)
-                    except Exception as exc:
-                        holder["error"] = exc
-
-                thread = threading.Thread(target=run, daemon=True)
-                thread.start()
-                thread.join()
-                if "error" in holder:
-                    raise holder["error"]
-                return holder.get("result", "")
-
-            return asyncio.run(result)
+            if asyncio.iscoroutine(result):
+                result = run_async(result)
+            return result
 
         try:
             if intent_name == "set_volume":
@@ -270,35 +252,6 @@ class AssistantRuntimeController:
             logger.warning(f"Errore reset ww_recognizer: {e}")
             self.owner.ww_recognizer = None
 
-    def _start_speaking_watchdog(self):
-        ticks = 0
-
-        def _check():
-            nonlocal ticks
-            ticks += 1
-            if str(self.owner._state).lower().endswith("speaking") or self.owner._state == "speaking":
-                if ticks > 3 and not getattr(self.owner.audio_player, 'is_playing', False):
-                    logger.info("[Watchdog] Rilevato stato 'speaking' senza audio in riproduzione. Ripristino stato 'idle'.")
-                    self.owner.set_state("idle")
-                    return False
-                return True
-            return False
-
-        GLib.timeout_add(1000, _check)
-
-    def _on_llm_token(self, token: str):
-        if hasattr(self.owner, '_gui_window') and self.owner._gui_window is not None:
-            GLib.idle_add(self.owner._gui_window.append_assistant_token, token)
-        try:
-            self.owner.ResponseTokenStreamed(token, False)
-        except Exception:
-            pass
-
-    def _on_playback_finished(self):
-        if str(self.owner._state).lower().endswith("speaking") or self.owner._state == "speaking":
-            logger.info("[AudioPlayer] Riproduzione audio completata. Ripristino stato idle.")
-            GLib.idle_add(self.owner.set_state, "idle")
-
     def trigger_assistant(self):
         import time
         if hasattr(self.owner, 'pipeline_controller') and self.owner.pipeline_controller:
@@ -433,7 +386,11 @@ class AssistantRuntimeController:
                     filler_words = {"e", "ed", "uh", "um", "ah", "oh", "eh", "o", "il", "la", "le", "lo", "un", "una", "uno", "a", "di", "da", "in", "con", "su", "per", "tra", "fra"}
                     ww_lower = self.owner.wakeword.lower().strip()
                     ww_noh = ww_lower.replace('h', '')
-                    ww_known_variants = {ww_lower, ww_noh, "assistente", "anton", "anto", "antonio", "anthony"}
+                    ww_known_variants = {ww_lower, ww_noh}
+                    if ww_lower == "assistente":
+                        ww_known_variants.update(["assistenti", "assistenza", "assiste"])
+                    elif "anthon" in ww_lower or "anton" in ww_lower:
+                        ww_known_variants.update(["anthon", "anton", "antonio", "antoni", "anto", "anthony"])
 
                     if text:
                         self.owner._listening_start_time = None
@@ -517,9 +474,6 @@ class AssistantRuntimeController:
 
         logger.info(f"[Testo Riconosciuto]: {text} (is_voice={is_voice})")
 
-        if is_voice and hasattr(self.owner, '_gui_window') and self.owner._gui_window is not None:
-            GLib.idle_add(self.owner._gui_window.add_user_message, text)
-
         try:
             self.owner.TranscriptReceived(text, True)
         except Exception:
@@ -531,8 +485,6 @@ class AssistantRuntimeController:
 
         if res.get("fast_path") and res.get("response"):
             resp = res.get("response")
-            if not is_voice and hasattr(self.owner, '_gui_window') and self.owner._gui_window is not None:
-                GLib.idle_add(self.owner._gui_window.add_assistant_message, resp)
             try:
                 self.owner.ResponseTokenStreamed(resp, True)
             except Exception:
@@ -542,19 +494,10 @@ class AssistantRuntimeController:
             if is_voice:
                 logger.info(f"[TTS Fallback] Sintesi vocale per: '{text}'")
                 self.owner.tts_manager.speak(resp)
-            if hasattr(self.owner, '_gui_window') and self.owner._gui_window is not None:
-                GLib.idle_add(self.owner._gui_window.add_assistant_message, resp)
             try:
                 self.owner.ResponseTokenStreamed(resp, True)
             except Exception:
                 pass
-
-        if hasattr(self.owner, '_gui_window') and self.owner._gui_window is not None:
-            def _reset_bubble():
-                if hasattr(self.owner._gui_window, 'current_assistant_bubble'):
-                    self.owner._gui_window.current_assistant_bubble = None
-                return False
-            GLib.idle_add(_reset_bubble)
 
         if not getattr(self.owner.audio_player, 'is_playing', False) and not (is_voice and self.owner._state == "speaking"):
             GLib.idle_add(self.owner.set_state, "idle")

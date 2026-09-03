@@ -188,7 +188,25 @@ La pipeline supporta il parametro `speak: bool = True` per differenziare la moda
 
 ## 6. Integrazione con D-Bus e GUI Interattiva
 
-L'oggetto principale D-Bus `VoiceAssistant` (`src/daemon/main.py`) collega la pipeline ai client esterni:
+La GUI (`src/gui/`) è un'applicazione GTK4/Libadwaita **separata** che comunica con il daemon esclusivamente via D-Bus. Il daemon non ha dipendenze GTK.
 
-- **`ProcessTextInput(text)`**: Endpoint D-Bus invocato dalla GUI. Richiama `_process_text(text, is_voice=False)` eseguendo la risposta in modalità silenziosa.
-- **`on_token_callback`**: Callback del `PipelineController` che trasmette ciascun token LLM in tempo reale al metodo `append_assistant_token` della finestra GTK4/Libadwaita.
+### Metodi D-Bus invocati dalla GUI
+
+| Metodo | Comportamento |
+|---|---|
+| `ProcessTextInput(text)` | Richiama `_process_text(text, is_voice=False)` — pipeline completa in modalità silenziosa (nessun TTS) |
+| `ToggleListening()` | Attiva/disattiva il microfono dalla GUI |
+
+### Segnali D-Bus emessi verso la GUI
+
+| Segnale | Dati | Uso nella GUI |
+|---|---|---|
+| `TranscriptReceived(text, is_final)` | Testo STT | Mostra il messaggio dell'utente nella chat quando `is_final=True` |
+| `ResponseTokenStreamed(token, is_complete)` | Token LLM o risposta fast-path | `is_complete=False` → append token; `is_complete=True` → chiude bolla |
+| `StateChanged(state)` | Stato corrente | Aggiorna l'indicatore di stato nella barra del titolo |
+
+### Distinzione Fast-Path vs LLM Streaming
+
+La GUI usa il flag interno `_streaming_active` per distinguere i due casi:
+- **Fast-Path**: arriva un singolo `ResponseTokenStreamed(risposta_completa, True)` senza token precedenti → messaggio completo immediato.
+- **LLM Streaming**: arrivano N `ResponseTokenStreamed(token, False)` seguiti da `ResponseTokenStreamed("", True)` → bolla aperta che si riempie progressivamente poi si chiude.

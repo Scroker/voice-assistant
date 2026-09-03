@@ -21,6 +21,7 @@ import time
 import threading
 import asyncio
 import queue
+from typing import Any, Dict, Tuple
 
 from dasbus.server.interface import dbus_interface, dbus_signal
 try:
@@ -151,6 +152,14 @@ class VoiceAssistant(object):
     def DownloadProgress(self, provider: str, model_name: str, percent: int):
         pass
 
+    @dbus_signal
+    def TranscriptReceived(self, text: str, is_final: bool):
+        pass
+
+    @dbus_signal
+    def ResponseTokenStreamed(self, token: str, is_complete: bool):
+        pass
+
     def emit_download_progress(self, provider: str, model_name: str, percent: int):
         self.lifecycle.emit_download_progress(provider, model_name, percent)
 
@@ -255,19 +264,16 @@ class VoiceAssistant(object):
         return self.provider_manager.cancel_download(provider, model_name)
 
     def ShowWindow(self):
-        """Metodo D-Bus per lanciare o portare in primo piano la finestra interattiva dell'assistente."""
+        """Metodo D-Bus per lanciare la finestra interattiva dell'assistente (app separata)."""
         logger.info("[D-Bus] Richiesta apertura finestra interattiva assistente.")
-        def _launch():
-            try:
-                from gui.assistant_window import AssistantWindow
-                if not hasattr(self, '_gui_window') or self._gui_window is None:
-                    self._gui_window = AssistantWindow(dbus_proxy=self)
-                self._gui_window.set_visible(True)
-                self._gui_window.present()
-            except Exception as e:
-                logger.error(f"Errore lancio finestra GUI: {e}")
-            return False
-        GLib.idle_add(_launch)
+        import subprocess
+        daemon_dir = os.path.dirname(os.path.abspath(__file__))
+        ext_dir = os.path.dirname(daemon_dir)
+        gui_start = os.path.join(ext_dir, "gui", "start.sh")
+        if os.path.exists(gui_start):
+            subprocess.Popen(["bash", gui_start])
+        else:
+            logger.warning(f"[ShowWindow] GUI start.sh non trovato: {gui_start}")
 
     def OpenSettings(self):
         """Metodo D-Bus per aprire il pannello di preferenze dell'assistente vocale."""
@@ -368,9 +374,7 @@ class VoiceAssistant(object):
         return json.dumps([])
 
     def _on_llm_token(self, token: str):
-        """Callback invocata a ogni token generato dall'LLM per aggiornare la GUI e la D-Bus stream."""
-        if hasattr(self, '_gui_window') and self._gui_window is not None:
-            GLib.idle_add(self._gui_window.append_assistant_token, token)
+        """Callback invocata a ogni token generato dall'LLM; emette il segnale D-Bus."""
         try:
             self.ResponseTokenStreamed(token, False)
         except Exception:

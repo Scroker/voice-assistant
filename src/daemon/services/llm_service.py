@@ -5,11 +5,11 @@ External HTTP services (Ollama, LM Studio), OpenAI API, and Anthropic Claude API
 import os
 import json
 import logging
-import asyncio
-import concurrent.futures
 import urllib.request
 import urllib.error
 from typing import Generator, Optional, Dict, Any
+
+from core.async_bridge import run_async
 
 logger = logging.getLogger("VoiceAssistant.LLM")
 
@@ -93,38 +93,55 @@ def download_llm_model(model_name: str, progress_callback=None, models_dir: Opti
         url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
 
     target_path = os.path.join(models_dir, filename)
-    if os.path.exists(target_path) and os.path.getsize(target_path) > 10000000:
+    existing_size = os.path.getsize(target_path) if os.path.exists(target_path) else 0
+
+    # File già completo (>10 MB euristico)
+    if existing_size > 10_000_000:
         if progress_callback:
             progress_callback(model_name, 100)
         return target_path
 
-    logger.info(f"[download_llm_model] Download {filename} da {repo} ({url})...")
+    logger.info(f"[download_llm_model] Download {filename} da {repo} ({url}), offset={existing_size}B...")
+    headers = {
+        "User-Agent": "Mozilla/5.0 VoiceAssistant/1.0",
+    }
+    if existing_size > 0:
+        headers["Range"] = f"bytes={existing_size}-"
+
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 VoiceAssistant/1.0"})
-        with urllib.request.urlopen(req) as resp, open(target_path, "wb") as f:
-            total_len = resp.headers.get("Content-Length")
-            total_size = int(total_len) if total_len else 0
-            downloaded = 0
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            # 206 Partial Content → resume; 200 → ricominciamo da capo
+            if resp.status == 200 and existing_size > 0:
+                existing_size = 0
+
+            total_len = resp.headers.get("Content-Range") or resp.headers.get("Content-Length")
+            if resp.headers.get("Content-Range"):
+                # Content-Range: bytes 0-N/TOTAL
+                total_size = int(resp.headers["Content-Range"].split("/")[-1])
+            else:
+                total_size = int(total_len) if total_len else 0
+
+            downloaded = existing_size
             block_size = 1024 * 1024
-            while True:
-                buffer = resp.read(block_size)
-                if not buffer:
-                    break
-                downloaded += len(buffer)
-                f.write(buffer)
-                if total_size > 0 and progress_callback:
-                    pct = int((downloaded / total_size) * 100)
-                    progress_callback(model_name, min(99, max(0, pct)))
+            mode = "ab" if existing_size > 0 else "wb"
+            with open(target_path, mode) as f:
+                while True:
+                    buffer = resp.read(block_size)
+                    if not buffer:
+                        break
+                    downloaded += len(buffer)
+                    f.write(buffer)
+                    if total_size > 0 and progress_callback:
+                        pct = int((downloaded / total_size) * 100)
+                        progress_callback(model_name, min(99, max(0, pct)))
+
         if progress_callback:
             progress_callback(model_name, 100)
         return target_path
     except Exception as e:
         logger.error(f"[download_llm_model] Errore download HTTP: {e}")
-        if os.path.exists(target_path):
-            try:
-                os.remove(target_path)
-            except Exception:
-                pass
+        # Non elimina il file parziale: il prossimo avvio riprenderà dal punto interrotto
         raise e
 
 class LocalGGUFProvider:
@@ -303,23 +320,10 @@ class LLMServiceManager:
         return None
 
     def _execute_tool_sync(self, tool_name: str, args: Dict[str, Any]) -> str:
-        """Executes an MCP tool synchronously, handling nested asyncio event loops cleanly."""
+        """Executes an MCP tool synchronously via the shared background event loop."""
         if not self.mcp_manager:
             return ""
-
-        coro = self.mcp_manager.execute_tool(tool_name, args)
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(lambda: asyncio.run(coro))
-                return future.result()
-        else:
-            return asyncio.run(coro)
+        return run_async(self.mcp_manager.execute_tool(tool_name, args))
 
     def stream_tokens(self, prompt: str) -> Generator[str, None, None]:
         """
@@ -357,7 +361,7 @@ class LLMServiceManager:
         # 2. Anthropic Claude API Mode
         if mode == "anthropic" or "anthropic.com" in config["endpoint"]:
             endpoint = config["endpoint"] if "anthropic.com" in config["endpoint"] else "https://api.anthropic.com/v1/messages"
-            model_name = config["model_name"] if config["model_name"] and not config["model_name"].endswith(".gguf") else "claude-3-5-sonnet-20241022"
+            model_name = config["model_name"] if config["model_name"] and not config["model_name"].endswith(".gguf") else "claude-haiku-4-5-20251001"
             headers = {
                 "Content-Type": "application/json",
                 "x-api-key": config["api_key"],

@@ -1,5 +1,7 @@
 """Startup helpers for daemon initialization without keeping all boot logic in main.py."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -7,11 +9,12 @@ import os
 import threading
 
 import notify2
-from gi.repository import Gio
+from gi.repository import GLib, Gio
 
 from audio.player import AudioPlayer
 from services.tts_service import TTSServiceManager
 from services.llm_service import LLMServiceManager
+from core.daemon_protocol import DaemonOwner
 from core.pipeline import PipelineController
 from core.state import StateMachine
 
@@ -21,7 +24,7 @@ logger = logging.getLogger("VoiceAssistant.RuntimeManager")
 class DaemonRuntimeManager:
     """Encapsulates initialization of settings, wakeword, services and pipeline."""
 
-    def __init__(self, owner):
+    def __init__(self, owner: DaemonOwner):
         self.owner = owner
 
     def register_gresource(self):

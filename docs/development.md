@@ -95,7 +95,7 @@ meson test -C build --verbose
 Il servizio background `voice-assistant.service` viene avviato **on-demand via D-Bus activation** quando l'estensione GNOME viene abilitata (`Gio.BusNameWatcherFlags.AUTO_START`). Non richiede l'autostart manuale in systemd, risparmiando memoria RAM se l'estensione è disattivata.
 
 ### 2. ALSA / Pipewire Process Name Fix (`start.sh`)
-Quando il daemon Python si registra come client audio Pipewire/PulseAudio, il server audio mostra il nome dell'eseguibile Python generico (`python3`). Per far apparire l'applicazione correttamente come **"Voice Assistant"** nelle impostazioni audio di sistema di GNOME, `start.sh` crea un symlink o una copia del binario eseguibile chiamata `VoiceAssistant` ed esegue `exec VoiceAssistant main.py`.
+Quando il daemon Python si registra come client audio Pipewire/PulseAudio, il server audio mostra il nome dell'eseguibile Python generico (`python3`). `start.sh` risolve questo creando `venv/bin/VoiceAssistant` come copia reale del binario (`readlink -f` + `cp`, non symlink) ed eseguendo `exec venv/bin/VoiceAssistant main.py`. Vengono usati percorsi assoluti (`$DIR/venv/bin/python3`) ovunque: `python3` dopo `source activate` può ancora puntare al Python di sistema su alcune distribuzioni (Ubuntu, openSUSE).
 
 ### 3. Blueprint & GResource Multi-Directory Resolution
 `blueprint-compiler` genera il file `prefs.ui` all'interno della directory di build (`build/data/prefs.ui`). In `data/meson.build`, `glib-compile-resources` viene eseguito con i flag:
@@ -106,6 +106,14 @@ GLib richiede che le modifiche allo stato dell'applicazione o all'emissione dei 
 ```python
 GLib.idle_add(self._update_state, new_state)
 ```
+
+### 5. Interfaccia Tipizzata dei Controller (`core/daemon_protocol.py`)
+I cinque controller del daemon (`AssistantRuntimeController`, `ProviderManager`, `DaemonLifecycle`, `DaemonRuntimeManager`, `AudioRuntimeController`) accedono all'istanza `VoiceAssistant` tramite `self.owner`. Questo riferimento è annotato con il `typing.Protocol` `DaemonOwner` definito in `core/daemon_protocol.py`, che dichiara tutti gli attributi e metodi esposti.
+
+Regola: **ogni attributo aggiunto a `VoiceAssistant` e acceduto da un controller deve essere dichiarato nel Protocol**. Questo rende gli errori di battitura rilevabili da mypy/pyright a compile-time invece che come `AttributeError` a runtime.
+
+### 6. Bridging Async→Sync (`core/async_bridge.py`)
+Gli strumenti MCP (`mcp_manager.execute_tool()`) sono coroutine async. I controller chiamano questi metodi in contesti sincroni (thread STT, thread pipeline). Il modulo `core/async_bridge` espone `run_async(coro)` che usa un **background event loop persistente** + `asyncio.run_coroutine_threadsafe()`. Non usare `asyncio.run()` nei thread del daemon: crea e distrugge un loop ad ogni chiamata e fallisce se eseguito da dentro un loop già in esecuzione.
 
 ---
 

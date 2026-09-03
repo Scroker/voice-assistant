@@ -67,13 +67,14 @@ meson compile -C build zip
 
 ## 🏗️ Architettura
 
-Il progetto è composto da tre componenti:
+Il progetto è composto da quattro componenti:
 
 | Componente | Tecnologia | Ruolo |
 |---|---|---|
 | **Extension** (`extension.js`) | GJS / GNOME Shell | Indicatore nei Quick Settings (area di sistema), keybinding nativi, orchestrazione daemon |
 | **Preferences** (`prefs.js` + `prefs.blp`) | GJS / Blueprint / Libadwaita | Pannello impostazioni nativo con binding GSettings live |
-| **Daemon** (`daemon/main.py`) | Python / dasbus | Cattura audio, wake word detection, riconoscimento vocale |
+| **Daemon** (`daemon/main.py`) | Python / dasbus | Cattura audio, wake word detection, riconoscimento vocale, LLM, TTS — zero dipendenze GTK |
+| **GUI** (`gui/main.py`) | Python / GTK4 / Libadwaita | Finestra di chat standalone avviata on-demand, comunicazione esclusiva via D-Bus |
 
 ```mermaid
 graph LR
@@ -81,6 +82,7 @@ graph LR
     Extension <-->|GSettings| SharedConfig[("GSettings")]
     Prefs["Preferences UI<br/>(prefs.js + prefs.blp)"] <-->|GSettings| SharedConfig
     Prefs <-->|D-Bus| Daemon
+    GUI["GUI App<br/>(gui/main.py)"] <-->|D-Bus Signals & Methods| Daemon
 ```
 
 ---
@@ -94,7 +96,8 @@ voice-assistant@scroker.github.io/
 ├── src/
 │   ├── extension.js         # Estensione GNOME Shell (QuickSettings integration)
 │   ├── prefs.js             # Logic & Binding preferenze Libadwaita
-│   └── daemon/              # Daemon Python background
+│   ├── daemon/              # Daemon Python background (zero GTK)
+│   └── gui/                 # Applicazione GTK4 standalone per la chat
 ├── data/
 │   ├── ui/prefs.blp         # Layout dell'interfaccia preferenze in Blueprint
 │   ├── dbus/                # XML Introspezione D-Bus
@@ -105,6 +108,7 @@ voice-assistant@scroker.github.io/
 ├── po/                      # Traduzioni (Gettext)
 └── docs/                    # Documentazione tecnica
     ├── architecture.md      # Architettura di sistema
+    ├── dbus.md              # Riferimento interfaccia D-Bus
     ├── pipeline.md          # Architettura della Pipeline, Fast-Path e Streaming
     └── mcp-guide.md         # Guida completa ai tool MCP nativi ed esterni
 ```
