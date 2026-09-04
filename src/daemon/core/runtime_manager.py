@@ -20,6 +20,17 @@ from core.state import StateMachine
 
 logger = logging.getLogger("VoiceAssistant.RuntimeManager")
 
+_OPTIONAL_DEPS = [
+    ("vosk",           "vosk",             "Riconoscimento vocale Vosk (Wake Word / STT)", False),
+    ("sherpa_onnx",    "sherpa-onnx",      "Motore Wake Word Sherpa-ONNX",                False),
+    ("faster_whisper", "faster-whisper",   "Trascrizione vocale Whisper",                 False),
+    ("onnxruntime",    "onnxruntime",      "Runtime ONNX per modelli ML",                 False),
+    ("llama_cpp",      "llama-cpp-python", "LLM locale (GGUF)",                           False),
+    ("piper",          "piper-tts",        "Sintesi vocale Piper TTS",                    False),
+    ("keyring",        "keyring",          "Gestione credenziali MCP",                    False),
+    ("openwakeword",   "openwakeword",     "Motore Wake Word OpenWakeWord",               False),
+]
+
 
 class DaemonRuntimeManager:
     """Encapsulates initialization of settings, wakeword, services and pipeline."""
@@ -134,8 +145,9 @@ class DaemonRuntimeManager:
         try:
             import sherpa_onnx
         except ImportError:
-            logger.error("sherpa-onnx non installato. Installa con: pip install sherpa-onnx")
+            logger.error("sherpa-onnx non installato.")
             self.owner.sherpa_spotter = None
+            self.owner.notify_dependency_required("sherpa-onnx", "Motore Wake Word Sherpa-ONNX", False)
             return
 
         model_dir = (getattr(self.owner, 'sherpa_ww_model_dir', '') or '').strip()
@@ -317,7 +329,34 @@ class DaemonRuntimeManager:
             "state": "idle" if self.owner.settings.get_boolean("enabled") else "disabled",
         })
 
+    def _probe_optional_deps(self):
+        """Verifica tutte le dipendenze opzionali in un unico passaggio all'avvio."""
+        import importlib
+        for import_name, package_name, description, is_critical in _OPTIONAL_DEPS:
+            try:
+                importlib.import_module(import_name)
+            except ImportError:
+                logger.warning(f"Dipendenza opzionale mancante: {package_name} ({import_name})")
+                self.owner.notify_dependency_required(package_name, description, is_critical)
+
+    def _notify_missing_deps_summary(self):
+        """Emette una singola notifica desktop se ci sono dipendenze opzionali mancanti."""
+        deps = getattr(self.owner, '_missing_deps', [])
+        if not deps:
+            return
+        names = ", ".join(d["package"] for d in deps)
+        try:
+            notif = notify2.Notification(
+                "Dipendenze mancanti",
+                f"Pacchetti non disponibili: {names}.\nApri l'assistente vocale per installarli.",
+                "dialog-warning",
+            )
+            notif.show()
+        except Exception as e:
+            logger.warning(f"Impossibile mostrare notifica dipendenze mancanti: {e}")
+
     def bootstrap(self):
+        self._probe_optional_deps()
         self.register_gresource()
         self.load_settings()
         self.initialize_notifications()
@@ -325,3 +364,4 @@ class DaemonRuntimeManager:
         self.initialize_services()
         self.initialize_pipeline()
         self.start_background_load()
+        self._notify_missing_deps_summary()

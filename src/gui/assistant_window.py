@@ -6,6 +6,7 @@ Segnali ricevuti: StateChanged, TranscriptReceived, ResponseTokenStreamed.
 Metodi chiamati: ProcessTextInput, TriggerListening, OpenSettings.
 """
 
+import logging
 import os
 import threading
 
@@ -19,6 +20,19 @@ try:
 except Exception:
     pass
 
+_log = logging.getLogger("VoiceAssistant.GUI")
+
+try:
+    import sys as _sys
+    _gui_dir = os.path.dirname(os.path.abspath(__file__))
+    _daemon_core = os.path.join(os.path.dirname(_gui_dir), "daemon", "core")
+    if _daemon_core not in _sys.path:
+        _sys.path.insert(0, _daemon_core)
+    from logger import glib_safe as _glib_safe
+except Exception:
+    def _glib_safe(fn, component=None):  # type: ignore[misc]
+        return fn
+
 # Registra il gresource dell'estensione per template UI e icone
 _GRESOURCE_PATH = os.path.expanduser(
     "~/.local/share/gnome-shell/extensions/"
@@ -30,7 +44,7 @@ if os.path.exists(_GRESOURCE_PATH):
         _resource = Gio.Resource.load(_GRESOURCE_PATH)
         Gio.resources_register(_resource)
     except Exception as _e:
-        print(f"[AssistantWindow] Impossibile caricare gresource: {_e}")
+        _log.warning("Impossibile caricare gresource: %s", _e)
 
 _DBUS_NAME = "org.local.VoiceAssistant"
 _DBUS_PATH = "/org/local/VoiceAssistant"
@@ -91,9 +105,10 @@ class AssistantWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.current_assistant_bubble: ChatBubble | None = None
-        # Flag: True se nell'ultima risposta sono arrivati token streaming (False)
         self._streaming_active = False
         self._proxy: Gio.DBusProxy | None = None
+        self._pending_deps: list = []
+        self._dep_debounce_id: int | None = None
 
         # Icone dall'estensione
         display = Gdk.Display.get_default()
@@ -114,7 +129,7 @@ class AssistantWindow(Adw.ApplicationWindow):
                     icon_theme.add_search_path(icons_dir)
                     icon_theme.add_search_path(os.path.join(icons_dir, "hicolor"))
             except Exception as e:
-                print(f"[AssistantWindow] Impossibile aggiungere path icone: {e}")
+                _log.warning("Impossibile aggiungere path icone: %s", e)
 
         self.connect("close-request", self._on_close_request)
 
@@ -149,8 +164,10 @@ class AssistantWindow(Adw.ApplicationWindow):
         try:
             self._proxy = Gio.DBusProxy.new_for_bus_finish(result)
             self._proxy.connect("g-signal", self._on_dbus_signal)
+            threading.Thread(target=self._poll_missing_deps, daemon=True).start()
+            _log.debug("D-Bus proxy ready")
         except Exception as e:
-            print(f"[AssistantWindow] Connessione D-Bus fallita: {e}")
+            _log.error("Connessione D-Bus fallita: %s", e)
 
     def _on_dbus_signal(
         self,
@@ -164,30 +181,66 @@ class AssistantWindow(Adw.ApplicationWindow):
             text, is_final = params.unpack()
             if is_final:
                 self._streaming_active = False
-                GLib.idle_add(self.add_user_message, text)
+                GLib.idle_add(_glib_safe(self.add_user_message, "add_user_message"), text)
 
         elif signal_name == "ResponseTokenStreamed":
             token, is_complete = params.unpack()
             if is_complete:
                 if not self._streaming_active and token:
                     # Risposta fast-path: nessun token precedente, mostra tutto
-                    GLib.idle_add(self.add_assistant_message, token)
+                    GLib.idle_add(_glib_safe(self.add_assistant_message, "add_assistant_message"), token)
                 else:
                     # Fine sessione streaming: chiudi la bolla corrente
                     self._streaming_active = False
-                    GLib.idle_add(self._close_current_bubble)
+                    GLib.idle_add(_glib_safe(self._close_current_bubble, "close_bubble"))
             else:
                 self._streaming_active = True
-                GLib.idle_add(self.append_assistant_token, token)
+                GLib.idle_add(_glib_safe(self.append_assistant_token, "append_token"), token)
 
         elif signal_name == "StateChanged":
             state = params.unpack()[0]
+            _log.debug("Stato demone: %s", state)
             self._on_state_changed(state)
+
+        elif signal_name == "DependencyRequired":
+            package, description, is_critical = params.unpack()
+            self._pending_deps.append({
+                "package": package,
+                "description": description,
+                "is_critical": is_critical,
+            })
+            if self._dep_debounce_id:
+                GLib.source_remove(self._dep_debounce_id)
+            self._dep_debounce_id = GLib.timeout_add(500, self._flush_pending_deps)
+
+    def _poll_missing_deps(self) -> None:
+        """Chiama GetMissingDependencies() al proxy ready per recuperare dep mancanti rilevate prima dell'apertura della GUI."""
+        try:
+            import json
+            result = self._proxy.call_sync(
+                "GetMissingDependencies", None, Gio.DBusCallFlags.NONE, 3000, None
+            )
+            deps = json.loads(result.unpack()[0])
+            if deps:
+                GLib.idle_add(_glib_safe(self._show_deps_dialog, "show_deps_dialog"), deps)
+        except Exception as e:
+            _log.error("Impossibile recuperare dipendenze mancanti: %s", e)
+
+    def _flush_pending_deps(self) -> bool:
+        deps, self._pending_deps = self._pending_deps, []
+        self._dep_debounce_id = None
+        if deps:
+            self._show_deps_dialog(deps)
+        return GLib.SOURCE_REMOVE
+
+    def _show_deps_dialog(self, deps: list) -> None:
+        from dependency_installer import show_missing_deps_dialog
+        show_missing_deps_dialog(self, deps)
 
     def _call_daemon(self, method: str, params: GLib.Variant | None = None) -> None:
         """Chiama un metodo D-Bus sul demone in un thread separato."""
         if not self._proxy:
-            print(f"[AssistantWindow] Proxy non disponibile, metodo '{method}' ignorato.")
+            _log.warning("Proxy non disponibile, metodo '%s' ignorato.", method)
             return
 
         def _do_call() -> None:
@@ -200,7 +253,7 @@ class AssistantWindow(Adw.ApplicationWindow):
                     None,
                 )
             except Exception as e:
-                print(f"[AssistantWindow] Errore D-Bus {method}: {e}")
+                _log.error("Errore D-Bus %s: %s", method, e)
 
         threading.Thread(target=_do_call, daemon=True).start()
 

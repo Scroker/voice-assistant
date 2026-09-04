@@ -7,6 +7,15 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, Gdk
 
+_has_display = bool(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+)
+_skip_no_display = pytest.mark.skipif(
+    not _has_display, reason="No display available (headless environment)"
+)
+
+
+@_skip_no_display
 def test_gui_import():
     """Verifica che i moduli GUI dell'assistente vocale possano essere importati correttamente."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src/daemon")))
@@ -15,6 +24,7 @@ def test_gui_import():
     assert AssistantWindow is not None
 
 
+@_skip_no_display
 def test_assistant_window_creation():
     """Verifica l'inizializzazione dei componenti della AssistantWindow e il messaggio di benvenuto."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src/daemon")))
@@ -28,6 +38,7 @@ def test_assistant_window_creation():
     assert win.mic_btn is not None
 
 
+@_skip_no_display
 def test_assistant_window_close_request():
     """Verifica che _on_close_request nasconda la finestra anziché distruggerla."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src/daemon")))
@@ -40,6 +51,7 @@ def test_assistant_window_close_request():
     assert win.get_visible() is False
 
 
+@_skip_no_display
 def test_assistant_window_esc_key():
     """Verifica che la pressione del tasto ESC nasconda la finestra."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src/daemon")))
@@ -52,6 +64,7 @@ def test_assistant_window_esc_key():
     assert win.get_visible() is False
 
 
+@_skip_no_display
 def test_assistant_window_chat_messages():
     """Verifica l'aggiunta di messaggi utente e assistente nella chat."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src/daemon")))

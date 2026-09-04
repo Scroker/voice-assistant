@@ -23,17 +23,17 @@ source venv/bin/activate
 PYTHON="$DIR/venv/bin/python3"
 
 # --------------------------------------------------------------------------
-# Installazione dipendenze
+# Installazione dipendenze CORE
+#
+# Solo le dipendenze necessarie all'avvio del processo Python vengono
+# installate automaticamente qui. Le dipendenze opzionali (vosk, sherpa-onnx,
+# faster-whisper, llama-cpp-python, piper-tts, keyring, openwakeword, onnxruntime)
+# vengono gestite con consenso esplicito tramite l'interfaccia grafica.
 #
 # --prefer-binary    Preferisce wheel pre-compilate (evita compilazione C/C++).
-#                    Fondamentale per llama-cpp-python e piper-tts che altrimenti
-#                    richiedono cmake + gcc/g++ non sempre presenti.
-# --extra-index-url  Wheel pre-compilate di llama-cpp-python (CPU) pubblicate
-#                    da abetlen; fallback se PyPI non ha la wheel per la
-#                    versione di Python/piattaforma corrente.
 # --------------------------------------------------------------------------
 NEEDS_INSTALL=false
-for module in sounddevice dasbus vosk faster_whisper huggingface_hub llama_cpp piper keyring; do
+for module in sounddevice dasbus notify2 huggingface_hub; do
     if ! "$PYTHON" -c "import $module" &>/dev/null; then
         NEEDS_INSTALL=true
         break
@@ -41,12 +41,11 @@ for module in sounddevice dasbus vosk faster_whisper huggingface_hub llama_cpp p
 done
 
 if [ "$NEEDS_INSTALL" = true ]; then
-    echo "Installazione/aggiornamento dipendenze..."
+    echo "Installazione dipendenze core..."
     "$PYTHON" -m pip install \
         --prefer-binary \
-        --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
-        -r requirements.txt \
-        || echo "ATTENZIONE: alcune dipendenze non installate. Il demone parte comunque."
+        sounddevice dasbus notify2 huggingface-hub \
+        || echo "ATTENZIONE: alcune dipendenze core non installate. Il demone potrebbe non avviarsi correttamente."
 fi
 
 # --------------------------------------------------------------------------

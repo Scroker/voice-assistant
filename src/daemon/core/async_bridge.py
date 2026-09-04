@@ -30,6 +30,11 @@ def _get_loop() -> asyncio.AbstractEventLoop:
         with _lock:
             if _loop is None or _loop.is_closed():
                 loop = asyncio.new_event_loop()
+                try:
+                    from core.logger import make_asyncio_exception_handler
+                    loop.set_exception_handler(make_asyncio_exception_handler("async_bridge"))
+                except Exception:
+                    pass  # logger not available yet; default handler remains
                 t = threading.Thread(
                     target=loop.run_forever,
                     daemon=True,

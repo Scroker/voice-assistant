@@ -484,6 +484,19 @@ def setup_logger(name: str = "VoiceAssistant", enable_context_tracing: bool = Tr
     return logger
 
 
+_error_submitted_callback = None
+
+
+def set_error_submitted_callback(callback) -> None:
+    """
+    Registra una callback invocata dopo ogni record_error() negli hook globali.
+    Firma attesa: callback(exc_type, exc_value, exc_traceback, component=str)
+    Usato da BugReporter per inviare i report a Bugzilla.
+    """
+    global _error_submitted_callback
+    _error_submitted_callback = callback
+
+
 def install_global_exception_hooks():
     """
     Installa gli hook globali per intercettare eccezioni non gestite
@@ -499,16 +512,84 @@ def install_global_exception_hooks():
             component="sys.excepthook",
             severity="CRITICAL"
         )
+        if _error_submitted_callback:
+            try:
+                _error_submitted_callback(exc_type, exc_value, exc_traceback,
+                                          component="sys.excepthook")
+            except Exception:
+                pass
 
     def threading_excepthook(args):
+        thread_name = args.thread.name if args.thread else "unknown"
         ErrorCollector.record_error(
             args.exc_type,
             args.exc_value,
             args.exc_traceback,
-            extra_info={"thread": args.thread.name if args.thread else "unknown"},
+            extra_info={"thread": thread_name},
             component="threading.excepthook",
             severity="CRITICAL"
         )
+        if _error_submitted_callback:
+            try:
+                _error_submitted_callback(args.exc_type, args.exc_value, args.exc_traceback,
+                                          component=f"thread:{thread_name}")
+            except Exception:
+                pass
 
     sys.excepthook = sys_excepthook
     threading.excepthook = threading_excepthook
+
+
+def make_asyncio_exception_handler(component: str = "asyncio"):
+    """Return a loop exception handler that routes unhandled asyncio errors to ErrorCollector.
+
+    Usage:
+        loop = asyncio.new_event_loop()
+        loop.set_exception_handler(make_asyncio_exception_handler("my.component"))
+    """
+    _log = logging.getLogger("VoiceAssistant.asyncio")
+
+    def handler(loop, context: dict):
+        exc: BaseException | None = context.get("exception")
+        msg: str = context.get("message", "Unhandled asyncio exception")
+        if exc is not None:
+            ErrorCollector.record_error(
+                type(exc), exc, exc.__traceback__,
+                extra_info={"asyncio_message": msg, "loop": repr(loop)},
+                component=component,
+                severity="ERROR",
+            )
+        else:
+            _log.error("[%s] %s — context: %s", component, msg, context)
+
+    return handler
+
+
+def glib_safe(fn, component: str | None = None):
+    """Wrap a GLib callback (idle_add, timeout_add, D-Bus signal) so that any
+    unhandled exception is routed to ErrorCollector instead of being silently
+    swallowed by the GLib main loop.
+
+    Usage:
+        GLib.idle_add(glib_safe(self._my_callback))
+    """
+    import functools
+
+    comp = component or getattr(fn, "__qualname__", repr(fn))
+    _log = logging.getLogger("VoiceAssistant.GLib")
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            _log.exception("[glib_safe/%s] unhandled exception", comp)
+            ErrorCollector.record_error(
+                type(exc), exc, exc.__traceback__,
+                extra_info={"glib_callback": comp},
+                component=comp,
+                severity="ERROR",
+            )
+            return False  # stop GLib repeat for timeout/idle sources
+
+    return wrapper

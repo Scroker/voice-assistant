@@ -81,6 +81,9 @@ class VoiceAssistant(object):
         self._cancel_requests: set = set()
         self._active_notifs: dict = {}
 
+        # Dipendenze Python opzionali mancanti (rilevate al bootstrap)
+        self._missing_deps: list = []
+
         # Settings (populated by DaemonRuntimeManager.load_settings)
         self.settings = None
         self.wakeword = ""
@@ -168,6 +171,10 @@ class VoiceAssistant(object):
         pass
 
     @dbus_signal
+    def DependencyRequired(self, package: str, description: str, is_critical: bool):
+        pass
+
+    @dbus_signal
     def DownloadProgress(self, provider: str, model_name: str, percent: int):
         pass
 
@@ -178,6 +185,20 @@ class VoiceAssistant(object):
     @dbus_signal
     def ResponseTokenStreamed(self, token: str, is_complete: bool):
         pass
+
+    def GetMissingDependencies(self) -> str:
+        """Ritorna la lista JSON delle dipendenze Python opzionali mancanti."""
+        return json.dumps(self._missing_deps)
+
+    def notify_dependency_required(self, package: str, description: str, is_critical: bool) -> None:
+        """Registra una dipendenza mancante ed emette il segnale D-Bus corrispondente."""
+        entry = {"package": package, "description": description, "is_critical": is_critical}
+        if entry not in self._missing_deps:
+            self._missing_deps.append(entry)
+        try:
+            self.DependencyRequired(package, description, is_critical)
+        except Exception:
+            pass
 
     def emit_download_progress(self, provider: str, model_name: str, percent: int):
         self.lifecycle.emit_download_progress(provider, model_name, percent)
@@ -392,6 +413,21 @@ class VoiceAssistant(object):
             return self._run_mcp_operation(self.mcp_manager.get_installed_servers)
         return json.dumps([])
 
+    def _report_error(self, exc: Exception) -> None:
+        """Raccoglie e invia a Bugzilla le eccezioni critiche del thread audio."""
+        from core.logger import ErrorCollector
+        from core.bug_reporter import BugReporter
+        ErrorCollector.record_error(
+            type(exc), exc, exc.__traceback__,
+            extra_info={"thread": "audio_loop"},
+            component="VoiceAssistant.AudioLoop",
+            severity="ERROR",
+        )
+        BugReporter.submit_async(
+            type(exc), exc, exc.__traceback__,
+            component="VoiceAssistant.AudioLoop",
+        )
+
     def _on_llm_token(self, token: str):
         """Callback invocata a ogni token generato dall'LLM; emette il segnale D-Bus."""
         try:
@@ -435,5 +471,8 @@ if __name__ == '__main__':
     setup_logger()
     install_global_exception_hooks()
     assistant = VoiceAssistant()
+    from core.logger import set_error_submitted_callback
+    from core.bug_reporter import BugReporter
+    set_error_submitted_callback(BugReporter.submit_async)
     register_dbus_service(assistant)
     run_event_loop()

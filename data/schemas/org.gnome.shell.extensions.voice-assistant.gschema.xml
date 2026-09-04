@@ -171,5 +171,30 @@
       <summary>Modalità dell'indicatore UI</summary>
       <description>Posizione dell'indicatore nell'interfaccia di GNOME Shell ('panel', 'quicksettings', 'both').</description>
     </key>
+    <key name="bugreport-enabled" type="b">
+      <default>false</default>
+      <summary>Abilita segnalazione automatica bug a Bugzilla</summary>
+      <description>Se abilitato, le eccezioni non gestite vengono inviate automaticamente all'istanza Bugzilla configurata.</description>
+    </key>
+    <key name="bugreport-endpoint" type="s">
+      <default>''</default>
+      <summary>URL base dell'istanza Bugzilla</summary>
+      <description>URL base dell'istanza Bugzilla (es. https://bugs.example.com). La REST API viene contattata su {endpoint}/rest/bug.</description>
+    </key>
+    <key name="bugreport-api-key" type="s">
+      <default>''</default>
+      <summary>API Key Bugzilla per autenticazione</summary>
+      <description>API Key dell'account Bugzilla. Inviata nell'header X-BUGZILLA-API-KEY ad ogni richiesta.</description>
+    </key>
+    <key name="bugreport-product" type="s">
+      <default>'Voice Assistant'</default>
+      <summary>Nome del prodotto Bugzilla</summary>
+      <description>Nome del prodotto Bugzilla sotto cui registrare i bug segnalati automaticamente.</description>
+    </key>
+    <key name="bugreport-component" type="s">
+      <default>'Daemon'</default>
+      <summary>Componente Bugzilla</summary>
+      <description>Componente Bugzilla da associare ai bug segnalati automaticamente.</description>
+    </key>
   </schema>
 </schemalist>

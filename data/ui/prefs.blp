@@ -101,6 +101,17 @@ Adw.NavigationSplitView split_view {
             }
           }
 
+          Adw.ActionRow row_bugreport {
+            title: _("Bug Reporting");
+            activatable: true;
+
+            [prefix]
+            Gtk.Image {
+              icon-name: "dialog-warning-symbolic";
+              margin-end: 12;
+            }
+          }
+
           Adw.ActionRow row_about {
             title: _("About");
             activatable: true;
@@ -667,24 +678,101 @@ Adw.NavigationSplitView split_view {
                   }
                 }
 
-                Adw.PreferencesGroup cache_group {
-                  title: _("Cache &amp; Downloaded Models Management");
+                Adw.PreferencesGroup ww_models_group {
+                  title: _("Wake Word");
+                }
+
+                Adw.PreferencesGroup stt_models_group {
+                  title: _("Speech Recognition (STT)");
 
                   [header-suffix]
-                  Gtk.Button clean_unused_btn {
-                    label: _("Remove Unused");
+                  Gtk.Button stt_open_btn {
+                    label: _("Open");
                     valign: center;
-                    styles ["flat", "error"]
+                    has-frame: false;
+                  }
+                }
 
-                    [prefix]
-                    Gtk.Image {
-                      icon-name: "user-trash-symbolic";
+                Adw.PreferencesGroup llm_models_group {
+                  title: _("Language Model (LLM)");
+
+                  [header-suffix]
+                  Gtk.Button llm_open_btn {
+                    label: _("Open");
+                    valign: center;
+                    has-frame: false;
+                  }
+                }
+
+                Adw.PreferencesGroup tts_models_group {
+                  title: _("Text-to-Speech (TTS)");
+
+                  [header-suffix]
+                  Gtk.Button tts_open_btn {
+                    label: _("Open");
+                    valign: center;
+                    has-frame: false;
+                  }
+                }
+
+                Adw.PreferencesGroup {
+                  Adw.ButtonRow clean_unused_btn {
+                    label: _("Remove Unused Models");
+                    styles ["destructive-action"]
+                    end-icon-name: "user-trash-symbolic";
+                  }
+                }
+              }
+
+              // 7. BUG REPORTING PAGE
+              Adw.PreferencesPage bugreport_page {
+                Adw.PreferencesGroup {
+                  title: _("Segnalazione errori");
+
+                  Adw.SwitchRow bugreport_enable_row {
+                    title: _("Abilita segnalazione automatica");
+                    subtitle: _("Invia le eccezioni non gestite all'istanza Bugzilla configurata");
+                  }
+                }
+
+                Adw.PreferencesGroup {
+                  title: _("Configurazione Bugzilla");
+                  description: _("Le credenziali vengono usate solo per inviare report e non vengono condivise con terze parti.");
+
+                  Adw.EntryRow bugreport_endpoint_row {
+                    title: _("Endpoint (URL base)");
+                    input-purpose: url;
+                  }
+
+                  Adw.PasswordEntryRow bugreport_apikey_row {
+                    title: _("API Key");
+                  }
+
+                  Adw.EntryRow bugreport_product_row {
+                    title: _("Prodotto");
+                  }
+
+                  Adw.EntryRow bugreport_component_row {
+                    title: _("Componente");
+                  }
+                }
+
+                Adw.PreferencesGroup {
+                  Adw.ActionRow {
+                    title: _("Test connessione");
+                    subtitle: _("Verifica che endpoint e API key siano corretti");
+
+                    [suffix]
+                    Gtk.Button test_bugreport_btn {
+                      label: _("Testa");
+                      valign: center;
+                      styles ["pill"]
                     }
                   }
                 }
               }
 
-              // 7. ABOUT PAGE
+              // 8. ABOUT PAGE
               Adw.PreferencesPage about_page {
                 Adw.PreferencesGroup {
                   title: _("Voice Assistant");

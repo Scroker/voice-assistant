@@ -89,6 +89,9 @@
     <method name="ProcessTextInput">
       <arg type="s" direction="in" name="text"/>
     </method>
+    <method name="GetMissingDependencies">
+      <arg type="s" direction="out" name="deps_json"/>
+    </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
     </signal>
@@ -104,6 +107,11 @@
       <arg type="s" name="provider"/>
       <arg type="s" name="model"/>
       <arg type="i" name="percent"/>
+    </signal>
+    <signal name="DependencyRequired">
+      <arg type="s" name="package"/>
+      <arg type="s" name="description"/>
+      <arg type="b" name="is_critical"/>
     </signal>
   </interface>
 </node>

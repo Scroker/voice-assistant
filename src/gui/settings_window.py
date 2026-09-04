@@ -10,10 +10,11 @@ gnome-extensions prefs mechanism is used instead (no parent relationship).
 from __future__ import annotations
 
 import os
+import shutil
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw, Gio, Gdk
+from gi.repository import Gtk, Adw, Gio, GLib, Gdk
 
 _SCHEMA = "org.gnome.shell.extensions.voice-assistant"
 _PREFS_UI = "/org/gnome/shell/extensions/voice-assistant/ui/prefs.ui"
@@ -115,8 +116,9 @@ class _SettingsWindow(Adw.Window):
             ("row_llm",      "llm_page",      "Artificial Intelligence (LLM)"),
             ("row_tts",      "tts_page",      "Text-to-Speech (TTS)"),
             ("row_mcp",      "mcp_page",      "Tools (MCP)"),
-            ("row_models",   "models_page",   "Storage and Models"),
-            ("row_about",    "about_page",    "About"),
+            ("row_models",     "models_page",     "Storage and Models"),
+            ("row_bugreport",  "bugreport_page",  "Bug Reporting"),
+            ("row_about",      "about_page",      "About"),
         ]
 
         row_map = {}
@@ -188,6 +190,7 @@ class _SettingsWindow(Adw.Window):
         self._setup_llm()
         self._setup_tts()
         self._setup_models()
+        self._setup_bugreport()
         self._setup_about()
 
     def _setup_general(self):
@@ -318,34 +321,39 @@ class _SettingsWindow(Adw.Window):
             return self._settings.get_string("models-dir") or self._DEFAULT_MODELS_DIR
 
         def _full(subdir: str | None = None) -> str:
-            return os.path.join(os.path.expanduser(_base()), subdir) if subdir else os.path.expanduser(_base())
+            base = os.path.expanduser(_base())
+            return os.path.join(base, subdir) if subdir else base
 
-        # --- Base directory row (from Blueprint) ---
-        base_row = self._b.get_object("models_path_row")
+        # --- All structure comes from Blueprint ---
+        base_row    = self._b.get_object("models_path_row")
+        choose_btn  = self._b.get_object("choose_path_btn")
+        reset_btn   = self._b.get_object("reset_path_btn")
+        grp_ww      = self._b.get_object("ww_models_group")
+        grp_stt     = self._b.get_object("stt_models_group")
+        grp_llm     = self._b.get_object("llm_models_group")
+        grp_tts     = self._b.get_object("tts_models_group")
+        clean_btn   = self._b.get_object("clean_unused_btn")
+        stt_open    = self._b.get_object("stt_open_btn")
+        llm_open    = self._b.get_object("llm_open_btn")
+        tts_open    = self._b.get_object("tts_open_btn")
+
         if base_row:
             base_row.set_subtitle(_base())
-
-        choose_btn = self._b.get_object("choose_path_btn")
         if choose_btn:
             choose_btn.connect("clicked", self._on_choose_models_dir)
-
-        reset_btn = self._b.get_object("reset_path_btn")
         if reset_btn:
             reset_btn.connect("clicked", lambda _: self._settings.reset("models-dir"))
 
-        # Repurpose clean_unused_btn as a Refresh button (GTK4 API)
-        refresh_btn = self._b.get_object("clean_unused_btn")
-        if refresh_btn:
-            refresh_btn.set_label("Refresh")
-            refresh_btn.remove_css_class("error")
+        # Connect "Open folder" buttons defined in Blueprint
+        for btn, subdir in ((stt_open, "stt"), (llm_open, "llm"), (tts_open, "tts")):
+            if btn:
+                d = subdir
+                btn.connect("clicked", lambda _b, sub=d: (
+                    os.makedirs(_full(sub), exist_ok=True),
+                    Gio.AppInfo.launch_default_for_uri(f"file://{_full(sub)}", None),
+                ))
 
-        models_page = self._b.get_object("models_page")
-        if not models_page:
-            return
-
-        # --- Dynamic model listing (built programmatically) ---
-        self._model_groups: list[Adw.PreferencesGroup] = []
-
+        # --- Helpers ---
         def _fmt_size(n: int) -> str:
             for unit in ("B", "KB", "MB", "GB"):
                 if n < 1024:
@@ -364,113 +372,128 @@ class _SettingsWindow(Adw.Window):
                 pass
             return total
 
-        def _scan(subdir: str | None) -> list[tuple[str, str, int]]:
-            """Return list of (name, full_path, size_bytes) sorted by name."""
-            root = _full(subdir)
+        def _scan(subdir: str) -> list[tuple[str, str, int]]:
             result = []
             try:
-                for e in sorted(os.scandir(root), key=lambda x: x.name.lower()):
-                    if e.name.startswith('.'):
-                        continue
-                    result.append((e.name, e.path, _entry_size(e.path)))
+                for e in sorted(os.scandir(_full(subdir)), key=lambda x: x.name.lower()):
+                    if not e.name.startswith('.'):
+                        result.append((e.name, e.path, _entry_size(e.path)))
             except FileNotFoundError:
                 pass
             return result
 
-        def _make_item_row(name: str, size: int) -> Adw.ActionRow:
-            row = Adw.ActionRow()
-            row.set_title(name)
-            row.set_subtitle(_fmt_size(size))
+        def _active_match(name: str, active: str) -> bool:
+            if not active:
+                return False
+            n, a = name.lower(), active.lower()
+            return n == a or a in n or n in a
+
+        def _make_row(name: str, size: int, is_active: bool = False) -> Adw.ActionRow:
+            row = Adw.ActionRow(title=name, subtitle=_fmt_size(size))
+            if is_active:
+                row.add_suffix(Gtk.Image(icon_name="check-plain-symbolic", valign=Gtk.Align.CENTER))
             return row
 
-        def _build_wakeword_group() -> Adw.PreferencesGroup:
-            group = Adw.PreferencesGroup()
-            group.set_title("Wake Word")
-            engine = self._settings.get_string("wakeword-engine") or "vosk"
-
-            engine_row = Adw.ActionRow()
-            engine_row.set_title("Engine")
-            engine_row.set_subtitle({"vosk": "Vosk", "openwakeword": "OpenWakeWord", "sherpa-onnx": "Sherpa-ONNX"}.get(engine, engine))
-            group.add(engine_row)
-
-            if engine == "vosk":
-                ww = self._settings.get_string("wakeword") or "assistente"
-                model_row = Adw.ActionRow()
-                model_row.set_title("Keyword")
-                model_row.set_subtitle(ww)
-                group.add(model_row)
-                for name, _path, size in _scan("stt"):
-                    group.add(_make_item_row(name, size))
-            elif engine == "openwakeword":
-                kw = self._settings.get_string("oww-model") or "alexa"
-                model_row = Adw.ActionRow()
-                model_row.set_title("Keyword")
-                model_row.set_subtitle(f"{kw} (bundled)")
-                group.add(model_row)
-            elif engine == "sherpa-onnx":
-                model_dir = self._settings.get_string("sherpa-ww-model-dir") or ""
-                model_row = Adw.ActionRow()
-                model_row.set_title("Model directory")
-                model_row.set_subtitle(model_dir or "Not configured")
-                group.add(model_row)
-
-            return group
-
-        def _build_dir_group(title: str, subdir: str) -> Adw.PreferencesGroup:
-            group = Adw.PreferencesGroup()
-            group.set_title(title)
-
-            open_btn = Gtk.Button(
-                label="Open",
-                valign=Gtk.Align.CENTER,
-                has_frame=False,
-            )
-            sub = subdir
-            open_btn.connect("clicked", lambda _b: (
-                os.makedirs(_full(sub), exist_ok=True),
-                Gio.AppInfo.launch_default_for_uri(f"file://{_full(sub)}", None),
-            ))
-            group.set_header_suffix(open_btn)
-
-            items = _scan(subdir)
-            if items:
-                for name, _path, size in items:
-                    group.add(_make_item_row(name, size))
-            else:
-                empty_row = Adw.ActionRow()
-                empty_row.set_title("No models found")
-                empty_row.set_subtitle(_full(subdir))
-                group.add(empty_row)
-
-            return group
-
-        def _refresh(*_):
-            for g in self._model_groups:
+        def _swap_rows(grp: Adw.PreferencesGroup | None, rows: list) -> None:
+            if not grp:
+                return
+            for r in getattr(grp, "_current_rows", []):
                 try:
-                    models_page.remove(g)
+                    grp.remove(r)
                 except Exception:
                     pass
-            self._model_groups.clear()
+            for r in rows:
+                grp.add(r)
+            grp._current_rows = rows  # type: ignore[attr-defined]
 
+        # --- Refresh: repopulate Blueprint groups with current data ---
+        def _refresh(*_):
             if base_row:
                 base_row.set_subtitle(_base())
 
-            for builder in (
-                lambda: _build_wakeword_group(),
-                lambda: _build_dir_group("Speech Recognition (STT)", "stt"),
-                lambda: _build_dir_group("Language Model (LLM)",     "llm"),
-                lambda: _build_dir_group("Text-to-Speech (TTS)",     "tts"),
-            ):
-                g = builder()
-                models_page.add(g)
-                self._model_groups.append(g)
+            active_stt = self._settings.get_string("stt-model")
+            active_llm = self._settings.get_string("llm-model")
+            active_tts = self._settings.get_string("tts-voice")
+            engine     = self._settings.get_string("wakeword-engine") or "vosk"
+
+            ww_rows: list = [
+                Adw.ActionRow(title="Engine",
+                    subtitle={"vosk": "Vosk", "openwakeword": "OpenWakeWord",
+                              "sherpa-onnx": "Sherpa-ONNX"}.get(engine, engine))
+            ]
+            if engine == "vosk":
+                ww = self._settings.get_string("wakeword") or "assistente"
+                ww_rows.append(Adw.ActionRow(title="Keyword", subtitle=ww))
+                ww_rows += [_make_row(n, sz, _active_match(n, active_stt)) for n, _, sz in _scan("stt")]
+            elif engine == "openwakeword":
+                kw = self._settings.get_string("oww-model") or "alexa"
+                ww_rows.append(Adw.ActionRow(title="Keyword", subtitle=f"{kw} (bundled)"))
+            elif engine == "sherpa-onnx":
+                md = self._settings.get_string("sherpa-ww-model-dir") or ""
+                ww_rows.append(Adw.ActionRow(title="Model directory", subtitle=md or "Not configured"))
+
+            def _dir_rows(subdir: str, active: str) -> list:
+                items = _scan(subdir)
+                if items:
+                    return [_make_row(n, sz, _active_match(n, active)) for n, _, sz in items]
+                return [Adw.ActionRow(title="No models found", subtitle=_full(subdir))]
+
+            _swap_rows(grp_ww,  ww_rows)
+            _swap_rows(grp_stt, _dir_rows("stt", active_stt))
+            _swap_rows(grp_llm, _dir_rows("llm", active_llm))
+            _swap_rows(grp_tts, _dir_rows("tts", active_tts))
 
         _refresh()
 
-        if refresh_btn:
-            refresh_btn.connect("clicked", _refresh)
+        # --- Clean: remove model files not matched by any active setting ---
+        def _on_clean(*_):
+            active = {
+                "stt": self._settings.get_string("stt-model"),
+                "llm": self._settings.get_string("llm-model"),
+                "tts": self._settings.get_string("tts-voice"),
+            }
+            unused = [
+                path
+                for sub, act in active.items()
+                for _, path, _ in _scan(sub)
+                if not _active_match(os.path.basename(path), act)
+            ]
+            if not unused:
+                dlg = Adw.AlertDialog(heading="Nothing to clean",
+                                      body="All models in the storage directory are in use.")
+                dlg.add_response("ok", "OK")
+                dlg.present(self)
+                return
 
-        for key in ("models-dir", "wakeword-engine", "oww-model", "sherpa-ww-model-dir"):
+            names = "\n".join(f"  • {os.path.basename(p)}" for p in unused)
+            dlg = Adw.AlertDialog(
+                heading=f"Remove {len(unused)} unused model(s)?",
+                body=f"These items will be permanently deleted from disk:\n{names}",
+            )
+            dlg.add_response("cancel", "Cancel")
+            dlg.add_response("delete", "Delete")
+            dlg.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+            dlg.set_default_response("cancel")
+            dlg.set_close_response("cancel")
+
+            def _do_delete(_, response: str) -> None:
+                if response != "delete":
+                    return
+                for path in unused:
+                    try:
+                        shutil.rmtree(path) if os.path.isdir(path) else os.remove(path)
+                    except Exception as e:
+                        print(f"[SettingsWindow] Cannot remove {path}: {e}")
+                _refresh()
+
+            dlg.connect("response", _do_delete)
+            dlg.present(self)
+
+        if clean_btn:
+            clean_btn.connect("activated", _on_clean)
+
+        for key in ("models-dir", "wakeword-engine", "oww-model", "sherpa-ww-model-dir",
+                    "stt-model", "llm-model", "tts-voice"):
             self._settings.connect(f"changed::{key}", _refresh)
 
     def _on_choose_models_dir(self, _btn):
@@ -488,6 +511,58 @@ class _SettingsWindow(Adw.Window):
             dialog.destroy()
         chooser.connect("response", on_response)
         chooser.show()
+
+    def _setup_bugreport(self):
+        self._bind("bugreport-enabled",   "bugreport_enable_row",    "active")
+        self._bind("bugreport-endpoint",  "bugreport_endpoint_row",  "text")
+        self._bind("bugreport-api-key",   "bugreport_apikey_row",    "text")
+        self._bind("bugreport-product",   "bugreport_product_row",   "text")
+        self._bind("bugreport-component", "bugreport_component_row", "text")
+        test_btn = self._b.get_object("test_bugreport_btn")
+        if test_btn:
+            test_btn.connect("clicked", self._on_test_bugreport)
+
+    def _on_test_bugreport(self, _btn):
+        import threading
+        import urllib.request
+        import urllib.error
+        import json as _json
+
+        endpoint = self._settings.get_string("bugreport-endpoint").strip()
+        api_key  = self._settings.get_string("bugreport-api-key").strip()
+
+        if not endpoint or not api_key:
+            dlg = Adw.AlertDialog(
+                heading=_("Configurazione incompleta"),
+                body=_("Inserisci endpoint e API key prima di testare la connessione."),
+            )
+            dlg.add_response("ok", _("OK"))
+            dlg.present(self)
+            return
+
+        def _do_test():
+            url = endpoint.rstrip("/") + "/rest/version"
+            req = urllib.request.Request(url)
+            req.add_header("X-BUGZILLA-API-KEY", api_key)
+            try:
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    data = _json.loads(resp.read())
+                    version = data.get("version", "sconosciuta")
+                    GLib.idle_add(_show_result, True, f"Connessione OK — Bugzilla {version}")
+            except urllib.error.HTTPError as e:
+                GLib.idle_add(_show_result, False, f"Errore HTTP {e.code}: {e.reason}")
+            except Exception as e:
+                GLib.idle_add(_show_result, False, str(e))
+
+        def _show_result(ok, msg):
+            dlg = Adw.AlertDialog(
+                heading=_("Connessione riuscita") if ok else _("Connessione fallita"),
+                body=msg,
+            )
+            dlg.add_response("ok", _("OK"))
+            dlg.present(self)
+
+        threading.Thread(target=_do_test, daemon=True).start()
 
     def _setup_about(self):
         doc_btn = self._b.get_object("doc_btn")
