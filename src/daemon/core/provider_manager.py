@@ -82,8 +82,7 @@ class ProviderManager:
                 logger.warning(f"Impossibile creare notifica per inizializzazione: {notif_err}")
                 notif = None
 
-        if load_id == getattr(self.owner, '_load_id', 0) and notif:
-            GLib.idle_add(self._show_notification, notif)
+        download_started = [False]
 
         def progress_cb(percent: int):
             key = f"{local_provider_name}:{local_model_name}"
@@ -98,6 +97,7 @@ class ProviderManager:
             self.owner.emit_download_progress(local_provider_name, local_model_name, percent)
 
             if notif:
+                download_started[0] = True
                 if getattr(notif, '_is_closed', False):
                     notif.id = 0
                     notif._is_closed = False
@@ -120,7 +120,7 @@ class ProviderManager:
             )
             logger.info(f"Provider {local_provider_name} inizializzato.")
 
-            if notif:
+            if notif and download_started[0]:
                 notif.set_timeout(notify2.EXPIRES_NEVER)
                 notif.update("Voice Assistant", f"{local_provider_name} ({local_model_name}) pronto!", "emblem-ok-symbolic")
                 notif._is_closed = False
