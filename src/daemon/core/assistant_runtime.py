@@ -232,7 +232,21 @@ class AssistantRuntimeController:
                     self.owner.sherpa_spotter = None
                     self.owner.sherpa_stream = None
                     self.owner.runtime_manager.initialize_wakeword()
-                    logger.info(f"Directory modello Sherpa-ONNX cambiata: {new_dir}")
+                logger.info(f"Directory modello Sherpa-ONNX cambiata: {new_dir}")
+        elif key == "language":
+            raw_lang = settings.get_string(key)
+            from core.locale_utils import get_system_language
+            new_lang = raw_lang.strip() if raw_lang and raw_lang.strip() else get_system_language()
+            if new_lang != getattr(self.owner, 'language', ''):
+                self.owner.language = new_lang
+                from providers import get_default_model
+                self.owner.vosk_ww_model = get_default_model("vosk", self.owner.language)
+                if getattr(self.owner, 'wakeword_engine', 'vosk') == 'vosk':
+                    self.owner.ww_recognizer = None
+                    self.owner.ww_model = None
+                    self.owner.runtime_manager.initialize_wakeword()
+                self._schedule_reload()
+                logger.info(f"Lingua assistente cambiata a: {new_lang}")
         elif key == "mcp-registry-url" and getattr(self.owner, "mcp_manager", None):
             self.owner.mcp_manager.set_registry_url(settings.get_string(key))
         elif key == "mcp-enabled" and getattr(self.owner, "mcp_manager", None):

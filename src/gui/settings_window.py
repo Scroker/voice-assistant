@@ -20,6 +20,24 @@ _SCHEMA = "org.gnome.shell.extensions.voice-assistant"
 _PREFS_UI = "/org/gnome/shell/extensions/voice-assistant/ui/prefs.ui"
 _ICON_RESOURCE_BASE = "/org/gnome/shell/extensions/voice-assistant/icons"
 
+SUPPORTED_LANGUAGES = [
+    {"code": "it", "name": "Italiano", "english_name": "Italian"},
+    {"code": "en", "name": "English", "english_name": "English"},
+    {"code": "de", "name": "Deutsch", "english_name": "German"},
+    {"code": "fr", "name": "Français", "english_name": "French"},
+    {"code": "es", "name": "Español", "english_name": "Spanish"},
+    {"code": "pt", "name": "Português", "english_name": "Portuguese"},
+    {"code": "nl", "name": "Nederlands", "english_name": "Dutch"},
+    {"code": "ru", "name": "Русский", "english_name": "Russian"},
+    {"code": "zh", "name": "中文", "english_name": "Chinese"},
+    {"code": "ja", "name": "日本語", "english_name": "Japanese"},
+    {"code": "ko", "name": "한국어", "english_name": "Korean"},
+    {"code": "pl", "name": "Polski", "english_name": "Polish"},
+    {"code": "uk", "name": "Українська", "english_name": "Ukrainian"},
+    {"code": "tr", "name": "Türkçe", "english_name": "Turkish"},
+    {"code": "sv", "name": "Svenska", "english_name": "Swedish"},
+]
+
 
 def open_settings_window(parent=None, application=None) -> None:
     """Open the settings window, optionally transient_for *parent*.
@@ -195,12 +213,117 @@ class _SettingsWindow(Adw.Window):
 
     def _setup_general(self):
         self._bind("enabled", "enable_switch_row", "active")
+        self._setup_language_selector()
+
+    def _setup_language_selector(self):
+        lang_selection_row = self._b.get_object("lang_selection_row")
+        content_nav = self._b.get_object("content_navigation_view")
+        lang_nav_page = self._b.get_object("lang_nav_page")
+        lang_search_entry = self._b.get_object("lang_search_entry")
+        lang_list_box = self._b.get_object("lang_list_box")
+
+        if not lang_selection_row:
+            return
+
+        def _get_sys_lang():
+            try:
+                from core.locale_utils import get_system_language
+                return get_system_language()
+            except ImportError:
+                d = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "daemon"))
+                if d not in sys.path:
+                    sys.path.insert(0, d)
+                try:
+                    from core.locale_utils import get_system_language
+                    return get_system_language()
+                except Exception:
+                    return "en"
+
+        saved_c = self._settings.get_string("language") if self._settings else ""
+        curr_code = saved_c.strip() if saved_c and saved_c.strip() else _get_sys_lang()
+
+        def _get_lang_label(code: str) -> str:
+            for item in SUPPORTED_LANGUAGES:
+                if item["code"] == code:
+                    return f"{item['name']} ({item['code']})"
+            return f"{code.upper()} ({code})"
+
+        lang_selection_row.set_subtitle(_get_lang_label(curr_code))
+
+        if content_nav and lang_nav_page:
+            lang_selection_row.connect("activated", lambda *_: content_nav.push(lang_nav_page))
+
+        if not lang_list_box:
+            return
+
+        lang_rows = []
+        first_radio = None
+
+        for item in SUPPORTED_LANGUAGES:
+            code = item["code"]
+            row = Adw.ActionRow()
+            row.set_title(item["name"])
+            row.set_subtitle(f"{item['english_name']} • {code}")
+            row.set_activatable(True)
+
+            radio = Gtk.CheckButton()
+            radio.set_can_focus(False)
+            radio.set_valign(Gtk.Align.CENTER)
+            if first_radio is None:
+                first_radio = radio
+            else:
+                radio.set_group(first_radio)
+
+            if code == curr_code:
+                radio.set_active(True)
+
+            row.add_prefix(radio)
+            row._lang_item = item
+            row._radio = radio
+
+            def _on_row_activated(r, target_code=code):
+                if hasattr(r, "_radio"):
+                    r._radio.set_active(True)
+                if self._settings:
+                    self._settings.set_string("language", target_code)
+                lang_selection_row.set_subtitle(_get_lang_label(target_code))
+                if content_nav:
+                    content_nav.pop()
+
+            row.connect("activated", _on_row_activated)
+            lang_list_box.append(row)
+            lang_rows.append(row)
+
+        if lang_search_entry:
+            def _filter_row(row):
+                if not hasattr(row, "_lang_item"):
+                    return True
+                q = (lang_search_entry.get_text() or "").strip().lower()
+                if not q:
+                    return True
+                it = row._lang_item
+                return (
+                    q in it["code"].lower()
+                    or q in it["name"].lower()
+                    or q in it["english_name"].lower()
+                )
+
+            lang_list_box.set_filter_func(_filter_row)
+            lang_search_entry.connect("search-changed", lambda _: lang_list_box.invalidate_filter())
+
+        if self._settings:
+            def _on_settings_lang_changed(*_):
+                raw_c = self._settings.get_string("language") if self._settings else ""
+                new_c = raw_c.strip() if raw_c and raw_c.strip() else _get_sys_lang()
+                lang_selection_row.set_subtitle(_get_lang_label(new_c))
+                for r in lang_rows:
+                    if hasattr(r, "_lang_item") and hasattr(r, "_radio"):
+                        if r._lang_item["code"] == new_c:
+                            r._radio.set_active(True)
+
+            self._settings.connect("changed::language", _on_settings_lang_changed)
 
     def _setup_wakeword(self):
-        self._radio_group("language", {
-            "lang_it_radio": "it",
-            "lang_en_radio": "en",
-        })
         self._radio_group("wakeword-engine", {
             "ww_engine_vosk_radio":   "vosk",
             "ww_engine_oww_radio":    "openwakeword",
@@ -250,13 +373,30 @@ class _SettingsWindow(Adw.Window):
             else:
                 local_radio.set_active(True)
 
+            def _get_def_model(p_name: str, p_lang: str = None) -> str:
+                try:
+                    from providers import get_default_model
+                    return get_default_model(p_name, p_lang)
+                except ImportError:
+                    d = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "daemon"))
+                    if d not in sys.path:
+                        sys.path.insert(0, d)
+                    from providers import get_default_model
+                    return get_default_model(p_name, p_lang)
+
             def _on_local(r, _p):
                 if r.get_active():
                     self._settings.set_string("stt-provider", "vosk")
+                    curr = self._settings.get_string("stt-model")
+                    if not curr or not curr.startswith("vosk"):
+                        raw_l = self._settings.get_string("language") if self._settings else ""
+                        lang = raw_l.strip() if raw_l and raw_l.strip() else None
+                        self._settings.set_string("stt-model", _get_def_model("vosk", lang))
+
             def _on_cloud(r, _p):
                 if r.get_active() and self._settings.get_string("stt-provider") not in ("openai_cloud", "groq_cloud"):
                     self._settings.set_string("stt-provider", "openai_cloud")
-                    self._settings.set_string("stt-model", "whisper-1")
+                    self._settings.set_string("stt-model", _get_def_model("openai_cloud"))
 
             local_radio.connect("notify::active", _on_local)
             cloud_radio.connect("notify::active", _on_cloud)
@@ -271,11 +411,12 @@ class _SettingsWindow(Adw.Window):
             def _on_openai(r, _p):
                 if r.get_active():
                     self._settings.set_string("stt-provider", "openai_cloud")
-                    self._settings.set_string("stt-model", "whisper-1")
+                    self._settings.set_string("stt-model", _get_def_model("openai_cloud"))
+
             def _on_groq(r, _p):
                 if r.get_active():
                     self._settings.set_string("stt-provider", "groq_cloud")
-                    self._settings.set_string("stt-model", "whisper-large-v3")
+                    self._settings.set_string("stt-model", _get_def_model("groq_cloud"))
 
             openai_radio.connect("notify::active", _on_openai)
             groq_radio.connect("notify::active", _on_groq)

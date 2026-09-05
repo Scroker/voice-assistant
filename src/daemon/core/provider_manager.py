@@ -46,8 +46,13 @@ class ProviderManager:
         local_extra = dict(self.owner.extra_config or {})
         settings_obs = getattr(self.owner, '_settings_observer', None)
         if settings_obs:
+            from core.locale_utils import get_system_language
             local_extra["api_key"] = settings_obs.get("llm-api-key", "")
-            local_extra["language"] = settings_obs.get("language", "it")
+            obs_lang = settings_obs.get("language", "")
+            local_extra["language"] = obs_lang if (obs_lang and obs_lang.strip()) else (getattr(self.owner, "language", "") or get_system_language())
+        elif not local_extra.get("language"):
+            from core.locale_utils import get_system_language
+            local_extra["language"] = getattr(self.owner, "language", "") or get_system_language()
 
         local_models_dir = getattr(self.owner, 'models_dir', '')
         key_str = f"{local_provider_name}:{local_model_name}"

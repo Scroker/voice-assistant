@@ -91,7 +91,7 @@ class VoiceAssistant(object):
         self.model_name = ""
         self.hardware = "cpu"
         self.models_dir = ""
-        self.language = "it"
+        self.language = ""
         self.extra_config: dict = {}
         self.vosk_ww_model = ""
 

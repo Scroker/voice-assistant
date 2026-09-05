@@ -31,3 +31,10 @@ class STTProvider(abc.ABC):
         """Ritorna la lista dei modelli disponibili per questo provider."""
         pass
 
+    @classmethod
+    @abc.abstractmethod
+    def get_default_model(cls, lang: str = None, **kwargs) -> str:
+        """Ritorna il modello predefinito per questo provider in base alla lingua (o alla lingua di sistema se non fornita)."""
+        pass
+
+

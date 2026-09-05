@@ -41,6 +41,7 @@ class DummyOwner:
         self._stream.active = False
         self._settings_observer = MagicMock()
         self._settings_observer.get.side_effect = lambda key, default=None: default
+        self.on_settings_changed = MagicMock()
 
     def set_state(self, state):
         self._state = state
@@ -140,6 +141,62 @@ class TestCoreRuntimeModules(unittest.TestCase):
             mock_tts_service.assert_called_once_with(audio_player=mock_audio_instance)
             mock_llm_service.assert_called_once_with(settings_observer=owner, mcp_manager=owner.mcp_manager)
             self.assertIsNotNone(owner.mcp_manager)
+
+    def test_runtime_manager_load_settings_sanitizes_mismatch(self):
+        owner = DummyOwner()
+        owner.model_manager = MagicMock()
+        mock_settings = MagicMock()
+
+        def get_string_mock(key):
+            if key == "stt-provider":
+                return "vosk"
+            elif key == "stt-model":
+                return "whisper-1"
+            elif key == "language":
+                return "it"
+            return ""
+
+        mock_settings.get_string.side_effect = get_string_mock
+        mock_settings.get_int.return_value = 60
+        mock_settings.get_boolean.return_value = True
+        owner.settings = mock_settings
+
+        with patch("gi.repository.Gio.Settings.new", return_value=mock_settings):
+            runtime = DaemonRuntimeManager(owner)
+            runtime.load_settings()
+
+            self.assertEqual(owner.provider_name, "vosk")
+            self.assertEqual(owner.model_name, "vosk-model-small-it-0.22")
+            mock_settings.set_string.assert_called_with("stt-model", "vosk-model-small-it-0.22")
+
+    def test_runtime_manager_load_settings_detects_system_language(self):
+        """Verifica che con impostazione 'language' vuota, venga usata la lingua di sistema."""
+        owner = DummyOwner()
+        owner.model_manager = MagicMock()
+        mock_settings = MagicMock()
+
+        def get_string_mock(key):
+            if key == "stt-provider":
+                return "vosk"
+            elif key == "stt-model":
+                return ""
+            elif key == "language":
+                return ""
+            return ""
+
+        mock_settings.get_string.side_effect = get_string_mock
+        mock_settings.get_int.return_value = 60
+        mock_settings.get_boolean.return_value = True
+        owner.settings = mock_settings
+
+        with patch("gi.repository.Gio.Settings.new", return_value=mock_settings):
+            with patch("core.locale_utils.get_system_language", return_value="fr"):
+                with patch("providers.vosk_provider.VoskProvider.get_default_model", return_value="vosk-model-small-fr-0.22"):
+                    runtime = DaemonRuntimeManager(owner)
+                    runtime.load_settings()
+
+                    self.assertEqual(owner.language, "fr")
+                    self.assertEqual(owner.vosk_ww_model, "vosk-model-small-fr-0.22")
 
 
 if __name__ == '__main__':

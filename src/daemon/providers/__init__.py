@@ -17,14 +17,37 @@ def get_provider(provider_name: str, model: str, hardware: str, extra: dict, pro
     else:
         raise ValueError(f"Provider STT non supportato: {provider_name}")
 
-def get_available_models(provider_name: str) -> list[dict]:
+def get_available_models(provider_name: str, user_lang: str = None) -> list[dict]:
     p = provider_name.lower()
     if p == "vosk":
-        return VoskProvider.get_available_models()
+        if not user_lang:
+            try:
+                from core.locale_utils import get_system_language
+                user_lang = get_system_language()
+            except ImportError:
+                pass
+        return VoskProvider.get_available_models(user_lang=user_lang)
     elif p == "whisper":
         return WhisperProvider.get_available_models()
     elif p in ("openai_cloud", "groq_cloud", "cloud_stt"):
         return OpenAICloudSTTProvider.get_available_models()
     return []
+
+def get_default_model(provider_name: str, lang: str = None) -> str:
+    if not lang:
+        try:
+            from core.locale_utils import get_system_language
+            lang = get_system_language()
+        except ImportError:
+            lang = "en"
+    p = provider_name.lower()
+    if p == "vosk":
+        return VoskProvider.get_default_model(lang=lang)
+    elif p == "whisper":
+        return WhisperProvider.get_default_model(lang=lang)
+    elif p in ("openai_cloud", "groq_cloud", "cloud_stt"):
+        return OpenAICloudSTTProvider.get_default_model(lang=lang, provider=p)
+    return ""
+
 
 

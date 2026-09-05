@@ -80,6 +80,10 @@ class WhisperProvider(STTProvider):
         else:
             self.MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
 
+        self.extra = extra or {}
+        raw_lang = self.extra.get("language", "")
+        self.language = raw_lang.split("_")[0].split("-")[0].lower() if raw_lang else None
+
         if not download_only:
             logger.info(f"Inizializzazione WhisperProvider ({model_size}) e Silero VAD (ONNX)...")
         else:
@@ -124,6 +128,11 @@ class WhisperProvider(STTProvider):
         device = "cuda" if hardware == "cuda" else "cpu"
         compute_type = "float16" if device == "cuda" else "int8"
         
+        if model_size.startswith("vosk-"):
+            fallback_size = self.get_default_model()
+            logger.warning(f"Modello '{model_size}' non è un modello Whisper valido. Fallback automatico su '{fallback_size}'.")
+            model_size = fallback_size
+
         stt_dir = os.path.join(self.MODELS_DIR, "stt")
         os.makedirs(stt_dir, exist_ok=True)
         
@@ -265,7 +274,7 @@ class WhisperProvider(STTProvider):
         logger.info(f"Whisper sta trascrivendo {len(audio_np)/16000:.1f} secondi di audio...")
         
         try:
-            segments, info = self.model.transcribe(audio_np, beam_size=1, language="it")
+            segments, info = self.model.transcribe(audio_np, beam_size=1, language=self.language)
             text = " ".join([segment.text for segment in segments]).strip()
         except Exception as e:
             logger.error(f"Errore durante la trascrizione Whisper: {e}")
@@ -299,3 +308,18 @@ class WhisperProvider(STTProvider):
             {"id": "medium.en", "name": "Medium English (~1.5GB - Solo Inglese)", "lang": "en", "lang_text": "English", "size_text": "~1.5GB"},
             {"id": "large-v3", "name": "Large v3 (~3.1GB - Massima accuratezza)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~3.1GB"}
         ]
+
+    @classmethod
+    def get_default_model(cls, lang: str = None, **kwargs) -> str:
+        """
+        Ritorna il modello Whisper raccomandato o bilanciato dai modelli disponibili.
+        """
+        models = cls.get_available_models()
+        for m in models:
+            name_lower = m.get("name", "").lower()
+            if "consigliato" in name_lower or "recommended" in name_lower:
+                return m["id"]
+        for m in models:
+            if m.get("id") == "base":
+                return m["id"]
+        return models[0]["id"] if models else "base"

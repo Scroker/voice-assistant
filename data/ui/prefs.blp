@@ -162,37 +162,26 @@ Adw.NavigationSplitView split_view {
                     subtitle: _("Enable or disable background listening");
                   }
                 }
-              }
 
-              Adw.PreferencesPage wakeword_page {
                 Adw.PreferencesGroup lang_group {
                   title: _("Assistant Language");
                   description: _("Language used for speech recognition and responses");
 
-                  Adw.ActionRow lang_it_row {
-                    title: _("Italian (it)");
+                  Adw.ActionRow lang_selection_row {
+                    title: _("Language");
+                    subtitle: _("System Language");
                     activatable: true;
 
-                    [prefix]
-                    Gtk.CheckButton lang_it_radio {
+                    [suffix]
+                    Gtk.Image {
+                      icon-name: "go-next-symbolic";
                       valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow lang_en_row {
-                    title: _("English (en)");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton lang_en_radio {
-                      group: lang_it_radio;
-                      valign: center;
-                      margin-end: 12;
                     }
                   }
                 }
+              }
 
+              Adw.PreferencesPage wakeword_page {
                 Adw.PreferencesGroup wakeword_engine_group {
                   title: _("Wakeword Engine");
                   description: _("Vosk: any word — OpenWakeWord: fixed keywords — Sherpa-ONNX: custom ONNX keyword spotter");
@@ -717,7 +706,7 @@ Adw.NavigationSplitView split_view {
 
                 Adw.PreferencesGroup {
                   Adw.ButtonRow clean_unused_btn {
-                    label: _("Remove Unused Models");
+                    title: _("Remove Unused Models");
                     styles ["destructive-action"]
                     end-icon-name: "user-trash-symbolic";
                   }
@@ -884,6 +873,43 @@ Adw.NavigationSplitView split_view {
           Adw.ViewSwitcherBar selector_view_switcher_bar {
             stack: selector_view_stack;
           }
+        };
+      }
+
+      Adw.NavigationPage lang_nav_page {
+        tag: "lang_page";
+        title: _("Select Language");
+
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {
+            title-widget: Adw.WindowTitle {
+              title: _("Select Language");
+            };
+          }
+
+          content: Gtk.Box {
+            orientation: vertical;
+            spacing: 12;
+            margin-top: 12;
+            margin-bottom: 12;
+            margin-start: 16;
+            margin-end: 16;
+
+            Gtk.SearchEntry lang_search_entry {
+              placeholder-text: _("Search language or code...");
+            }
+
+            Gtk.ScrolledWindow {
+              hscrollbar-policy: never;
+              vexpand: true;
+
+              child: Gtk.ListBox lang_list_box {
+                selection-mode: none;
+                styles ["boxed-list"]
+              };
+            }
+          };
         };
       }
     };

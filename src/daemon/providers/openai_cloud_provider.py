@@ -23,7 +23,14 @@ class OpenAICloudSTTProvider(STTProvider):
         extra = extra or {}
         self.api_key = extra.get("api_key") or os.environ.get("OPENAI_API_KEY", "")
         self.endpoint = extra.get("endpoint") or "https://api.openai.com/v1/audio/transcriptions"
-        self.language = extra.get("language") or "it"
+        raw_lang = extra.get("language")
+        if not raw_lang:
+            try:
+                from core.locale_utils import get_system_language
+                raw_lang = get_system_language()
+            except ImportError:
+                raw_lang = "en"
+        self.language = raw_lang.split("_")[0].split("-")[0].lower() if raw_lang else None
         self.audio_buffer = bytearray()
 
     def process_chunk(self, data: bytes) -> tuple[str, str]:
@@ -132,3 +139,16 @@ class OpenAICloudSTTProvider(STTProvider):
                 "size_text": "Cloud API"
             }
         ]
+
+    @classmethod
+    def get_default_model(cls, lang: str = None, provider: str = "openai_cloud", **kwargs) -> str:
+        """
+        Ritorna il primo modello disponibile associato al provider cloud specificato.
+        """
+        models = cls.get_available_models()
+        target_provider = (provider or "openai_cloud").lower()
+        for m in models:
+            if m.get("provider", "").lower() == target_provider:
+                return m["id"]
+        return models[0]["id"] if models else "whisper-1"
+

@@ -257,14 +257,28 @@ const VoiceAssistantQuickToggle = GObject.registerClass(
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
             // Voce per le preferenze / impostazioni
-            this._settingsItem = new PopupMenu.PopupMenuItem(_('Preferenze'));
-            this._settingsItem.connect('activate', () => {
+            let settingsItem = new PopupMenu.PopupMenuItem(_('Preferenze'));
+            settingsItem.connect('activate', () => {
                 if (Main.panel.closeQuickSettings) {
                     Main.panel.closeQuickSettings();
                 }
                 this._extension.openPreferences();
             });
-            this.menu.addMenuItem(this._settingsItem);
+            this.menu.addMenuItem(settingsItem);
+
+            // Inizializza l'oggetto _settingsActions per agganciare le preferenze
+            if (!this.menu._settingsActions) {
+                this.menu._settingsActions = {};
+            }
+
+            // Ensure the settings are unavailable when the screen is locked
+            settingsItem.visible = Main.sessionMode.allowSettings;
+            this.menu._settingsActions[this._extension.uuid] = settingsItem;
+
+            // Aggiorna la visibilità del menu Preferenze ai cambi di sessione (es. blocco/sblocco)
+            this._sessionUpdatedId = Main.sessionMode.connect('updated', () => {
+                settingsItem.visible = Main.sessionMode.allowSettings;
+            });
         }
 
         updateUiState(state) {
@@ -301,9 +315,20 @@ const VoiceAssistantQuickToggle = GObject.registerClass(
                     break;
             }
         }
+
+        destroy() {
+            if (this._sessionUpdatedId) {
+                Main.sessionMode.disconnect(this._sessionUpdatedId);
+                this._sessionUpdatedId = null;
+            }
+            if (this.menu._settingsActions && this.menu._settingsActions[this._extension.uuid]) {
+                delete this.menu._settingsActions[this._extension.uuid];
+            }
+            super.destroy();
+        }
     });
 
-// Quick Settings System Indicator (inclusa l'icona di stato nell'area di sistema in topbar)
+// Quick Settings System Indicator (Gestisce sia l'icona in Top Bar che il pulsante Toggle)
 const VoiceAssistantSystemIndicator = GObject.registerClass(
     class VoiceAssistantSystemIndicator extends QuickSettings.SystemIndicator {
         _init(extension) {
@@ -313,13 +338,23 @@ const VoiceAssistantSystemIndicator = GObject.registerClass(
             this._customGIcon = getIcon(extension, 'vocal-assistant-symbolic');
             this._downloadIcon = getIcon(extension, 'folder-download-symbolic');
 
-            // Aggiunge l'icona dell'assistente direttamente all'area di stato di sistema (accanto a Wi-Fi/Volume/Batteria)
+            // 1. Aggiunge l'icona dell'assistente direttamente all'area di stato di sistema
             this._indicator = this._addIndicator();
             this._indicator.gicon = this._customGIcon;
             this._indicator.style_class = 'system-status-icon voice-assistant-indicator';
+
+            // 2. Crea e aggiunge il pulsante Toggle (QuickMenuToggle) ai menu
+            this.quickToggle = new VoiceAssistantQuickToggle(extension);
+            this.quickSettingsItems.push(this.quickToggle);
         }
 
         updateUiState(state) {
+            // Aggiorna lo stato del Toggle nel menu a tendina
+            if (this.quickToggle) {
+                this.quickToggle.updateUiState(state);
+            }
+
+            // Aggiorna lo stato dell'icona nella barra superiore
             if (!this._indicator) return;
 
             if (state === 'disabled') {
@@ -327,8 +362,8 @@ const VoiceAssistantSystemIndicator = GObject.registerClass(
                 return;
             }
             this._indicator.visible = true;
-
             this._indicator.icon_name = null;
+
             switch (state) {
                 case 'listening':
                     this._indicator.gicon = this._customGIcon;
@@ -359,6 +394,10 @@ const VoiceAssistantSystemIndicator = GObject.registerClass(
         }
 
         destroy() {
+            if (this.quickToggle) {
+                this.quickToggle.destroy();
+                this.quickToggle = null;
+            }
             this._indicator = null;
             super.destroy();
         }
@@ -391,7 +430,6 @@ export default class VoiceAssistantExtension extends Extension {
         this._dbusProxy = null;
 
         this._connectToDaemon();
-
         this._syncIndicators();
 
         this._settingsSignal = this._settings.connect('changed::enabled', () => {
@@ -418,11 +456,6 @@ export default class VoiceAssistantExtension extends Extension {
         if (!this._quickIndicator) {
             this._quickIndicator = new VoiceAssistantSystemIndicator(this);
             Main.panel.statusArea.quickSettings.addExternalIndicator(this._quickIndicator);
-        }
-
-        if (!this._quickToggle) {
-            this._quickToggle = new VoiceAssistantQuickToggle(this);
-            Main.panel.statusArea.quickSettings.menu.addItem(this._quickToggle, 2);
         }
 
         this._updateUiState(this._lastState);
@@ -538,17 +571,14 @@ export default class VoiceAssistantExtension extends Extension {
         if (this._quickIndicator) {
             this._quickIndicator.updateUiState(state);
         }
-        if (this._quickToggle) {
-            this._quickToggle.updateUiState(state);
-        }
     }
 
     _updateDownloadProgress(pName, mName, percent) {
-        if (this._quickToggle) {
+        if (this._quickIndicator && this._quickIndicator.quickToggle) {
             if (percent >= 0 && percent < 100) {
-                this._quickToggle.subtitle = _(`Download ${pName} (${mName}): ${percent}%`);
+                this._quickIndicator.quickToggle.subtitle = _(`Download ${pName} (${mName}): ${percent}%`);
             } else {
-                this._quickToggle.updateUiState(this._lastState);
+                this._quickIndicator.updateUiState(this._lastState);
             }
         }
     }
@@ -591,11 +621,6 @@ export default class VoiceAssistantExtension extends Extension {
         if (this._quickIndicator) {
             this._quickIndicator.destroy();
             this._quickIndicator = null;
-        }
-
-        if (this._quickToggle) {
-            this._quickToggle.destroy();
-            this._quickToggle = null;
         }
 
         if (this._resource) {

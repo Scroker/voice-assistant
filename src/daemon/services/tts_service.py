@@ -30,16 +30,51 @@ class PiperTTSProvider(BaseTTSProvider):
     Piper TTS Provider using local ONNX neural models for fast natural human speech.
     Supports native python piper-tts library and automatic HF model download.
     """
+    DEFAULT_VOICES = {
+        "it": "it_IT-paola-medium",
+        "en": "en_US-lessac-medium",
+        "de": "de_DE-thorsten-medium",
+        "fr": "fr_FR-siwis-medium",
+        "es": "es_ES-sharvard-medium",
+        "pt": "pt_BR-edresson-low",
+        "nl": "nl_NL-mls-medium",
+        "ru": "ru_RU-dmitri-medium",
+        "zh": "zh_CN-huayan-medium",
+        "pl": "pl_PL-darkman-medium",
+        "uk": "uk_UA-ukrainian_tts-medium",
+    }
     DEFAULT_VOICE = "it_IT-paola-medium"
     HF_REPO = "rhasspy/piper-voices"
-    VOICE_HF_PATHS = {
-        "it_IT-paola-medium": ("it/it_IT/paola/medium/it_IT-paola-medium.onnx", "it/it_IT/paola/medium/it_IT-paola-medium.onnx.json"),
-        "it_IT-riccardo-x_low": ("it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx", "it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx.json"),
-        "it_IT-paola-high": ("it/it_IT/paola/high/it_IT-paola-high.onnx", "it/it_IT/paola/high/it_IT-paola-high.onnx.json"),
-        "en_US-lessac-medium": ("en/en_US/lessac/medium/en_US-lessac-medium.onnx", "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"),
-        "en_US-amy-medium": ("en/en_US/amy/medium/en_US-amy-medium.onnx", "en/en_US/amy/medium/en_US-amy-medium.onnx.json"),
-        "en_GB-alan-low": ("en/en_GB/alan/low/en_GB-alan-low.onnx", "en/en_GB/alan/low/en_GB-alan-low.onnx.json"),
-    }
+
+    @classmethod
+    def get_default_voice(cls, lang: Optional[str] = None) -> str:
+        """Ritorna la voce neurale predefinita per la lingua specificata o di sistema."""
+        if not lang or not lang.strip():
+            try:
+                from core.locale_utils import get_system_language
+                lang = get_system_language()
+            except ImportError:
+                lang = "en"
+        code = lang.split("_")[0].split("-")[0].lower()
+        return cls.DEFAULT_VOICES.get(code, "it_IT-paola-medium" if code == "it" else "en_US-lessac-medium")
+
+    @classmethod
+    def get_hf_voice_path(cls, voice_name: str) -> tuple[str, str]:
+        """
+        Ritorna la coppia di percorsi relativi (onnx, onnx.json) su Hugging Face
+        per qualsiasi modello vocale Piper, secondo la struttura standard del repo:
+        {lang}/{locale}/{speaker}/{quality}/{voice_name}.onnx[.json]
+        """
+        parts = voice_name.split("-")
+        if len(parts) >= 3:
+            locale = parts[0]
+            speaker = parts[1]
+            quality = "-".join(parts[2:])
+            lang = locale.split("_")[0].lower()
+            rel_dir = f"{lang}/{locale}/{speaker}/{quality}"
+            return f"{rel_dir}/{voice_name}.onnx", f"{rel_dir}/{voice_name}.onnx.json"
+        lang = voice_name.split("_")[0].lower() if "_" in voice_name else "en"
+        return f"{lang}/{voice_name}/{voice_name}.onnx", f"{lang}/{voice_name}/{voice_name}.onnx.json"
 
     def __init__(self, models_dir: Optional[str] = None, model_manager: Optional[Any] = None):
         self.models_dir = models_dir or os.path.expanduser("~/.local/share/voice-assistant/models/tts")
@@ -49,22 +84,18 @@ class PiperTTSProvider(BaseTTSProvider):
         self._loaded_voice_name = None
         self._lock = threading.Lock()
 
-    def ensure_voice_downloaded(self, voice_name: str = DEFAULT_VOICE) -> tuple:
+    def ensure_voice_downloaded(self, voice_name: Optional[str] = None) -> tuple:
         """Scarica i file .onnx e .onnx.json del modello vocale neurale se non presenti."""
+        if not voice_name:
+            voice_name = self.get_default_voice()
+
         onnx_local = os.path.join(self.models_dir, f"{voice_name}.onnx")
         json_local = os.path.join(self.models_dir, f"{voice_name}.onnx.json")
 
         if os.path.exists(onnx_local) and os.path.exists(json_local) and os.path.getsize(onnx_local) > 0:
             return onnx_local, json_local
 
-        if voice_name not in self.VOICE_HF_PATHS:
-            voice_name = self.DEFAULT_VOICE
-            onnx_local = os.path.join(self.models_dir, f"{voice_name}.onnx")
-            json_local = os.path.join(self.models_dir, f"{voice_name}.onnx.json")
-            if os.path.exists(onnx_local) and os.path.exists(json_local) and os.path.getsize(onnx_local) > 0:
-                return onnx_local, json_local
-
-        onnx_rel, json_rel = self.VOICE_HF_PATHS[voice_name]
+        onnx_rel, json_rel = self.get_hf_voice_path(voice_name)
 
         logger.info(f"[PiperTTS] Scaricamento del modello vocale neurale '{voice_name}' da HuggingFace...")
         try:
@@ -76,10 +107,16 @@ class PiperTTSProvider(BaseTTSProvider):
             shutil.copy2(dl_json, json_local)
             return onnx_local, json_local
         except Exception as e:
+            def_voice = self.get_default_voice()
+            if voice_name != def_voice:
+                logger.warning(f"[PiperTTS] Impossibile scaricare '{voice_name}' ({e}), fallback sulla voce predefinita '{def_voice}'.")
+                return self.ensure_voice_downloaded(def_voice)
             logger.error(f"[PiperTTS] Errore scaricamento modello vocale Piper: {e}")
             raise e
 
-    def load_voice(self, voice_name: str = DEFAULT_VOICE):
+    def load_voice(self, voice_name: Optional[str] = None):
+        if not voice_name:
+            voice_name = self.get_default_voice()
         if self._loaded_voice and self._loaded_voice_name == voice_name:
             return self._loaded_voice
 
@@ -106,7 +143,7 @@ class PiperTTSProvider(BaseTTSProvider):
         if not text or not text.strip():
             return None
 
-        voice_name = voice or self.DEFAULT_VOICE
+        voice_name = voice or self.get_default_voice()
 
         with self._lock:
             # 1. Tentativo con libreria Python nativa 'piper-tts'
@@ -175,7 +212,13 @@ class EspeakTTSProvider(BaseTTSProvider):
             logger.warning("[EspeakTTS] Eseguibile 'espeak-ng'/'espeak' non trovato nel PATH.")
             return None
 
-        voice_name = voice or "it"
+        if not voice:
+            try:
+                from core.locale_utils import get_system_language
+                voice = get_system_language()
+            except ImportError:
+                voice = "en"
+        voice_name = voice
         words_per_minute = int(175 * speed)
 
         tmp_wav_path = None
@@ -208,45 +251,44 @@ class EspeakTTSProvider(BaseTTSProvider):
 
 class OpenAITTSProvider(BaseTTSProvider):
     """
-    OpenAI Cloud Neural TTS Provider using /v1/audio/speech API.
-    Supports voices: alloy, echo, fable, onyx, nova, shimmer.
+    OpenAI Cloud TTS Provider (tts-1 / tts-1-hd).
     """
     def __init__(self, api_key: str = ""):
-        self.api_key = api_key
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
 
     def synthesize(self, text: str, voice: Optional[str] = None, speed: float = 1.0) -> Optional[bytes]:
         if not text or not text.strip():
             return None
-        
-        api_key = self.api_key or os.environ.get("OPENAI_API_KEY", "")
-        if not api_key:
+
+        if not self.api_key:
             logger.warning("[OpenAITTS] Nessuna chiave API fornita per OpenAI TTS.")
             return None
 
-        voice_name = voice if voice in ("alloy", "echo", "fable", "onyx", "nova", "shimmer") else "alloy"
-        endpoint = "https://api.openai.com/v1/audio/speech"
-
-        payload = {
+        voice_name = voice or "alloy"
+        payload = json.dumps({
             "model": "tts-1",
             "input": text,
             "voice": voice_name,
             "response_format": "wav",
-            "speed": max(0.25, min(4.0, speed))
-        }
+            "speed": max(0.25, min(4.0, speed)),
+        }).encode("utf-8")
 
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/audio/speech",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
 
         try:
-            req = urllib.request.Request(endpoint, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=10.0) as resp:
-                audio_bytes = resp.read()
-                if len(audio_bytes) > 44:
-                    return audio_bytes
+                if resp.status == 200:
+                    return resp.read()
         except Exception as e:
-            logger.error(f"[OpenAITTS] Errore sintesi OpenAI TTS: {e}")
+            logger.error(f"[OpenAITTS] Errore richiesta OpenAI TTS: {e}")
 
         return None
 
@@ -266,7 +308,14 @@ class SystemTTSProvider(BaseTTSProvider):
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
                     tmp_wav_path = tmp_wav.name
                 
-                cmd = [spd_bin, "-l", voice or "it", "-r", str(int((speed - 1.0) * 100)), "-w", tmp_wav_path, text]
+                if not voice:
+                    try:
+                        from core.locale_utils import get_system_language
+                        voice = get_system_language()
+                    except ImportError:
+                        voice = "en"
+
+                cmd = [spd_bin, "-l", voice, "-r", str(int((speed - 1.0) * 100)), "-w", tmp_wav_path, text]
                 res = subprocess.run(cmd, capture_output=True, text=True)
                 if res.returncode == 0 and os.path.exists(tmp_wav_path) and os.path.getsize(tmp_wav_path) > 0:
                     with open(tmp_wav_path, "rb") as f:
@@ -313,14 +362,26 @@ class TTSServiceManager:
             logger.info("[TTS] Sintesi vocale disabilitata da impostazioni.")
             return False
 
+        sys_lang = None
+        try:
+            from core.locale_utils import get_system_language
+            sys_lang = get_system_language()
+        except ImportError:
+            sys_lang = "en"
+
         current_provider_name = provider_name
         if self.settings_observer:
             current_provider_name = self.settings_observer.get("tts-provider", provider_name)
-            voice = voice or self.settings_observer.get("tts-voice", "it_IT-paola-medium")
+            cfg_lang = self.settings_observer.get("language", "")
+            active_lang = cfg_lang.strip() if cfg_lang and cfg_lang.strip() else sys_lang
+            def_voice = PiperTTSProvider.get_default_voice(active_lang)
+            voice = voice or self.settings_observer.get("tts-voice", def_voice)
             speed = speed or self.settings_observer.get("tts-speed", 1.0)
             api_key = self.settings_observer.get("llm-api-key", "")
             if "openai" in self.providers and isinstance(self.providers["openai"], OpenAITTSProvider):
                 self.providers["openai"].api_key = api_key
+        else:
+            voice = voice or PiperTTSProvider.get_default_voice(sys_lang)
 
         provider = self.providers.get(current_provider_name.lower())
         if not provider:
@@ -336,7 +397,12 @@ class TTSServiceManager:
             logger.info("[TTS] Tentativo di fallback su espeak-ng...")
             espeak_provider = self.providers.get("espeak")
             if espeak_provider:
-                audio_bytes = espeak_provider.synthesize(text, voice="it", speed=speed)
+                fallback_lang = sys_lang
+                if self.settings_observer:
+                    cfg_l = self.settings_observer.get("language", "")
+                    if cfg_l and cfg_l.strip():
+                        fallback_lang = cfg_l.strip()
+                audio_bytes = espeak_provider.synthesize(text, voice=fallback_lang, speed=speed)
 
         if audio_bytes and self.audio_player:
             logger.info(f"[TTS] Riproduzione audio ({len(audio_bytes)} byte) per: '{text[:30]}...'")

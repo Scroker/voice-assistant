@@ -51,10 +51,45 @@ class DaemonRuntimeManager:
     def load_settings(self):
         self.owner.settings = Gio.Settings.new("org.gnome.shell.extensions.voice-assistant")
         self.owner.wakeword = self.owner.settings.get_string("wakeword")
-        self.owner.provider_name = self.owner.settings.get_string("stt-provider")
-        self.owner.model_name = self.owner.settings.get_string("stt-model")
+        from providers import get_default_model
+        from core.locale_utils import get_system_language
+
+        raw_lang = self.owner.settings.get_string("language")
+        self.owner.language = raw_lang.strip() if raw_lang and raw_lang.strip() else get_system_language()
+
+        default_vosk = get_default_model("vosk", self.owner.language)
+        default_whisper = get_default_model("whisper", self.owner.language)
+
+        self.owner.provider_name = self.owner.settings.get_string("stt-provider") or "vosk"
+        self.owner.model_name = self.owner.settings.get_string("stt-model") or default_vosk
         self.owner.hardware = self.owner.settings.get_string("stt-hardware")
         self.owner.models_dir = self.owner.settings.get_string("models-dir")
+
+        if self.owner.provider_name == "vosk":
+            if not self.owner.model_name.startswith("vosk"):
+                logger.warning(f"Discrepanza impostazioni: Provider STT è 'vosk' ma il modello è '{self.owner.model_name}'. Correzione automatica in '{default_vosk}'.")
+                self.owner.model_name = default_vosk
+                try:
+                    self.owner.settings.set_string("stt-model", default_vosk)
+                except Exception:
+                    pass
+        elif self.owner.provider_name == "whisper":
+            if self.owner.model_name.startswith("vosk-"):
+                logger.warning(f"Discrepanza impostazioni: Provider STT è 'whisper' ma il modello è '{self.owner.model_name}'. Correzione automatica in '{default_whisper}'.")
+                self.owner.model_name = default_whisper
+                try:
+                    self.owner.settings.set_string("stt-model", default_whisper)
+                except Exception:
+                    pass
+        elif self.owner.provider_name in ("openai_cloud", "groq_cloud"):
+            if self.owner.model_name.startswith("vosk-"):
+                default_cloud = get_default_model(self.owner.provider_name, self.owner.language)
+                logger.warning(f"Discrepanza impostazioni: Provider STT è '{self.owner.provider_name}' ma il modello è '{self.owner.model_name}'. Correzione automatica in '{default_cloud}'.")
+                self.owner.model_name = default_cloud
+                try:
+                    self.owner.settings.set_string("stt-model", default_cloud)
+                except Exception:
+                    pass
         self.owner.model_manager.idle_timeout_sec = self.owner.settings.get_int("idle-unload-timeout")
         self.owner.model_manager.set_idle_timeouts({
             "stt": self.owner.settings.get_int("stt-idle-unload-timeout"),
@@ -62,24 +97,7 @@ class DaemonRuntimeManager:
             "tts": self.owner.settings.get_int("tts-idle-unload-timeout"),
         })
 
-        self.owner.language = self.owner.settings.get_string("language")
-        if not self.owner.language or self.owner.language.strip() == "":
-            import locale
-            env_lang = os.environ.get("LANG", "") or os.environ.get("LC_MESSAGES", "")
-            sys_loc = (locale.getdefaultlocale()[0] or "").lower()
-            full_lang = (env_lang or sys_loc).lower()
-            if full_lang.startswith("it"):
-                self.owner.language = "it"
-            elif full_lang.startswith("en"):
-                self.owner.language = "en"
-            else:
-                self.owner.language = "it"
-            try:
-                self.owner.settings.set_string("language", self.owner.language)
-            except Exception:
-                pass
-
-        self.owner.vosk_ww_model = "vosk-model-small-it-0.22" if self.owner.language == "it" else "vosk-model-small-en-us-0.15"
+        self.owner.vosk_ww_model = get_default_model("vosk", self.owner.language)
         self.owner.wakeword_engine = self.owner.settings.get_string("wakeword-engine") or "vosk"
         self.owner.oww_model_name = self.owner.settings.get_string("oww-model") or "alexa"
         self.owner.sherpa_ww_model_dir = self.owner.settings.get_string("sherpa-ww-model-dir") or ""
