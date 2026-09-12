@@ -44,18 +44,8 @@ Adw.NavigationPage dispatch_subpage {
       }
 
       Adw.PreferencesGroup {
-        title: _("Medium-Path");
-        description: _("Asks the language model to pick a single tool to run, without generating free text. Slower than Fast-Path but understands phrasings it has never seen. Requires MCP tools and a configured model.");
-
-        Adw.SwitchRow dispatch_medium_path_row {
-          title: _("Enable Medium-Path");
-          subtitle: _("Model-assisted tool selection");
-        }
-      }
-
-      Adw.PreferencesGroup {
         title: _("Smart-Path");
-        description: _("Always active as the final stage: full conversation with memory, document retrieval and tool calling. Handles everything the previous stages leave unresolved.");
+        description: _("Always active as the final stage: full conversation with memory, document retrieval and tool calling. Handles everything the Direct Action Engine leaves unresolved.");
       }
     };
   };

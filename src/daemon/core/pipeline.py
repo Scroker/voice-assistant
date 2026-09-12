@@ -321,7 +321,6 @@ class PipelineController:
         tts_engine: Optional[Callable[[str], None]] = None,
         mcp_manager: Optional[Any] = None,
         fast_path_enabled: bool = False,
-        medium_path_enabled: bool = True,
     ):
         self.state_machine = state_machine
         self.audio_player = audio_player
@@ -330,7 +329,6 @@ class PipelineController:
         self.mcp_manager = mcp_manager
 
         self._fast_path_enabled = fast_path_enabled
-        self.medium_path_enabled = medium_path_enabled
         self.fast_path = FastPathDispatcher(enabled=fast_path_enabled)
         self.smart_path = SmartPathController()
         self.sentence_aggregator = SentenceAggregator(sentence_callback=self._on_sentence_ready)
@@ -357,73 +355,6 @@ class PipelineController:
                 self.tts_engine(sentence)
             except Exception as e:
                 logger.error(f"[Pipeline] Errore sintesi TTS della frase '{sentence}': {e}")
-
-    def _try_llm_tool_select(self, text: str) -> Optional[str]:
-        """Medium path: chiede all'LLM quale tool usare, senza generare testo libero.
-
-        Restituisce la risposta del tool come stringa, o None se non applicabile.
-        """
-        if not self.llm_streamer or not self.mcp_manager:
-            return None
-
-        schemas = self.mcp_manager.get_tools_schema()
-        if not schemas:
-            return None
-
-        tool_list = "\n".join(
-            f"- {s['function']['name']}: {s['function']['description']}"
-            for s in schemas
-        )
-        prompt = (
-            "Strumenti disponibili:\n"
-            f"{tool_list}\n\n"
-            f"Richiesta utente: \"{text}\"\n\n"
-            "Rispondi SOLO con JSON: {\"tool\": \"nome_tool\", \"args\": {}} "
-            "oppure {\"tool\": null} se nessun tool è adatto. "
-            "Nessun altro testo."
-        )
-
-        try:
-            response_tokens = []
-            for token in self.llm_streamer(prompt):
-                response_tokens.append(str(token))
-                joined = "".join(response_tokens)
-                # Stop early once we have a complete JSON object
-                if joined.count("{") > 0 and joined.count("{") == joined.count("}"):
-                    break
-                if len(response_tokens) > 80:
-                    break
-
-            raw = "".join(response_tokens)
-            import re as _re
-            m = _re.search(r'\{[^{}]*\}', raw, _re.DOTALL)
-            if not m:
-                return None
-
-            payload = json.loads(m.group())
-            tool_name = payload.get("tool")
-            if not tool_name:
-                return None
-
-            args = payload.get("args") or {}
-            result = self.mcp_manager.execute_tool(tool_name, args)
-
-            if hasattr(result, '__await__') or (hasattr(result, '__class__') and result.__class__.__name__ == 'coroutine'):
-                from core.async_bridge import run_async
-                try:
-                    result = run_async(result, timeout=10.0)
-                except Exception as exc:
-                    logger.warning(f"[MediumPath] Tool async error: {exc}")
-                    return None
-
-            response = str(result).strip() if result else None
-            if response:
-                logger.info(f"[MediumPath] Tool '{tool_name}' selected by LLM: '{response}'")
-            return response
-
-        except Exception as e:
-            logger.warning(f"[MediumPath] LLM tool selection failed: {e}")
-            return None
 
     def process_text_input(self, text: str, speak: bool = True) -> Dict[str, Any]:
         """
@@ -457,24 +388,6 @@ class PipelineController:
                     "params": params,
                     "transcription": text,
                     "response": response_text
-                }
-
-        # 1.5. Medium Path: LLM tool selection (structured output, no free text)
-        if self.medium_path_enabled and self.mcp_manager and self.llm_streamer:
-            medium_response = self._try_llm_tool_select(text)
-            if medium_response:
-                logger.info(f"[Pipeline] Medium-Path match: '{medium_response}' (speak={speak})")
-                if speak:
-                    self.state_machine.set_state(AssistantState.SPEAKING)
-                    if self.tts_engine:
-                        self.tts_engine(medium_response)
-                if not speak or not (self.audio_player and getattr(self.audio_player, 'is_playing', False) or self.state_machine.state == AssistantState.SPEAKING):
-                    self.state_machine.set_state(AssistantState.IDLE)
-                return {
-                    "fast_path": False,
-                    "medium_path": True,
-                    "transcription": text,
-                    "response": medium_response,
                 }
 
         # 2. SMART PATH Check (with RAG, Memory, LLM) - only if MCP is available

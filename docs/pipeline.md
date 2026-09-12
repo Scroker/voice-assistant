@@ -81,14 +81,6 @@ Per evitare le latenze dei modelli LLM nel caso di comandi semplici e determinis
 
 ---
 
-## 2.5 Medium Path (`_try_llm_tool_select`)
-
-Tra il Fast-Path e lo SMART PATH, `PipelineController.process_text_input()` esegue uno stadio intermedio: se `medium_path_enabled` è attivo (chiave `medium-path-enabled`, default `true`) e `mcp_manager` e `llm_streamer` sono entrambi disponibili, `_try_llm_tool_select()` chiede all'LLM di selezionare direttamente un tool da eseguire, senza passare per il ciclo completo di memoria conversazionale + RAG dello SMART PATH. Il risultato di questo stadio è esposto come chiave `medium_path` nel dizionario ritornato da `process_text_input()`, verificata anche da `assistant_runtime.py` (`res.get("medium_path")`).
-
-Disattivarlo è utile quando si vuole che ogni comando non deterministico riceva il trattamento completo dello SMART PATH (memoria + RAG), oppure per risparmiare una chiamata LLM aggiuntiva su richieste che finirebbero comunque nello SMART PATH.
-
----
-
 ## 3. SMART PATH Controller (`SmartPathController`)
 
 Quando il **Fast-Path non trova una corrispondenza** e l'**MCP Manager è disponibile**, il sistema attiva il **SMART PATH**, un'intelligenza conversazionale completa che combina:

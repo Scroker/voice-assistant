@@ -385,16 +385,12 @@ class AssistantRuntimeController:
                     self.owner.runtime_manager.initialize_wakeword()
                 self._schedule_reload()
                 logger.info(f"Lingua assistente cambiata a: {new_lang}")
-        elif key in ("fast-path-enabled", "medium-path-enabled"):
+        elif key == "fast-path-enabled":
             enabled = settings.get_boolean(key)
             pipeline = self.owner.pipeline_controller
             if pipeline:
-                if key == "fast-path-enabled":
-                    pipeline.fast_path_enabled = enabled
-                else:
-                    pipeline.medium_path_enabled = enabled
-            label = "Fast-Path" if key == "fast-path-enabled" else "Medium-Path"
-            logger.info(f"{label} {'abilitato' if enabled else 'disabilitato'}.")
+                pipeline.fast_path_enabled = enabled
+            logger.info(f"Fast-Path {'abilitato' if enabled else 'disabilitato'}.")
         elif key == "audio-aec-enabled":
             enabled = settings.get_boolean(key)
             logger.info(
@@ -821,12 +817,6 @@ class AssistantRuntimeController:
         res = self.owner.pipeline_controller.process_text_input(text, speak=is_voice)
 
         if res.get("fast_path") and res.get("response"):
-            resp = res.get("response")
-            try:
-                self.owner.ResponseTokenStreamed(resp, True)
-            except Exception:
-                pass
-        elif res.get("medium_path") and res.get("response"):
             resp = res.get("response")
             try:
                 self.owner.ResponseTokenStreamed(resp, True)

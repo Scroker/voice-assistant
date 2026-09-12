@@ -96,16 +96,15 @@ graph TD
 
 ### Stadi di dispatch dei comandi
 
-Controllano quali stadi della catena `Fast-Path → Medium-Path → Smart-Path` sono attivi (vedi [pipeline.md](pipeline.md)). Configurabili da **Intelligenza Artificiale (LLM) → Elaborazione Comandi**.
+Controllano lo stadio di esecuzione deterministico `Fast-Path (Direct Action Engine)` a monte dello `Smart-Path` (vedi [pipeline.md](pipeline.md)). Configurabili da **Intelligenza Artificiale (LLM) → Elaborazione Comandi**.
 
 | Chiave | Tipo | Default | Descrizione |
 |---|---|---:|---|
-| `fast-path-enabled` | `b` | `false` | Esegue i comandi riconosciuti da regex e similarità semantica senza interpellare l'LLM (<10 ms) |
-| `medium-path-enabled` | `b` | `true` | Chiede all'LLM di selezionare un singolo tool MCP, senza generare testo libero |
+| `fast-path-enabled` | `b` | `false` | Esegue i comandi riconosciuti da regex e similarità semantica senza interpellare l'LLM (<30 ms). Se disattivato, ogni richiesta procede verso lo Smart-Path |
 
-Lo Smart-Path è sempre attivo come stadio finale e non è disattivabile: è ciò che gestisce tutto quanto non risolto dagli stadi precedenti.
+Lo Smart-Path è sempre attivo come stadio finale e non è disattivabile: è ciò che gestisce tutto quanto non risolto dal Direct Action Engine.
 
-**Comportamento**: entrambe le chiavi sono applicate **a caldo** su `PipelineController` (`core/assistant_runtime.py::_on_settings_changed` → `pipeline.fast_path_enabled` / `pipeline.medium_path_enabled`), senza riavviare il daemon. I valori iniziali sono letti alla costruzione della pipeline in `core/runtime_manager.py::initialize_pipeline()`.
+**Comportamento**: la chiave `fast-path-enabled` è applicata **a caldo** su `PipelineController` (`core/assistant_runtime.py::_on_settings_changed` → `pipeline.fast_path_enabled`), senza riavviare il daemon. Il valore iniziale è letto alla costruzione della pipeline in `core/runtime_manager.py::initialize_pipeline()`.
 
 > [!NOTE]
 > Il default `false` di `fast-path-enabled` riflette il comportamento storico del daemon, dove lo stadio era disattivato via codice. Attivandolo, i comandi frequenti (volume, tema, media, orologio, avvio app) vengono risolti localmente senza latenza dell'LLM, al costo di riconoscere solo le formulazioni previste dai pattern.

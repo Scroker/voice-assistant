@@ -1483,20 +1483,8 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
             </child>
             <child>
               <object class="AdwPreferencesGroup">
-                <property name="title" translatable="yes">Medium-Path</property>
-                <property name="description" translatable="yes">Asks the language model to pick a single tool to run, without generating free text. Slower than Fast-Path but understands phrasings it has never seen. Requires MCP tools and a configured model.</property>
-                <child>
-                  <object class="AdwSwitchRow" id="dispatch_medium_path_row">
-                    <property name="title" translatable="yes">Enable Medium-Path</property>
-                    <property name="subtitle" translatable="yes">Model-assisted tool selection</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup">
                 <property name="title" translatable="yes">Smart-Path</property>
-                <property name="description" translatable="yes">Always active as the final stage: full conversation with memory, document retrieval and tool calling. Handles everything the previous stages leave unresolved.</property>
+                <property name="description" translatable="yes">Always active as the final stage: full conversation with memory, document retrieval and tool calling. Handles everything the Direct Action Engine leaves unresolved.</property>
               </object>
             </child>
           </object>

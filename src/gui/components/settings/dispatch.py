@@ -11,7 +11,6 @@ from .base import bind_setting
 
 _SWITCH_BINDINGS = {
     "dispatch_fast_path_row": "fast-path-enabled",
-    "dispatch_medium_path_row": "medium-path-enabled",
 }
 
 

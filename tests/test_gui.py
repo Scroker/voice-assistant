@@ -451,24 +451,18 @@ class TestGUI(unittest.TestCase):
         ui_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/ui/prefs.ui"))
         builder.add_from_file(ui_path)
 
-        for widget_id in ("dispatch_subpage", "dispatch_subpage_row", "dispatch_fast_path_row", "dispatch_medium_path_row"):
+        for widget_id in ("dispatch_subpage", "dispatch_subpage_row", "dispatch_fast_path_row"):
             self.assertIsNotNone(builder.get_object(widget_id), f"Widget mancante in prefs.ui: {widget_id}")
 
         settings = Gio.Settings.new("org.gnome.shell.extensions.voice-assistant")
         DispatchSettings(builder, settings)
 
         fast_row = builder.get_object("dispatch_fast_path_row")
-        medium_row = builder.get_object("dispatch_medium_path_row")
 
         fast_row.set_active(True)
         self.assertTrue(settings.get_boolean("fast-path-enabled"))
         fast_row.set_active(False)
         self.assertFalse(settings.get_boolean("fast-path-enabled"))
-
-        medium_row.set_active(False)
-        self.assertFalse(settings.get_boolean("medium-path-enabled"))
-        medium_row.set_active(True)
-        self.assertTrue(settings.get_boolean("medium-path-enabled"))
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
     def test_tts_settings_engine_and_voice_change_in_gui(self):

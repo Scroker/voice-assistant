@@ -136,8 +136,8 @@ class TestCorePipeline(unittest.TestCase):
         result_enabled = controller.process_text_input("alza il volume", speak=False)
         self.assertTrue(result_enabled["fast_path"])
 
-    def test_pipeline_controller_medium_path_can_be_disabled(self):
-        """Verifica che il Medium-Path sia attivo di default e disattivabile a runtime."""
+    def test_pipeline_controller_direct_to_smart_path(self):
+        """Verifica che le richieste non gestite da Fast-Path procedano direttamente verso Smart-Path."""
         state_machine = StateMachine()
 
         controller = PipelineController(
@@ -146,20 +146,12 @@ class TestCorePipeline(unittest.TestCase):
             llm_streamer=lambda prompt: iter(["irrilevante"]),
             mcp_manager=MagicMock(),
         )
-        self.assertTrue(controller.medium_path_enabled)
 
-        with patch.object(controller, "_try_llm_tool_select", return_value="Volume alzato") as tool_select:
-            result = controller.process_text_input("alza il volume", speak=False)
-            tool_select.assert_called_once()
-            self.assertTrue(result["medium_path"])
-            self.assertEqual(result["response"], "Volume alzato")
-
-        # Disattivato, lo stadio viene saltato del tutto e la richiesta prosegue oltre.
-        controller.medium_path_enabled = False
-        with patch.object(controller, "_try_llm_tool_select", return_value="Volume alzato") as tool_select:
-            result = controller.process_text_input("alza il volume", speak=False)
-            tool_select.assert_not_called()
-            self.assertNotIn("medium_path", result)
+        with patch.object(controller.smart_path, "execute_smart_path", return_value=(True, "Risposta Smart Path", None)) as mock_smart:
+            result = controller.process_text_input("chi era leonardo da vinci?", speak=False)
+            mock_smart.assert_called_once()
+            self.assertEqual(result.get("response"), "Risposta Smart Path")
+            self.assertFalse(result.get("fast_path"))
 
     def test_pipeline_controller_llm_streaming_flow(self):
         """Verifica il flusso di streaming LLM e transizioni di stato nel PipelineController."""

@@ -1144,7 +1144,6 @@ class DaemonRuntimeManager:
             tts_engine=_on_tts_engine,
             mcp_manager=self.owner.mcp_manager,
             fast_path_enabled=get_boolean_setting(self.owner.settings, "fast-path-enabled", False),
-            medium_path_enabled=get_boolean_setting(self.owner.settings, "medium-path-enabled", True),
         )
         self.owner.pipeline_controller.on_token_callback = self.owner._on_llm_token
         self.owner.pipeline_controller.fast_path.intent_handler = self.owner._handle_fast_path_intent

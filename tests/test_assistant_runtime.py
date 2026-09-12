@@ -147,18 +147,6 @@ class TestAssistantRuntime(unittest.TestCase):
 
         owner.ResponseTokenStreamed.assert_called_once_with("Apro il calendario.", True)
 
-    def test_process_text_medium_path_emits_complete_token(self):
-        owner = DummyOwner()
-        owner.pipeline_controller.process_text_input.return_value = {
-            "fast_path": False,
-            "medium_path": True,
-            "response": "Volume impostato."
-        }
-        controller = AssistantRuntimeController(owner)
-
-        controller._process_text("imposta volume a 50", is_voice=False)
-
-        owner.ResponseTokenStreamed.assert_called_once_with("Volume impostato.", True)
 
     def test_process_text_smart_path_emits_complete_token(self):
         owner = DummyOwner()

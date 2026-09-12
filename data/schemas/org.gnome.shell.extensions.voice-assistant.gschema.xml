@@ -104,12 +104,7 @@
     <key name="fast-path-enabled" type="b">
       <default>false</default>
       <summary>Fast-Path (dispatch deterministico)</summary>
-      <description>Esegue i comandi riconosciuti da pattern regex e da similarità semantica senza interpellare l'LLM, con latenza inferiore a 10 ms. Se disattivato, ogni comando prosegue verso Medium-Path e Smart-Path.</description>
-    </key>
-    <key name="medium-path-enabled" type="b">
-      <default>true</default>
-      <summary>Medium-Path (selezione tool via LLM)</summary>
-      <description>Chiede all'LLM di scegliere un singolo tool MCP da eseguire, senza generare testo libero. Più lento del Fast-Path ma più flessibile; se disattivato i comandi non risolti passano direttamente allo Smart-Path.</description>
+      <description>Esegue i comandi riconosciuti da pattern regex e da similarità semantica senza interpellare l'LLM, con latenza inferiore a 10 ms. Se disattivato, ogni comando prosegue direttamente verso lo Smart-Path.</description>
     </key>
     <key name="enabled" type="b">
       <default>true</default>
