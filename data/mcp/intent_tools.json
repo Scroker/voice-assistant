@@ -74,5 +74,61 @@
     "args": {
       "action": "previous"
     }
+  },
+  "wifi_on": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "wifi",
+      "enabled": true
+    }
+  },
+  "wifi_off": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "wifi",
+      "enabled": false
+    }
+  },
+  "bluetooth_on": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "bluetooth",
+      "enabled": true
+    }
+  },
+  "bluetooth_off": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "bluetooth",
+      "enabled": false
+    }
+  },
+  "night_light_on": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "night_light",
+      "enabled": true
+    }
+  },
+  "night_light_off": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "night_light",
+      "enabled": false
+    }
+  },
+  "dnd_on": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "do_not_disturb",
+      "enabled": true
+    }
+  },
+  "dnd_off": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "do_not_disturb",
+      "enabled": false
+    }
   }
 }

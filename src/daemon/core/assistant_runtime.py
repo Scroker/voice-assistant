@@ -64,6 +64,14 @@ def _load_intent_tool_map() -> dict:
         "media_pause":     ("media_control",     {"action": "pause"}),
         "media_next":      ("media_control",     {"action": "next"}),
         "media_prev":      ("media_control",     {"action": "previous"}),
+        "wifi_on":         ("quick_settings",    {"setting": "wifi", "enabled": True}),
+        "wifi_off":        ("quick_settings",    {"setting": "wifi", "enabled": False}),
+        "bluetooth_on":    ("quick_settings",    {"setting": "bluetooth", "enabled": True}),
+        "bluetooth_off":   ("quick_settings",    {"setting": "bluetooth", "enabled": False}),
+        "night_light_on":  ("quick_settings",    {"setting": "night_light", "enabled": True}),
+        "night_light_off": ("quick_settings",    {"setting": "night_light", "enabled": False}),
+        "dnd_on":          ("quick_settings",    {"setting": "do_not_disturb", "enabled": True}),
+        "dnd_off":         ("quick_settings",    {"setting": "do_not_disturb", "enabled": False}),
     }
 
 _INTENT_TOOL_MAP: dict = _load_intent_tool_map()
