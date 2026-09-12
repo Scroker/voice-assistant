@@ -25,15 +25,33 @@
 >   `SemanticIntentRouter` (embedding ONNX reali) e `AppSlotMatcher` (RapidFuzz sui file
 >   `.desktop`) resta quindi lavoro non duplicato.
 >
-> Il branch `feature/direct-action-engine` è stato implementato (commit `b37dda8`) contro
-> la versione **precedente** di `pipeline.py`/`settings_window.py`/schema (prima di
-> `330107b`). È in corso una richiesta di coordinamento con la sessione parallela prima di
-> fare rebase e riconciliare: le chiavi GSettings e il gruppo UI aggiunti da questo piano
-> (`direct-action-engine-enabled`, `semantic-router-confidence-threshold`, gruppo in
-> `mcp_page`) sono da considerarsi ridondanti e verosimilmente da rimuovere/reintegrare
-> nella sottopagina Dispatch già esistente, mentre `semantic_router.py` e
-> `app_slot_matcher.py` vanno ricollegati alla struttura dati esternalizzata
-> (`data/nlu/fast_path_patterns.json`) invece che al vecchio `INTENT_PATTERNS` hardcoded.
+> **Aggiornamento — riconciliazione completata**: non è stato possibile identificare la
+> sessione autrice del lavoro su `main` (l'unico peer raggiungibile via `SendMessage` non
+> c'entrava nulla con questo repository), quindi su richiesta esplicita dell'utente si è
+> proceduto a un merge diretto (`main` → `feature/direct-action-engine`, commit `c2e074f`)
+> mantenendo il contributo di entrambe le parti:
+> - `direct-action-engine-enabled` e il gruppo UI in `mcp_page` sono stati **rimossi**
+>   (ridondanti con `fast-path-enabled`/`medium-path-enabled` già esistenti e più completi).
+> - `semantic-router-confidence-threshold` è stato **mantenuto** e ricollegato alla
+>   sottopagina Dispatch già esistente (`data/ui/prefs/subpage_dispatch.blp` +
+>   `src/gui/components/settings/dispatch.py`), non più a un gruppo separato.
+> - `semantic_router.py` continua a fornire il matcher per `FastPathDispatcher` (che ora
+>   usa `data/nlu/fast_path_patterns.json` per i pattern regex, invariato).
+> - `app_slot_matcher.py` è stato integrato in `assistant_runtime.py` come primo tentativo
+>   di risoluzione nome-app, con fallback alla catena nativa già esistente
+>   (`_launch_desktop_app_native`) se non trova corrispondenza.
+> - **Bonus sbloccato dal merge**: il tool MCP `quick_settings` (wifi/bluetooth/night_light/
+>   do_not_disturb/dark_style) esisteva già lato `main` ma senza alcun intent collegato
+>   (tranne dark_style). Aggiunta la mappatura in `data/mcp/intent_tools.json` e le skill
+>   di trigger corrispondenti (commit `85dd71b`) — questo era esattamente il pezzo che
+>   questo piano dava per "fuori scope, nessun tool disponibile"; ora non lo è più.
+> - Validazione: 380 test passano (esclusi `test_mcp.py`/`test_hybrid_rag_store.py`, che
+>   restano lenti per chiamate di rete reali, pre-esistenti e indipendenti da questo lavoro).
+>   Trovato e corretto un falso positivo reale durante la validazione: il trigger "spegni
+>   la rete senza fili" (wifi_off) risultava semanticamente più vicino a "spiegami la
+>   relatività" (0.68) della soglia di confidenza (0.62) — rimosso il trigger invece di
+>   alzare la soglia globale, per non perdere match legittimi vicini alla soglia (es. "o
+>   apri calendario" a 0.69).
 
 ## Panoramica e Obiettivo
 
