@@ -163,4 +163,19 @@ test('test_model_registry', python3,
   workdir: meson.project_source_root()
 )
 
+test('test_semantic_router', python3,
+  args: [files('test_semantic_router.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_app_slot_matcher', python3,
+  args: [files('test_app_slot_matcher.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_skill_store', python3,
+  args: [files('test_skill_store.py')],
+  workdir: meson.project_source_root()
+)
+
 
