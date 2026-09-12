@@ -28,6 +28,8 @@ _SUBPAGE_ORDER = [
     "subpage_dispatch.blp",
     "subpage_bugreport.blp",
     "subpage_mcp.blp",
+    "subpage_skills.blp",
+    "subpage_skill_editor.blp",
 ]
 
 

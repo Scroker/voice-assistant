@@ -514,6 +514,53 @@ class VoiceAssistant(object):
     def GetInstalledServers(self) -> str:
         return self.get_installed_servers()
 
+    def _reload_skill_dependents(self) -> None:
+        """Refreshes every component that caches a SkillRegistry snapshot."""
+        if getattr(self, "pipeline_controller", None):
+            self.pipeline_controller.fast_path.reload_skills()
+        if getattr(self, "assistant_runtime", None):
+            self.assistant_runtime.reload_skills()
+
+    def get_skills(self) -> str:
+        """Returns every skill (built-in and custom) known to the Direct Action Engine."""
+        try:
+            from skills.skill_store import list_all_skills
+            return json.dumps(list_all_skills())
+        except Exception as e:
+            logger.warning(f"Errore lettura skill: {e}")
+            return json.dumps([])
+
+    def GetSkills(self) -> str:
+        return self.get_skills()
+
+    def save_skill(self, skill_json: str) -> Tuple[bool, str]:
+        """Validates and persists a custom skill, then reloads it into the running pipeline."""
+        try:
+            from skills.skill_store import save_user_skill
+            skill = json.loads(skill_json)
+            save_user_skill(skill)
+            self._reload_skill_dependents()
+            return True, "Skill salvata."
+        except Exception as e:
+            return False, str(e)
+
+    def SaveSkill(self, skill_json: str) -> Tuple[bool, str]:
+        return self.save_skill(skill_json)
+
+    def delete_skill(self, intent: str) -> Tuple[bool, str]:
+        """Deletes a custom skill by intent, then reloads the running pipeline."""
+        try:
+            from skills.skill_store import delete_user_skill
+            if delete_user_skill(intent):
+                self._reload_skill_dependents()
+                return True, "Skill eliminata."
+            return False, "Skill non trovata tra quelle personalizzate."
+        except Exception as e:
+            return False, str(e)
+
+    def DeleteSkill(self, intent: str) -> Tuple[bool, str]:
+        return self.delete_skill(intent)
+
     def _report_error(self, exc: Exception) -> None:
         """Raccoglie e invia a Bugzilla le eccezioni critiche del thread audio."""
         from core.logger import ErrorCollector

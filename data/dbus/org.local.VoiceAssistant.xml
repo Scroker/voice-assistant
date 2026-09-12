@@ -92,6 +92,19 @@
     <method name="GetInstalledServers">
       <arg type="s" direction="out" name="servers_json"/>
     </method>
+    <method name="GetSkills">
+      <arg type="s" direction="out" name="skills_json"/>
+    </method>
+    <method name="SaveSkill">
+      <arg type="s" direction="in" name="skill_json"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="DeleteSkill">
+      <arg type="s" direction="in" name="intent"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
     <method name="ShowWindow">
     </method>
     <method name="OpenSettings">

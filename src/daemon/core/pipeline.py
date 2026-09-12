@@ -179,6 +179,15 @@ class FastPathDispatcher:
             })
         return patterns
 
+    def reload_skills(self) -> None:
+        """Rebuild the skill-derived semantic router and regex patterns.
+
+        Called after the Skills console saves or deletes a custom skill so the
+        running daemon picks it up without a restart.
+        """
+        self.semantic_router = SemanticIntentRouter(SkillRegistry.from_default_directory())
+        self._skill_patterns = self._load_skill_patterns()
+
     def dispatch(self, text: str) -> Tuple[bool, Optional[str], Dict[str, Any], Optional[str]]:
         """
         Analizza il testo. Se corrisponde a un intent Fast-Path, lo esegue e restituisce:

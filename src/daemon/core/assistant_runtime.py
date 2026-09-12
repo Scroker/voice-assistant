@@ -85,6 +85,10 @@ class AssistantRuntimeController:
         self.skill_registry = SkillRegistry.from_default_directory()
         self.app_matcher = AppSlotMatcher()
 
+    def reload_skills(self) -> None:
+        """Refresh the skill registry after the Skills console saves or deletes a skill."""
+        self.skill_registry = SkillRegistry.from_default_directory()
+
     def _execute_skill(
         self, skill_name: str, user_text: str, use_llm_fallback: bool = True
     ):

@@ -11,6 +11,7 @@ from .stt import STTSettings
 from .llm import LLMSettings
 from .tts import TTSSettings
 from .mcp import MCPSettings
+from .skills import SkillsSettings
 from .model_selector import ModelSelectorController
 from .models import ModelsStorageManager
 from .bugreport import BugReportSettings
@@ -29,6 +30,7 @@ __all__ = [
     "LLMSettings",
     "TTSSettings",
     "MCPSettings",
+    "SkillsSettings",
     "ModelSelectorController",
     "ModelsStorageManager",
     "BugReportSettings",

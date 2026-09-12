@@ -52,6 +52,24 @@ Adw.PreferencesPage general_page {
         valign: center;
       }
     }
+
+    Adw.ActionRow skills_subpage_row {
+      title: _("Skills");
+      subtitle: _("View built-in skills and add your own trigger phrases");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "applications-utilities-symbolic";
+        valign: center;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
   }
 
   Adw.PreferencesGroup {

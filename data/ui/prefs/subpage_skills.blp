@@ -1,0 +1,35 @@
+// SKILLS CONSOLE SUBPAGE
+Adw.NavigationPage skills_subpage {
+  tag: "skills_subpage";
+  title: _("Skills");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Skills");
+      };
+
+      [end]
+      Gtk.Button skills_add_btn {
+        icon-name: "list-add-symbolic";
+        tooltip-text: _("Add custom skill");
+        styles ["flat"]
+      }
+    }
+
+    content: Adw.PreferencesPage {
+      title: _("Skills");
+      icon-name: "applications-utilities-symbolic";
+      name: "skills";
+
+      Adw.PreferencesGroup {
+        description: _("Skills teach the Direct Action Engine to recognize a spoken phrase and run an MCP tool for it. Built-in skills are read-only; add your own below.");
+      }
+
+      Adw.PreferencesGroup skills_list_group {
+        title: _("Configured Skills");
+      }
+    };
+  };
+}

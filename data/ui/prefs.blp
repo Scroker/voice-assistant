@@ -61,6 +61,24 @@ Adw.PreferencesDialog preferences_dialog {
           valign: center;
         }
       }
+
+      Adw.ActionRow skills_subpage_row {
+        title: _("Skills");
+        subtitle: _("View built-in skills and add your own trigger phrases");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "applications-utilities-symbolic";
+          valign: center;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
     }
 
     Adw.PreferencesGroup {
@@ -1413,6 +1431,140 @@ Adw.NavigationPage mcp_subpage {
         Adw.ActionRow mcp_server_gnome_row {
           title: _("GNOME MCP Server");
           subtitle: _("System integration tools (desktop, notifications, apps)");
+        }
+      }
+    };
+  };
+}
+
+// SKILLS CONSOLE SUBPAGE
+Adw.NavigationPage skills_subpage {
+  tag: "skills_subpage";
+  title: _("Skills");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Skills");
+      };
+
+      [end]
+      Gtk.Button skills_add_btn {
+        icon-name: "list-add-symbolic";
+        tooltip-text: _("Add custom skill");
+        styles ["flat"]
+      }
+    }
+
+    content: Adw.PreferencesPage {
+      title: _("Skills");
+      icon-name: "applications-utilities-symbolic";
+      name: "skills";
+
+      Adw.PreferencesGroup {
+        description: _("Skills teach the Direct Action Engine to recognize a spoken phrase and run an MCP tool for it. Built-in skills are read-only; add your own below.");
+      }
+
+      Adw.PreferencesGroup skills_list_group {
+        title: _("Configured Skills");
+      }
+    };
+  };
+}
+
+// SKILL EDITOR SUBPAGE
+Adw.NavigationPage skill_editor_subpage {
+  tag: "skill_editor_subpage";
+  title: _("Skill");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Skill");
+      };
+
+      [end]
+      Gtk.Button skill_editor_save_btn {
+        label: _("Save");
+        styles ["suggested-action"]
+      }
+    }
+
+    content: Adw.PreferencesPage {
+      title: _("Skill");
+
+      Adw.PreferencesGroup {
+        Adw.ActionRow skill_editor_error_row {
+          title: _("Error");
+          visible: false;
+          styles ["error"]
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Details");
+
+        Adw.EntryRow skill_editor_name_row {
+          title: _("Display Name");
+        }
+
+        Adw.EntryRow skill_editor_intent_row {
+          title: _("Intent");
+        }
+
+        Adw.EntryRow skill_editor_tool_row {
+          title: _("MCP Tool");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Trigger Phrases");
+        description: _("One phrase per line. The semantic router matches spoken text against these.");
+
+        Gtk.Frame {
+          Gtk.ScrolledWindow {
+            min-content-height: 100;
+            hscrollbar-policy: never;
+
+            Gtk.TextView skill_editor_triggers_view {
+              top-margin: 8;
+              bottom-margin: 8;
+              left-margin: 8;
+              right-margin: 8;
+              wrap-mode: word;
+            }
+          }
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Tool Arguments");
+        description: _("JSON object passed to the MCP tool, e.g. {\"setting\": \"wifi\", \"enabled\": true}.");
+
+        Gtk.Frame {
+          Gtk.ScrolledWindow {
+            min-content-height: 80;
+            hscrollbar-policy: never;
+
+            Gtk.TextView skill_editor_args_view {
+              top-margin: 8;
+              bottom-margin: 8;
+              left-margin: 8;
+              right-margin: 8;
+              wrap-mode: word;
+              monospace: true;
+            }
+          }
+        }
+      }
+
+      Adw.PreferencesGroup {
+        Gtk.Button skill_editor_delete_btn {
+          label: _("Delete Skill");
+          styles ["destructive-action"]
+          halign: start;
         }
       }
     };

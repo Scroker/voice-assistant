@@ -70,6 +70,25 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                 </child>
               </object>
             </child>
+            <child>
+              <object class="AdwActionRow" id="skills_subpage_row">
+                <property name="title" translatable="yes">Skills</property>
+                <property name="subtitle" translatable="yes">View built-in skills and add your own trigger phrases</property>
+                <property name="activatable">true</property>
+                <child type="prefix">
+                  <object class="GtkImage">
+                    <property name="icon-name">applications-utilities-symbolic</property>
+                    <property name="valign">3</property>
+                  </object>
+                </child>
+                <child type="suffix">
+                  <object class="GtkImage">
+                    <property name="icon-name">go-next-symbolic</property>
+                    <property name="valign">3</property>
+                  </object>
+                </child>
+              </object>
+            </child>
           </object>
         </child>
         <child>
@@ -1436,6 +1455,22 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                     <property name="subtitle" translatable="yes">Fastest, deterministic — no model involved</property>
                   </object>
                 </child>
+                <child>
+                  <object class="AdwSpinRow" id="dispatch_semantic_threshold_row">
+                    <property name="title" translatable="yes">Semantic Router Confidence Threshold</property>
+                    <property name="subtitle" translatable="yes">Minimum similarity score required to execute an action directly instead of falling through</property>
+                    <property name="digits">2</property>
+                    <property name="adjustment">
+                      <object class="GtkAdjustment">
+                        <property name="lower">0.5</property>
+                        <property name="upper">0.95</property>
+                        <property name="step-increment">0.05</property>
+                        <property name="page-increment">0.05</property>
+                        <property name="value">0.62</property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
               </object>
             </child>
             <child>
@@ -1582,6 +1617,176 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                   <object class="AdwActionRow" id="mcp_server_gnome_row">
                     <property name="title" translatable="yes">GNOME MCP Server</property>
                     <property name="subtitle" translatable="yes">System integration tools (desktop, notifications, apps)</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </object>
+  <object class="AdwNavigationPage" id="skills_subpage">
+    <property name="tag">skills_subpage</property>
+    <property name="title" translatable="yes">Skills</property>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <property name="title-widget">
+              <object class="AdwWindowTitle">
+                <property name="title" translatable="yes">Skills</property>
+              </object>
+            </property>
+            <child type="end">
+              <object class="GtkButton" id="skills_add_btn">
+                <property name="icon-name">list-add-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Add custom skill</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdwPreferencesPage">
+            <property name="title" translatable="yes">Skills</property>
+            <property name="icon-name">applications-utilities-symbolic</property>
+            <property name="name">skills</property>
+            <child>
+              <object class="AdwPreferencesGroup">
+                <property name="description" translatable="yes">Skills teach the Direct Action Engine to recognize a spoken phrase and run an MCP tool for it. Built-in skills are read-only; add your own below.</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwPreferencesGroup" id="skills_list_group">
+                <property name="title" translatable="yes">Configured Skills</property>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </object>
+  <object class="AdwNavigationPage" id="skill_editor_subpage">
+    <property name="tag">skill_editor_subpage</property>
+    <property name="title" translatable="yes">Skill</property>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <property name="title-widget">
+              <object class="AdwWindowTitle">
+                <property name="title" translatable="yes">Skill</property>
+              </object>
+            </property>
+            <child type="end">
+              <object class="GtkButton" id="skill_editor_save_btn">
+                <property name="label" translatable="yes">Save</property>
+                <style>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdwPreferencesPage">
+            <property name="title" translatable="yes">Skill</property>
+            <child>
+              <object class="AdwPreferencesGroup">
+                <child>
+                  <object class="AdwActionRow" id="skill_editor_error_row">
+                    <property name="title" translatable="yes">Error</property>
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="error"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwPreferencesGroup">
+                <property name="title" translatable="yes">Details</property>
+                <child>
+                  <object class="AdwEntryRow" id="skill_editor_name_row">
+                    <property name="title" translatable="yes">Display Name</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwEntryRow" id="skill_editor_intent_row">
+                    <property name="title" translatable="yes">Intent</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwEntryRow" id="skill_editor_tool_row">
+                    <property name="title" translatable="yes">MCP Tool</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwPreferencesGroup">
+                <property name="title" translatable="yes">Trigger Phrases</property>
+                <property name="description" translatable="yes">One phrase per line. The semantic router matches spoken text against these.</property>
+                <child>
+                  <object class="GtkFrame">
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="min-content-height">100</property>
+                        <property name="hscrollbar-policy">2</property>
+                        <child>
+                          <object class="GtkTextView" id="skill_editor_triggers_view">
+                            <property name="top-margin">8</property>
+                            <property name="bottom-margin">8</property>
+                            <property name="left-margin">8</property>
+                            <property name="right-margin">8</property>
+                            <property name="wrap-mode">2</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwPreferencesGroup">
+                <property name="title" translatable="yes">Tool Arguments</property>
+                <property name="description" translatable="yes">JSON object passed to the MCP tool, e.g. {"setting": "wifi", "enabled": true}.</property>
+                <child>
+                  <object class="GtkFrame">
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="min-content-height">80</property>
+                        <property name="hscrollbar-policy">2</property>
+                        <child>
+                          <object class="GtkTextView" id="skill_editor_args_view">
+                            <property name="top-margin">8</property>
+                            <property name="bottom-margin">8</property>
+                            <property name="left-margin">8</property>
+                            <property name="right-margin">8</property>
+                            <property name="wrap-mode">2</property>
+                            <property name="monospace">true</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwPreferencesGroup">
+                <child>
+                  <object class="GtkButton" id="skill_editor_delete_btn">
+                    <property name="label" translatable="yes">Delete Skill</property>
+                    <style>
+                      <class name="destructive-action"/>
+                    </style>
+                    <property name="halign">1</property>
                   </object>
                 </child>
               </object>

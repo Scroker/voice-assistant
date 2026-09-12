@@ -18,6 +18,11 @@ logger = logging.getLogger("VoiceAssistant.SkillRegistry")
 class SkillRegistry:
     """Registry of skills and semantic triggers."""
 
+    @staticmethod
+    def get_user_skills_dir() -> Path:
+        """Computed fresh on each call (not cached) so tests can patch `Path.home`."""
+        return Path.home() / ".config" / "voice-assistant" / "skills"
+
     DEFAULT_SKILLS = [
         {
             "intent": "volume_up",
@@ -248,11 +253,10 @@ class SkillRegistry:
         if base_dir is None:
             base_dir = Path(__file__).resolve().parent.parent
 
-        user_dir = Path.home() / ".config" / "voice-assistant" / "skills"
         searched_dirs = [
             base_dir / "skills" / "default_skills",
             base_dir / "default_skills",
-            user_dir,
+            cls.get_user_skills_dir(),
         ]
 
         seen_intents = set()

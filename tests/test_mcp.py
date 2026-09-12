@@ -362,5 +362,70 @@ class TestVoiceAssistantFastPathHandler(unittest.TestCase):
         self.assertEqual(json.loads(assistant.get_installed_servers())[0]["name"], "demo")
 
 
+class TestVoiceAssistantSkillsConsole(unittest.TestCase):
+    def _make_assistant(self):
+        from main import VoiceAssistant
+
+        assistant = VoiceAssistant.__new__(VoiceAssistant)
+        assistant.pipeline_controller = type(
+            "Pipeline", (), {"fast_path": type("FastPath", (), {"reload_skills": lambda self: None})()}
+        )()
+        assistant.assistant_runtime = type("Runtime", (), {"reload_skills": lambda self: None})()
+        return assistant
+
+    def test_get_skills_returns_registry_json(self):
+        assistant = self._make_assistant()
+        with patch("skills.skill_store.list_all_skills", return_value=[{"intent": "volume_up", "is_custom": False}]):
+            skills = json.loads(assistant.GetSkills())
+        self.assertEqual(skills, [{"intent": "volume_up", "is_custom": False}])
+
+    def test_save_skill_reloads_pipeline_on_success(self):
+        assistant = self._make_assistant()
+        reload_calls = []
+        assistant.pipeline_controller.fast_path.reload_skills = lambda: reload_calls.append("fast_path")
+        assistant.assistant_runtime.reload_skills = lambda: reload_calls.append("runtime")
+
+        with patch("skills.skill_store.save_user_skill", return_value=None):
+            success, message = assistant.SaveSkill(json.dumps({"intent": "wifi_on", "triggers": ["accendi il wifi"]}))
+
+        self.assertTrue(success)
+        self.assertEqual(reload_calls, ["fast_path", "runtime"])
+
+    def test_save_skill_reports_validation_error_without_reloading(self):
+        assistant = self._make_assistant()
+        reload_calls = []
+        assistant.pipeline_controller.fast_path.reload_skills = lambda: reload_calls.append("fast_path")
+
+        with patch("skills.skill_store.save_user_skill", side_effect=ValueError("L'intent è obbligatorio.")):
+            success, message = assistant.SaveSkill(json.dumps({"triggers": ["qualcosa"]}))
+
+        self.assertFalse(success)
+        self.assertIn("obbligatorio", message)
+        self.assertEqual(reload_calls, [])
+
+    def test_delete_skill_reloads_pipeline_when_removed(self):
+        assistant = self._make_assistant()
+        reload_calls = []
+        assistant.pipeline_controller.fast_path.reload_skills = lambda: reload_calls.append("fast_path")
+        assistant.assistant_runtime.reload_skills = lambda: reload_calls.append("runtime")
+
+        with patch("skills.skill_store.delete_user_skill", return_value=True):
+            success, message = assistant.DeleteSkill("wifi_on")
+
+        self.assertTrue(success)
+        self.assertEqual(reload_calls, ["fast_path", "runtime"])
+
+    def test_delete_skill_reports_not_found_without_reloading(self):
+        assistant = self._make_assistant()
+        reload_calls = []
+        assistant.pipeline_controller.fast_path.reload_skills = lambda: reload_calls.append("fast_path")
+
+        with patch("skills.skill_store.delete_user_skill", return_value=False):
+            success, message = assistant.DeleteSkill("not_a_custom_skill")
+
+        self.assertFalse(success)
+        self.assertEqual(reload_calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()

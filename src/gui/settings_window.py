@@ -32,6 +32,7 @@ try:
         LLMSettings,
         TTSSettings,
         MCPSettings,
+        SkillsSettings,
         ModelSelectorController,
         ModelsStorageManager,
         BugReportSettings,
@@ -49,6 +50,7 @@ except ImportError:
         LLMSettings,
         TTSSettings,
         MCPSettings,
+        SkillsSettings,
         ModelSelectorController,
         ModelsStorageManager,
         BugReportSettings,
@@ -278,6 +280,7 @@ class _SettingsDialog(Adw.PreferencesDialog, metaclass=_SettingsDialogMeta):
             parent_window=self,
         )
         self.mcp_settings = MCPSettings(self._b, self._settings)
+        self.skills_settings = SkillsSettings(self._b, self._settings, parent_window=self)
         self.models_manager = ModelsStorageManager(self._b, self._settings, parent_window=self)
         self.bugreport_settings = BugReportSettings(self._b, self._settings, parent_window=self)
         self.about_settings = AboutSettings(self._b)
