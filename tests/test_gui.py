@@ -586,6 +586,70 @@ class TestGUI(unittest.TestCase):
             self.assertTrue(all("it" in r._search_key for r in visible_rows))
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
+    def test_model_selector_language_filtering(self):
+        """Verifica che il controller filtri i modelli per lingua attiva e gestisca il pulsante toggle."""
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+        from gui.components.settings.model_selector import ModelSelectorController
+
+        builder = Gtk.Builder()
+        ui_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/ui/prefs.ui"))
+        builder.add_from_file(ui_path)
+
+        ctrl = ModelSelectorController(builder, settings=None)
+        self.assertIsNotNone(ctrl.filter_lang_btn)
+        self.assertTrue(ctrl.filter_lang_btn.get_active())
+
+        # 1. Test STT Vosk con lingua attiva 'it'
+        ctrl.current_service = "stt"
+        ctrl.current_provider = "vosk"
+        ctrl._get_active_language = lambda: "it"
+
+        catalog_vosk = ctrl._load_local_catalog("stt", "vosk")
+        ctrl._populate_ui(catalog_vosk, {})
+
+        # Con filtro attivo (default), devono essere visibili solo i modelli 'it'
+        visible_vosk = [r for r in ctrl._all_rows if r.get_visible()]
+        self.assertTrue(len(visible_vosk) > 0)
+        self.assertTrue(all(r._matches_lang for r in visible_vosk))
+        self.assertTrue(all("it" in r._model_id for r in visible_vosk))
+
+        # Disattivando il toggle, tutti i modelli devono diventare visibili
+        ctrl.filter_lang_btn.set_active(False)
+        visible_all = [r for r in ctrl._all_rows if r.get_visible()]
+        self.assertEqual(len(visible_all), len(ctrl._all_rows))
+
+        # Riattivando il toggle, torna il filtro lingua
+        ctrl.filter_lang_btn.set_active(True)
+        visible_vosk_again = [r for r in ctrl._all_rows if r.get_visible()]
+        self.assertEqual(len(visible_vosk_again), len(visible_vosk))
+
+        # 2. Test STT Whisper con lingua 'it' vs 'en'
+        ctrl.current_service = "stt"
+        ctrl.current_provider = "whisper"
+        catalog_whisper = ctrl._load_local_catalog("stt", "whisper")
+        ctrl._populate_ui(catalog_whisper, {})
+
+        # Per 'it': i modelli multilingue sono visibili, ma i modelli .en sono nascosti
+        visible_whisper_it = [r for r in ctrl._all_rows if r.get_visible()]
+        self.assertTrue(any(r._model_id == "tiny" for r in visible_whisper_it))
+        self.assertFalse(any(r._model_id == "tiny.en" for r in visible_whisper_it))
+
+        # Per 'en': anche i modelli .en sono visibili
+        ctrl._get_active_language = lambda: "en"
+        ctrl._populate_ui(catalog_whisper, {})
+        visible_whisper_en = [r for r in ctrl._all_rows if r.get_visible()]
+        self.assertTrue(any(r._model_id == "tiny.en" for r in visible_whisper_en))
+
+        # 3. Test TTS Piper con lingua 'it'
+        ctrl.current_service = "tts"
+        ctrl.current_provider = "piper"
+        ctrl._get_active_language = lambda: "it"
+        catalog_piper = ctrl._load_local_catalog("tts", "piper")
+        ctrl._populate_ui(catalog_piper, {})
+        visible_piper = [r for r in ctrl._all_rows if r.get_visible()]
+        self.assertTrue(all(r._model_id.startswith("it_IT-") for r in visible_piper))
+
+    @unittest.skipIf(not _has_display, "No display available (headless environment)")
     def test_settings_window_non_modal(self):
         """Verifica che SettingsWindow sia non-modale di default senza parent o con modal=False."""
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))

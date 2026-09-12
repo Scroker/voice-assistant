@@ -975,6 +975,14 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                   </object>
                 </property>
                 <child type="end">
+                  <object class="GtkToggleButton" id="filter_lang_btn">
+                    <property name="icon-name">preferences-desktop-locale-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Filter by active language</property>
+                    <property name="valign">3</property>
+                    <property name="active">true</property>
+                  </object>
+                </child>
+                <child type="end">
                   <object class="GtkButton" id="hf_download_dialog_btn">
                     <property name="icon-name">list-add-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Download from Hugging Face</property>

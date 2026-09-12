@@ -21,6 +21,14 @@ Adw.NavigationPage model_selector_page {
         };
 
         [end]
+        Gtk.ToggleButton filter_lang_btn {
+          icon-name: "preferences-desktop-locale-symbolic";
+          tooltip-text: _("Filter by active language");
+          valign: center;
+          active: true;
+        }
+
+        [end]
         Gtk.Button hf_download_dialog_btn {
           icon-name: "list-add-symbolic";
           tooltip-text: _("Download from Hugging Face");

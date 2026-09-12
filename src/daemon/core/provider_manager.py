@@ -379,14 +379,21 @@ class ProviderManager:
 
             return json.dumps(models)
 
+        user_lang = None
+        if hasattr(self.owner, 'settings') and self.owner.settings:
+            try:
+                user_lang = self.owner.settings.get_string("language")
+            except Exception:
+                pass
+        if not user_lang:
+            try:
+                from core.locale_utils import get_system_language
+                user_lang = get_system_language()
+            except Exception:
+                pass
+
         if p in ("tts", "piper"):
             from services.tts_service import PiperTTSProvider
-            user_lang = None
-            if hasattr(self.owner, 'settings') and self.owner.settings:
-                try:
-                    user_lang = self.owner.settings.get_string("language")
-                except Exception:
-                    pass
             voices = PiperTTSProvider.get_available_voices(user_lang=user_lang)
             return json.dumps(voices)
 
@@ -395,11 +402,11 @@ class ProviderManager:
             base_dir = getattr(self.owner, 'models_dir', '')
             from core.path_utils import get_models_dir
             models_dir = str(get_models_dir(base_dir))
-            models = catalog_service.get_sherpa_models(models_dir=models_dir)
+            models = catalog_service.get_sherpa_models(user_lang=user_lang, models_dir=models_dir)
             return json.dumps(models)
 
         from providers import get_available_models
-        models = get_available_models(provider)
+        models = get_available_models(provider, user_lang=user_lang)
         return json.dumps(models)
 
     def cleanup_partial_download(self, provider: str, model_name: str):

@@ -17,12 +17,14 @@ from typing import Callable, Any, Optional
 try:
     from core.model_registry import get_model_registry
     from core.cloud_config import get_cloud_config
+    from core.locale_utils import get_system_language
 except ImportError:
     _d = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "daemon"))
     if _d not in sys.path:
         sys.path.insert(0, _d)
     from core.model_registry import get_model_registry
     from core.cloud_config import get_cloud_config
+    from core.locale_utils import get_system_language
 
 import gi
 gi.require_version('Gtk', '4.0')
@@ -66,7 +68,11 @@ class ModelSelectorController:
         self.hf_custom_group: Adw.PreferencesGroup | None = builder.get_object("llm_hf_custom_group")
         self.hf_dialog_row: Adw.ActionRow | None = builder.get_object("hf_download_dialog_row")
         self.hf_header_btn: Gtk.Button | None = builder.get_object("hf_download_dialog_btn")
+        self.filter_lang_btn: Gtk.ToggleButton | None = builder.get_object("filter_lang_btn")
         self._custom_entry_row: Adw.ActionRow | None = None
+
+        if self.filter_lang_btn:
+            self.filter_lang_btn.connect("toggled", self._on_filter_lang_toggled)
 
         if self.hf_dialog_row:
             self.hf_dialog_row.connect("activated", self._show_hf_download_dialog)
@@ -86,6 +92,7 @@ class ModelSelectorController:
         self._installed_rows: list[Adw.ActionRow] = []
         self._downloading_rows: list[Adw.ActionRow] = []
         self._items: dict[str, dict] = {}
+        self._all_placeholder: Adw.ActionRow | None = None
         self._installed_placeholder: Adw.ActionRow | None = None
         self._downloading_placeholder: Adw.ActionRow | None = None
 
@@ -188,6 +195,218 @@ class ModelSelectorController:
             if adj:
                 adj.set_value(0)
 
+    def _get_active_language(self) -> str:
+        """Restituisce il codice a 2 lettere della lingua attiva (da GSettings o sistema)."""
+        lang = ""
+        if self.settings:
+            try:
+                lang = self.settings.get_string("language")
+            except Exception:
+                lang = ""
+        if lang:
+            lang = lang.strip().lower()
+        if not lang:
+            try:
+                lang = get_system_language()
+            except Exception:
+                lang = "it"
+        return lang.split("_")[0].split("-")[0].lower() if lang else "it"
+
+    def _get_active_language_name(self, lang_code: str) -> str:
+        """Restituisce il nome leggibile per la lingua specificata."""
+        names = {
+            "it": "Italiano",
+            "en": "English",
+            "de": "Deutsch",
+            "fr": "Français",
+            "es": "Español",
+            "pt": "Português",
+            "nl": "Nederlands",
+            "ru": "Русский",
+            "zh": "中文",
+            "ja": "日本語",
+            "ko": "한국어",
+            "pl": "Polski",
+            "uk": "Українська",
+            "tr": "Türkçe",
+            "sv": "Svenska",
+        }
+        return names.get(lang_code, lang_code.upper())
+
+    def _model_matches_language(self, model: dict, active_lang: str) -> bool:
+        """Determina se un modello o voce corrisponde alla lingua attiva."""
+        if not active_lang:
+            return True
+
+        srv = self.current_service
+        prov = self.current_provider.lower()
+
+        # LLM: multilingue per definizione
+        if srv == "llm":
+            return True
+
+        m_id = (model.get("id") or "").lower()
+        m_lang = (model.get("lang") or "").lower()
+
+        # 1. Wake Word
+        if srv in ("wakeword", "ww"):
+            if "sherpa" in prov:
+                if m_lang == active_lang:
+                    return True
+                if m_lang in ("multilingual", "zh-en"):
+                    return True
+                if m_lang == "zh":
+                    return active_lang == "zh"
+                if m_lang == "en":
+                    # Gigaspeech supporta keyword fonetiche in lingue occidentali
+                    return active_lang in ("en", "it", "de", "fr", "es", "pt", "nl", "ru", "pl", "uk", "sv")
+                return True
+            else:
+                # Vosk
+                if m_lang:
+                    return m_lang == active_lang
+                parts = m_id.split("-")
+                return (
+                    active_lang in parts or
+                    f"-{active_lang}-" in m_id or
+                    m_id.endswith(f"-{active_lang}") or
+                    m_id.startswith(f"vosk-model-small-{active_lang}") or
+                    m_id.startswith(f"vosk-model-{active_lang}")
+                )
+
+        # 2. Speech to Text (STT)
+        if srv == "stt":
+            if "whisper" in prov:
+                # Modelli .en sono specifici per l'inglese
+                is_en = m_id.endswith(".en") or m_lang == "en"
+                if is_en:
+                    return active_lang == "en"
+                # Modelli whisper standard (senza .en) sono multilingue
+                return True
+            elif "vosk" in prov:
+                if m_lang:
+                    return m_lang == active_lang
+                parts = m_id.split("-")
+                return (
+                    active_lang in parts or
+                    f"-{active_lang}-" in m_id or
+                    m_id.endswith(f"-{active_lang}") or
+                    m_id.startswith(f"vosk-model-small-{active_lang}") or
+                    m_id.startswith(f"vosk-model-{active_lang}")
+                )
+            else:
+                return True
+
+        # 3. Text to Speech (TTS - Piper)
+        if srv == "tts":
+            lang_code = (model.get("lang_code") or "").lower()
+            if m_lang and m_lang == active_lang:
+                return True
+            if lang_code and (lang_code.startswith(f"{active_lang}_") or lang_code.startswith(f"{active_lang}-") or lang_code == active_lang):
+                return True
+            if m_id.startswith(f"{active_lang}_") or m_id.startswith(f"{active_lang}-"):
+                return True
+            return False
+
+        return True
+
+    def _on_filter_lang_toggled(self, *_args) -> None:
+        """Handler per il toggle del pulsante di filtraggio lingua."""
+        self._apply_row_visibility()
+        self._update_group_all_title()
+
+    def _update_group_all_title(self) -> None:
+        """Aggiorna dinamicamente il titolo del gruppo modelli disponibili."""
+        if not self.group_all:
+            return
+        is_cloud_llm = (self.current_service == "llm" and self.current_provider.lower() in (
+            "openai", "anthropic", "deepseek", "ollama_cloud", "custom"
+        ))
+        if is_cloud_llm:
+            return
+        if self.current_provider.lower() == "ollama":
+            self.group_all.set_title("Modelli Ollama")
+            return
+
+        is_audio = self.current_service in ("wakeword", "ww", "stt", "tts")
+        is_filtering = is_audio and bool(self.filter_lang_btn and self.filter_lang_btn.get_active())
+
+        if is_filtering:
+            active_lang = self._get_active_language()
+            lang_name = self._get_active_language_name(active_lang)
+            if self.current_service == "tts":
+                self.group_all.set_title(f"Voci disponibili ({lang_name})")
+            else:
+                self.group_all.set_title(f"Modelli disponibili ({lang_name})")
+        else:
+            if self.current_service == "tts":
+                self.group_all.set_title("Tutte le voci disponibili")
+            else:
+                self.group_all.set_title("Tutti i modelli disponibili")
+
+    def _apply_row_visibility(self) -> None:
+        """Applica i criteri di visibilità (ricerca e filtro lingua) a tutte le righe."""
+        query = self.search_entry.get_text().strip().lower() if self.search_entry else ""
+        is_audio = self.current_service in ("wakeword", "ww", "stt", "tts")
+        filter_by_lang = is_audio and bool(self.filter_lang_btn and self.filter_lang_btn.get_active())
+
+        for row in self._all_rows:
+            key = getattr(row, "_search_key", "")
+            matches_lang = getattr(row, "_matches_lang", True)
+            if query:
+                row.set_visible(query in key)
+            elif filter_by_lang:
+                row.set_visible(matches_lang)
+            else:
+                row.set_visible(True)
+
+        for row in self._installed_rows + self._downloading_rows:
+            if not query:
+                row.set_visible(True)
+            else:
+                key = getattr(row, "_search_key", "")
+                row.set_visible(query in key)
+
+        if self._installed_placeholder:
+            self._installed_placeholder.set_visible(not bool(query))
+        if self._downloading_placeholder:
+            self._downloading_placeholder.set_visible(not bool(query))
+
+        self._update_all_placeholder()
+
+    def _update_all_placeholder(self) -> None:
+        """Mostra un placeholder se nessun modello corrisponde al filtro o alla ricerca in 'Tutti'."""
+        if not self.group_all:
+            return
+        query = self.search_entry.get_text().strip() if self.search_entry else ""
+        has_visible_rows = any(r.get_visible() for r in self._all_rows)
+        if not has_visible_rows and self._all_rows:
+            if not self._all_placeholder:
+                is_audio = self.current_service in ("wakeword", "ww", "stt", "tts")
+                is_filtered = is_audio and bool(self.filter_lang_btn and self.filter_lang_btn.get_active())
+                if query:
+                    sub = "Nessun modello corrisponde ai criteri di ricerca."
+                elif is_filtered:
+                    sub = "Disattiva il filtro lingua o usa la ricerca per esplorare altri modelli."
+                else:
+                    sub = "Nessun modello disponibile."
+                row = Adw.ActionRow(
+                    title="Nessun modello trovato",
+                    subtitle=sub,
+                )
+                row.set_sensitive(False)
+                self._all_placeholder = row
+                self.group_all.add(row)
+            else:
+                self._all_placeholder.set_visible(True)
+        else:
+            if self._all_placeholder:
+                try:
+                    self.group_all.remove(self._all_placeholder)
+                except Exception:
+                    pass
+                self._all_placeholder = None
+
     def open_selector(
         self,
         service_type: str,
@@ -276,6 +495,12 @@ class ModelSelectorController:
         if self.hf_header_btn:
             self.hf_header_btn.set_visible(is_local_llm)
 
+        # Mostra pulsante filtro lingua per servizi audio (wakeword, stt, tts), nascondi per LLM
+        is_audio = (self.current_service in ("wakeword", "ww", "stt", "tts"))
+        if self.filter_lang_btn:
+            self.filter_lang_btn.set_visible(is_audio)
+            self.filter_lang_btn.set_active(True)
+
         if self.search_entry:
             self.search_entry.set_text("")
 
@@ -301,6 +526,13 @@ class ModelSelectorController:
             except Exception:
                 pass
             self._custom_entry_row = None
+
+        if self.group_all and self._all_placeholder:
+            try:
+                self.group_all.remove(self._all_placeholder)
+            except Exception:
+                pass
+            self._all_placeholder = None
 
         if self.group_installed and self._installed_placeholder:
             try:
@@ -333,7 +565,8 @@ class ModelSelectorController:
         self._items.clear()
 
     def _update_placeholders(self) -> None:
-        """Mostra o nasconde i placeholder per le schede Installati e In download quando sono vuote."""
+        """Mostra o nasconde i placeholder per le schede Tutti, Installati e In download quando sono vuote."""
+        self._update_all_placeholder()
         if self.group_installed:
             if not self._installed_rows:
                 if not self._installed_placeholder:
@@ -731,11 +964,14 @@ class ModelSelectorController:
                 ]
             elif p == "whisper":
                 return [
-                    {"id": "tiny", "name": "Whisper Tiny - 75 MB (Molto veloce)", "size_text": "75 MB"},
-                    {"id": "base", "name": "Whisper Base - 145 MB (Bilanciato)", "size_text": "145 MB"},
-                    {"id": "small", "name": "Whisper Small - 480 MB (Accurato)", "size_text": "480 MB"},
-                    {"id": "medium", "name": "Whisper Medium - 1.5 GB (Alta precisione)", "size_text": "1.5 GB"},
-                    {"id": "large-v3", "name": "Whisper Large v3 - 3.1 GB (Massima precisione)", "size_text": "3.1 GB"},
+                    {"id": "tiny", "name": "Whisper Tiny - 75 MB (Molto veloce)", "size_text": "75 MB", "lang": "multilingual"},
+                    {"id": "base", "name": "Whisper Base - 145 MB (Bilanciato)", "size_text": "145 MB", "lang": "multilingual"},
+                    {"id": "small", "name": "Whisper Small - 480 MB (Accurato)", "size_text": "480 MB", "lang": "multilingual"},
+                    {"id": "medium", "name": "Whisper Medium - 1.5 GB (Alta precisione)", "size_text": "1.5 GB", "lang": "multilingual"},
+                    {"id": "large-v3", "name": "Whisper Large v3 - 3.1 GB (Massima precisione)", "size_text": "3.1 GB", "lang": "multilingual"},
+                    {"id": "tiny.en", "name": "Whisper Tiny English - 75 MB", "size_text": "75 MB", "lang": "en"},
+                    {"id": "base.en", "name": "Whisper Base English - 145 MB", "size_text": "145 MB", "lang": "en"},
+                    {"id": "small.en", "name": "Whisper Small English - 480 MB", "size_text": "480 MB", "lang": "en"},
                 ]
             elif p in ("openai_cloud", "cloud_stt", "groq_cloud"):
                 return [
@@ -923,6 +1159,7 @@ class ModelSelectorController:
                 row.set_activatable(True)
                 row._model_id = m_id
                 row._search_key = f"{m_name} {m_sub} {m_id}".lower()
+                row._matches_lang = True
 
                 if curr_low and curr_low == m_id.lower():
                     c_img = Gtk.Image.new_from_icon_name("check-plain-symbolic")
@@ -935,6 +1172,8 @@ class ModelSelectorController:
                     self.group_all.add(row)
                     self._all_rows.append(row)
 
+            self._apply_row_visibility()
+            self._update_group_all_title()
             self._update_placeholders()
             return False
 
@@ -953,12 +1192,15 @@ class ModelSelectorController:
 
         installed_set = self._get_installed_models_set()
         installed_set_lower = {str(x).lower() for x in installed_set}
+        active_lang = self._get_active_language()
 
         for m in models:
             m_id = m.get("id") or m.get("name") or ""
             m_name = m.get("name") or m_id
             m_size = m.get("size_text") or m.get("size") or ""
             m_lang = m.get("lang") or ""
+
+            matches_lang = self._model_matches_language(m, active_lang)
 
             subtitle_parts = []
             if m_size:
@@ -1028,6 +1270,7 @@ class ModelSelectorController:
             row_all._model_id = m_id
             search_key = f"{m_name} {subtitle} {m_id}".lower()
             row_all._search_key = search_key
+            row_all._matches_lang = matches_lang
 
             suffix_all = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, valign=Gtk.Align.CENTER)
             row_all.add_suffix(suffix_all)
@@ -1057,6 +1300,8 @@ class ModelSelectorController:
             # Aggiorna la vista e le schede (Installati / In download)
             self._render_model_suffixes(item)
 
+        self._apply_row_visibility()
+        self._update_group_all_title()
         self._update_placeholders()
         return False
 
@@ -1284,18 +1529,7 @@ class ModelSelectorController:
         return False
 
     def _on_search_changed(self, entry: Gtk.SearchEntry) -> None:
-        query = entry.get_text().strip().lower()
-        for row in self._all_rows + self._installed_rows + self._downloading_rows:
-            if not query:
-                row.set_visible(True)
-            else:
-                key = getattr(row, "_search_key", "")
-                row.set_visible(query in key)
-
-        if self._installed_placeholder:
-            self._installed_placeholder.set_visible(not bool(query))
-        if self._downloading_placeholder:
-            self._downloading_placeholder.set_visible(not bool(query))
+        self._apply_row_visibility()
 
     def _on_download_clicked(self, model_id: str) -> None:
         """Avvia il download e trasforma la riga mostrando la progress bar e il tasto annulla."""
