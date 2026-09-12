@@ -9,7 +9,7 @@
 La classe `PipelineController` (`src/daemon/core/pipeline.py`) implementa un **dual-path dispatch architecture** per l'elaborazione dei testi provenienti dal riconoscimento vocale (STT) o dall'input diretto della finestra interattiva (GUI).
 
 > [!WARNING]
-> `PipelineController` è **l'implementazione attiva** nel daemon reale (importata da `core/runtime_manager.py` e `main.py`) — a differenza di `core/streaming_pipeline.py`/`core/pipeline_integration.py`, che pur documentati in [`docs/streaming-pipeline-guide.md`](streaming-pipeline-guide.md) non sono collegati al daemon in esecuzione. Fast-Path e Medium-Path sono **configurabili dall'utente** tramite le chiavi GSettings `fast-path-enabled` (default `false`) e `medium-path-enabled` (default `true`), esposte in **Generali → Dispatch dei Comandi**; le modifiche sono applicate a caldo. Esiste inoltre uno stadio "Medium Path" non mostrato nel diagramma sottostante — vedi sezione 2.5.
+> `PipelineController` è **l'implementazione attiva** nel daemon reale (importata da `core/runtime_manager.py` e `main.py`) — a differenza di `core/streaming_pipeline.py`/`core/pipeline_integration.py`, che pur documentati in [`docs/streaming-pipeline-guide.md`](streaming-pipeline-guide.md) non sono collegati al daemon in esecuzione. Fast-Path e Medium-Path sono **configurabili dall'utente** tramite le chiavi GSettings `fast-path-enabled` (default `false`) e `medium-path-enabled` (default `true`), esposte in **Intelligenza Artificiale (LLM) → Elaborazione Comandi**; le modifiche sono applicate a caldo. Esiste inoltre uno stadio "Medium Path" non mostrato nel diagramma sottostante — vedi sezione 2.5.
 
 ### Flusso Complessivo
 

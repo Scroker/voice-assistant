@@ -231,4 +231,46 @@ Adw.PreferencesPage llm_page {
       }
     }
   }
+
+  Adw.PreferencesGroup {
+    title: _("Command Processing");
+    description: _("How a recognized command is dispatched before reaching the full assistant.");
+
+    Adw.ActionRow dispatch_subpage_row {
+      title: _("Command Dispatch");
+      subtitle: _("Enable or disable the Fast-Path and Medium-Path stages");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "media-playlist-consecutive-symbolic";
+        valign: center;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+
+    Adw.ActionRow skills_subpage_row {
+      title: _("Skills");
+      subtitle: _("View built-in skills and add your own trigger phrases");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "applications-utilities-symbolic";
+        valign: center;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
 }
+

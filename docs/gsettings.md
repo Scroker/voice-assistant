@@ -96,7 +96,7 @@ graph TD
 
 ### Stadi di dispatch dei comandi
 
-Controllano quali stadi della catena `Fast-Path → Medium-Path → Smart-Path` sono attivi (vedi [pipeline.md](pipeline.md)). Configurabili da **Generali → Dispatch dei Comandi**.
+Controllano quali stadi della catena `Fast-Path → Medium-Path → Smart-Path` sono attivi (vedi [pipeline.md](pipeline.md)). Configurabili da **Intelligenza Artificiale (LLM) → Elaborazione Comandi**.
 
 | Chiave | Tipo | Default | Descrizione |
 |---|---|---:|---|

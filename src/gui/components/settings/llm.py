@@ -439,6 +439,16 @@ class LLMSettings:
                     win.push_subpage(mcp_subpage)
             mcp_row.connect("activated", _open_mcp)
 
+        # Sottopagina Dispatch dei Comandi
+        dispatch_subpage_row = self.builder.get_object("dispatch_subpage_row")
+        dispatch_subpage = self.builder.get_object("dispatch_subpage")
+        if dispatch_subpage_row and dispatch_subpage:
+            def _open_dispatch(*_):
+                win = self.parent_window or (dispatch_subpage_row.get_root() if hasattr(dispatch_subpage_row, "get_root") else None)
+                if win and hasattr(win, "push_subpage"):
+                    win.push_subpage(dispatch_subpage)
+            dispatch_subpage_row.connect("activated", _open_dispatch)
+
         # Sottoscrizione reattiva alle modifiche GSettings
         if self.settings:
             self.settings.connect("changed::llm-mode", self._on_settings_mode_changed)

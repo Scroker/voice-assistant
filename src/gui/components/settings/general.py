@@ -204,14 +204,6 @@ class GeneralSettings:
                     win.push_subpage(models_subpage)
             models_subpage_row.connect("activated", _open_models)
 
-        dispatch_subpage_row = self.builder.get_object("dispatch_subpage_row")
-        dispatch_subpage = self.builder.get_object("dispatch_subpage")
-        if dispatch_subpage_row and dispatch_subpage:
-            def _open_dispatch(*_):
-                win = self.parent_window or (dispatch_subpage_row.get_root() if hasattr(dispatch_subpage_row, "get_root") else None)
-                if win and hasattr(win, "push_subpage"):
-                    win.push_subpage(dispatch_subpage)
-            dispatch_subpage_row.connect("activated", _open_dispatch)
 
         audio_subpage_row = self.builder.get_object("audio_subpage_row")
         audio_subpage = self.builder.get_object("audio_subpage")

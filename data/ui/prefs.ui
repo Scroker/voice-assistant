@@ -49,50 +49,6 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
         </child>
         <child>
           <object class="AdwPreferencesGroup">
-            <property name="title" translatable="yes">Command Processing</property>
-            <property name="description" translatable="yes">How a recognized command is dispatched before reaching the full assistant.</property>
-            <child>
-              <object class="AdwActionRow" id="dispatch_subpage_row">
-                <property name="title" translatable="yes">Command Dispatch</property>
-                <property name="subtitle" translatable="yes">Enable or disable the Fast-Path and Medium-Path stages</property>
-                <property name="activatable">true</property>
-                <child type="prefix">
-                  <object class="GtkImage">
-                    <property name="icon-name">media-playlist-consecutive-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
-                <child type="suffix">
-                  <object class="GtkImage">
-                    <property name="icon-name">go-next-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwActionRow" id="skills_subpage_row">
-                <property name="title" translatable="yes">Skills</property>
-                <property name="subtitle" translatable="yes">View built-in skills and add your own trigger phrases</property>
-                <property name="activatable">true</property>
-                <child type="prefix">
-                  <object class="GtkImage">
-                    <property name="icon-name">applications-utilities-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
-                <child type="suffix">
-                  <object class="GtkImage">
-                    <property name="icon-name">go-next-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-          </object>
-        </child>
-        <child>
-          <object class="AdwPreferencesGroup">
             <property name="title" translatable="yes">Audio Input</property>
             <property name="description" translatable="yes">Microphone processing applied before wake word detection and speech recognition.</property>
             <child>
@@ -760,6 +716,50 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                 <child type="prefix">
                   <object class="GtkImage">
                     <property name="icon-name">system-run-symbolic</property>
+                    <property name="valign">3</property>
+                  </object>
+                </child>
+                <child type="suffix">
+                  <object class="GtkImage">
+                    <property name="icon-name">go-next-symbolic</property>
+                    <property name="valign">3</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Command Processing</property>
+            <property name="description" translatable="yes">How a recognized command is dispatched before reaching the full assistant.</property>
+            <child>
+              <object class="AdwActionRow" id="dispatch_subpage_row">
+                <property name="title" translatable="yes">Command Dispatch</property>
+                <property name="subtitle" translatable="yes">Enable or disable the Fast-Path and Medium-Path stages</property>
+                <property name="activatable">true</property>
+                <child type="prefix">
+                  <object class="GtkImage">
+                    <property name="icon-name">media-playlist-consecutive-symbolic</property>
+                    <property name="valign">3</property>
+                  </object>
+                </child>
+                <child type="suffix">
+                  <object class="GtkImage">
+                    <property name="icon-name">go-next-symbolic</property>
+                    <property name="valign">3</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwActionRow" id="skills_subpage_row">
+                <property name="title" translatable="yes">Skills</property>
+                <property name="subtitle" translatable="yes">View built-in skills and add your own trigger phrases</property>
+                <property name="activatable">true</property>
+                <child type="prefix">
+                  <object class="GtkImage">
+                    <property name="icon-name">applications-utilities-symbolic</property>
                     <property name="valign">3</property>
                   </object>
                 </child>
