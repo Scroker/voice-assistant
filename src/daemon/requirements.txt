@@ -13,3 +13,6 @@ openwakeword
 onnxruntime
 # Sherpa-ONNX (keyword spotting ONNX con modelli personalizzabili)
 sherpa-onnx
+# Direct Action Engine: router semantico (embedding ONNX) e fuzzy matching app .desktop
+tokenizers
+rapidfuzz

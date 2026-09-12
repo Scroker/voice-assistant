@@ -239,7 +239,10 @@ class SkillRegistry:
     def from_default_directory(cls, base_dir: Optional[Path] = None) -> "SkillRegistry":
         """Build a registry from the built-in default skills.
 
-        If a real skills directory exists, it is used; otherwise the in-memory default list is used.
+        Merges every default skills directory that exists (deduplicating by intent,
+        first occurrence wins) instead of stopping at the first non-empty one, so
+        skills defined in more than one location are not silently shadowed.
+        If none of the directories contain skills, the in-memory default list is used.
         """
         registry = cls()
         if base_dir is None:
@@ -252,11 +255,17 @@ class SkillRegistry:
             user_dir,
         ]
 
+        seen_intents = set()
         for skill_dir in searched_dirs:
-            if skill_dir.exists():
-                registry = cls.from_directory(skill_dir)
-                if registry.skills:
-                    break
+            if not skill_dir.exists():
+                continue
+            for skill in cls.from_directory(skill_dir).skills:
+                intent = skill.get("intent")
+                if intent and intent in seen_intents:
+                    continue
+                if intent:
+                    seen_intents.add(intent)
+                registry.skills.append(skill)
 
         if not registry.skills:
             registry.skills = [dict(skill) for skill in cls.DEFAULT_SKILLS]

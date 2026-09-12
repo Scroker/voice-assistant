@@ -207,6 +207,7 @@ class _SettingsWindow(Adw.Window):
         self._setup_stt()
         self._setup_llm()
         self._setup_tts()
+        self._setup_mcp()
         self._setup_models()
         self._setup_bugreport()
         self._setup_about()
@@ -451,6 +452,10 @@ class _SettingsWindow(Adw.Window):
             "tts_engine_system_radio": "system",
         })
         self._bind("tts-voice", "tts_voice_row", "text")
+
+    def _setup_mcp(self):
+        self._bind("direct-action-engine-enabled", "direct_action_enable_row", "active")
+        self._bind("semantic-router-confidence-threshold", "semantic_threshold_row", "value")
 
     _DEFAULT_MODELS_DIR = "~/.local/share/voice-assistant/models"
 

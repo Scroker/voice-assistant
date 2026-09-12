@@ -638,6 +638,34 @@ Adw.NavigationSplitView split_view {
                     subtitle: _("Ready for tool &amp; function calling integration");
                   }
                 }
+
+                Adw.PreferencesGroup {
+                  title: _("Direct Action Engine");
+                  description: _("Executes quick commands (regex and semantic router) directly via MCP, without going through the conversational LLM.");
+
+                  Adw.SwitchRow direct_action_enable_row {
+                    title: _("Enable Direct Action Engine");
+                    subtitle: _("If disabled, every phrase is always sent to the conversational LLM");
+                  }
+
+                  Adw.SpinRow semantic_threshold_row {
+                    title: _("Semantic Router Confidence Threshold");
+                    subtitle: _("Minimum similarity score required to execute an action directly");
+                    digits: 2;
+                    adjustment: Gtk.Adjustment {
+                      lower: 0.50;
+                      upper: 0.95;
+                      step-increment: 0.05;
+                      page-increment: 0.05;
+                      value: 0.62;
+                    };
+                  }
+
+                  Adw.ActionRow last_route_row {
+                    title: _("Last Routing");
+                    subtitle: _("Not available yet");
+                  }
+                }
               }
 
               // 6. MODELS / STORAGE PAGE

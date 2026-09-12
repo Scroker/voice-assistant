@@ -20,7 +20,7 @@ import logging
 from typing import Callable, Optional, Dict, Any, List, Tuple
 from .state import StateMachine, AssistantState
 from .smart_path_controller import SmartPathController
-from skills.vector_intent_matcher import VectorIntentMatcher
+from skills.semantic_router import SemanticIntentRouter
 from skills.skill_registry import SkillRegistry
 
 logger = logging.getLogger("VoiceAssistant.Pipeline")
@@ -132,7 +132,8 @@ class FastPathDispatcher:
 
     def __init__(self, intent_handler: Optional[Callable[[str, Dict[str, Any]], Tuple[bool, str]]] = None):
         self.intent_handler = intent_handler
-        self.vector_matcher = VectorIntentMatcher(SkillRegistry.from_default_directory())
+        self.semantic_router = SemanticIntentRouter(SkillRegistry.from_default_directory())
+        self.semantic_min_score = SemanticIntentRouter.DEFAULT_MIN_SCORE
         self._skill_patterns = self._load_skill_patterns()
 
     def _load_skill_patterns(self):
@@ -238,7 +239,7 @@ class FastPathDispatcher:
                     except Exception as e:
                         logger.error(f"[FastPath] Errore catch-all app launch: {e}")
 
-        semantic_match = self.vector_matcher.match(clean_text)
+        semantic_match = self.semantic_router.match(clean_text, min_score=self.semantic_min_score)
         if semantic_match:
             intent_name = semantic_match["intent"]
             params = dict((semantic_match.get("skill") or {}).get("params", {}))
@@ -294,6 +295,7 @@ class PipelineController:
         self.smart_path = SmartPathController()
         self.sentence_aggregator = SentenceAggregator(sentence_callback=self._on_sentence_ready)
         self._streaming_active = False
+        self.direct_action_enabled = True
 
     def _on_sentence_ready(self, sentence: str):
         """Callback invocata dall'aggregatore quando una frase completa è pronta."""
@@ -399,7 +401,9 @@ class PipelineController:
         self.state_machine.set_state(AssistantState.PROCESSING)
 
         # 1. Fast-Path Check (<10ms)
-        matched, intent, params, response_text = self.fast_path.dispatch(text)
+        matched, intent, params, response_text = (
+            self.fast_path.dispatch(text) if self.direct_action_enabled else (False, None, {}, None)
+        )
         if matched and response_text:
             logger.info(f"[Pipeline] Fast-Path match: {intent} -> '{response_text}' (speak={speak})")
             if speak:

@@ -125,6 +125,8 @@ class DaemonRuntimeManager:
         self.owner.settings.connect("changed::mcp-registry-url", self.owner.on_settings_changed)
         self.owner.settings.connect("changed::mcp-enabled", self.owner.on_settings_changed)
         self.owner.settings.connect("changed::enabled", self.owner.on_settings_changed)
+        self.owner.settings.connect("changed::direct-action-engine-enabled", self.owner.on_settings_changed)
+        self.owner.settings.connect("changed::semantic-router-confidence-threshold", self.owner.on_settings_changed)
 
     def initialize_notifications(self):
         try:
@@ -297,6 +299,8 @@ class DaemonRuntimeManager:
         )
         self.owner.pipeline_controller.on_token_callback = self.owner._on_llm_token
         self.owner.pipeline_controller.fast_path.intent_handler = self.owner._handle_fast_path_intent
+        self.owner.pipeline_controller.direct_action_enabled = self.owner.settings.get_boolean("direct-action-engine-enabled")
+        self.owner.pipeline_controller.fast_path.semantic_min_score = self.owner.settings.get_double("semantic-router-confidence-threshold")
 
     def start_background_load(self):
         self.owner._load_id = 1

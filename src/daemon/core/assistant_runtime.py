@@ -27,6 +27,7 @@ from core.async_bridge import run_async
 from core.daemon_protocol import DaemonOwner
 from skills.skill_registry import SkillRegistry
 from skills.skill_executor import SkillExecutor
+from skills.app_slot_matcher import AppSlotMatcher
 
 logger = logging.getLogger("VoiceAssistant.AssistantRuntime")
 
@@ -61,6 +62,7 @@ class AssistantRuntimeController:
     def __init__(self, owner: DaemonOwner):
         self.owner = owner
         self.skill_registry = SkillRegistry.from_default_directory()
+        self.app_matcher = AppSlotMatcher()
 
     def _execute_skill(
         self, skill_name: str, user_text: str, use_llm_fallback: bool = True
@@ -108,6 +110,11 @@ class AssistantRuntimeController:
                     )
                     if m:
                         app = m.group(1).strip()
+
+                resolved = self.app_matcher.match(app) if app else None
+                if resolved:
+                    run_tool("app_launcher", {"app_name": resolved["desktop_id"]})
+                    return (True, f"Apro {resolved['name']}.")
                 return (True, run_tool("app_launcher", {"app_name": app or "firefox"}))
 
             if intent_name == "set_brightness":
@@ -251,6 +258,10 @@ class AssistantRuntimeController:
             self.owner.mcp_manager.set_registry_url(settings.get_string(key))
         elif key == "mcp-enabled" and getattr(self.owner, "mcp_manager", None):
             self.owner.mcp_manager.enabled = settings.get_boolean(key)
+        elif key == "direct-action-engine-enabled" and getattr(self.owner, "pipeline_controller", None):
+            self.owner.pipeline_controller.direct_action_enabled = settings.get_boolean(key)
+        elif key == "semantic-router-confidence-threshold" and getattr(self.owner, "pipeline_controller", None):
+            self.owner.pipeline_controller.fast_path.semantic_min_score = settings.get_double(key)
         elif key in {"idle-unload-timeout", "stt-idle-unload-timeout", "llm-idle-unload-timeout", "tts-idle-unload-timeout"}:
             self.owner.model_manager.idle_timeout_sec = settings.get_int("idle-unload-timeout")
             self.owner.model_manager.set_idle_timeouts({

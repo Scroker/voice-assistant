@@ -196,5 +196,15 @@
       <summary>Componente Bugzilla</summary>
       <description>Componente Bugzilla da associare ai bug segnalati automaticamente.</description>
     </key>
+    <key name="direct-action-engine-enabled" type="b">
+      <default>true</default>
+      <summary>Abilitazione motore di azione diretta</summary>
+      <description>Se vero, i comandi rapidi (regex e router semantico) vengono eseguiti direttamente via MCP senza passare per l'LLM conversazionale.</description>
+    </key>
+    <key name="semantic-router-confidence-threshold" type="d">
+      <default>0.6</default>
+      <summary>Soglia di confidenza del router semantico</summary>
+      <description>Punteggio minimo di similarità (0.0-1.0) richiesto perché il router semantico esegua un'azione diretta invece di passare la frase allo Smart-Path.</description>
+    </key>
   </schema>
 </schemalist>
