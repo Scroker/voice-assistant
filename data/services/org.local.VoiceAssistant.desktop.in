@@ -9,5 +9,6 @@ Terminal=false
 Type=Application
 Categories=Utility;AudioVideo;Audio;
 Keywords=Voice;Assistant;Speech;Offline;Vosk;Whisper;
-StartupNotify=false
+StartupNotify=true
+StartupWMClass=org.local.VoiceAssistant.GUI
 X-GNOME-UsesNotifications=true

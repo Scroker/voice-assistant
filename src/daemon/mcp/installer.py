@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional, Tuple
 
 from .config import MCPConfigLoader
 from .credentials import MCPCredentialStore
+from core.data_loader import load_json_data
 
 logger = logging.getLogger("VoiceAssistant.MCPInstaller")
 
@@ -49,7 +50,7 @@ class MCPServerInstaller:
             cmd = server_def.get("command", "")
             if not cmd:
                 return False, "Questo server Smithery richiede una connessione gestita, non ancora supportata dal runtime locale"
-            if cmd not in ("builtin", "uvx", "npx", "python", "python3"):
+            if cmd not in ("builtin", "uvx", "npx", "python", "python3", "gnome-mcp-server", "cargo"):
                 return False, f"Comando '{cmd}' non supportato"
 
             if cmd == "builtin":
@@ -59,10 +60,23 @@ class MCPServerInstaller:
             # 2. Check if command-runner is available
             runner_available = await self._check_runner_available(cmd)
             if not runner_available:
-                return (
-                    False,
-                    f"Gestore '{cmd}' non trovato. Installare: {self._get_install_hint(cmd)}",
-                )
+                if cmd == "gnome-mcp-server":
+                    # Attempt automated cargo install if cargo is available
+                    cargo_available = await self._check_runner_available("cargo")
+                    if cargo_available:
+                        install_ok, install_msg = await self.install_gnome_mcp_server()
+                        if not install_ok:
+                            return False, install_msg
+                    else:
+                        return (
+                            False,
+                            f"Gestore 'cargo' non trovato. Installare prima il compilatore Rust: {self._get_install_hint('cargo')}",
+                        )
+                else:
+                    return (
+                        False,
+                        f"Gestore '{cmd}' non trovato. Installare: {self._get_install_hint(cmd)}",
+                    )
 
             # 3. Test dry-run with --help
             test_ok, test_msg = await self._test_server_startup(server_def)
@@ -102,8 +116,8 @@ class MCPServerInstaller:
             if name not in config.get("mcpServers", {}):
                 return False, f"Server '{name}' non trovato"
 
-            if name == "gnome-system":
-                return False, "Non è possibile disinstallare server built-in"
+            if name in ("gnome-system", "gnome-mcp-server"):
+                return False, "Non è possibile disinstallare il server MCP desktop predefinito"
 
             self.credential_store.delete_environment(name, config["mcpServers"][name].get("env", {}))
             del config["mcpServers"][name]
@@ -153,7 +167,14 @@ class MCPServerInstaller:
             return False, f"Errore: {str(e)}"
 
     async def _check_runner_available(self, runner: str) -> bool:
-        """Checks if command runner (uvx, npx, etc) is available."""
+        """Checks if command runner (uvx, npx, cargo, gnome-mcp-server, etc) is available."""
+        if runner == "gnome-mcp-server":
+            cargo_candidate = os.path.expanduser("~/.cargo/bin/gnome-mcp-server")
+            if os.path.isfile(cargo_candidate) and os.access(cargo_candidate, os.X_OK):
+                return True
+            import shutil
+            return shutil.which("gnome-mcp-server") is not None
+
         try:
             result = await asyncio.to_thread(
                 subprocess.run,
@@ -174,11 +195,20 @@ class MCPServerInstaller:
         if cmd == "builtin":
             return True, "Server built-in"
 
+        if cmd == "gnome-mcp-server":
+            cargo_candidate = os.path.expanduser("~/.cargo/bin/gnome-mcp-server")
+            import shutil
+            if not shutil.which("gnome-mcp-server") and os.path.isfile(cargo_candidate):
+                cmd = cargo_candidate
+
         try:
             # Try --help to verify command structure
             full_cmd = [cmd] + args + ["--help"]
             merged_env = os.environ.copy()
             merged_env.update(env)
+            cargo_bin = os.path.expanduser("~/.cargo/bin")
+            if cargo_bin not in merged_env.get("PATH", "").split(os.pathsep):
+                merged_env["PATH"] = f"{cargo_bin}:{merged_env.get('PATH', '')}"
 
             result = await asyncio.to_thread(
                 subprocess.run,
@@ -200,13 +230,47 @@ class MCPServerInstaller:
         except Exception as e:
             return False, f"Errore test: {str(e)}"
 
+    async def install_gnome_mcp_server(self) -> Tuple[bool, str]:
+        """Compiles and installs gnome-mcp-server via Cargo."""
+        try:
+            logger.info("[MCPInstaller] Installazione gnome-mcp-server via cargo...")
+            import shutil
+            cargo_path = shutil.which("cargo")
+            if not cargo_path:
+                for candidate in ("/usr/bin/cargo", os.path.expanduser("~/.cargo/bin/cargo")):
+                    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                        cargo_path = candidate
+                        break
+            if not cargo_path:
+                cargo_path = "cargo"
+
+            env = os.environ.copy()
+            cargo_bin = os.path.expanduser("~/.cargo/bin")
+            if cargo_bin not in env.get("PATH", "").split(os.pathsep):
+                env["PATH"] = f"{cargo_bin}:{env.get('PATH', '')}"
+
+            default_servers = load_json_data("mcp/default_servers.json", fallback_default={})
+            gnome_cfg = default_servers.get("mcpServers", {}).get("gnome-mcp-server", {})
+            repo_url = gnome_cfg.get("repo_url", "https://github.com/bilelmoussaoui/gnome-mcp-server")
+
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [cargo_path, "install", "--git", repo_url],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=600,
+            )
+            if result.returncode == 0:
+                logger.info("[MCPInstaller] gnome-mcp-server installato con successo.")
+                return True, "gnome-mcp-server installato con successo via cargo"
+            err = (result.stderr or result.stdout or "").strip()[-300:]
+            return False, f"Compilazione cargo fallita:\n{err}"
+        except Exception as e:
+            return False, f"Errore durante l'installazione di gnome-mcp-server: {e}"
+
     @staticmethod
     def _get_install_hint(runner: str) -> str:
         """Returns installation hint for a command runner."""
-        hints = {
-            "uvx": "pip install uv; uv tool install mcp-server-*",
-            "npx": "npm install -g npx",
-            "python": "apt install python3-pip",
-            "python3": "apt install python3-pip",
-        }
+        hints = load_json_data("mcp/runner_hints.json", fallback_default={})
         return hints.get(runner, f"Installare {runner}")

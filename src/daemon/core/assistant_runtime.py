@@ -24,6 +24,7 @@ except Exception:  # pragma: no cover - optional in minimal test envs
     GLib = _DummyGLib()
 
 from core.async_bridge import run_async
+from core.audio_runtime import AUDIO_FILTER_KEYS
 from core.daemon_protocol import DaemonOwner
 from skills.skill_registry import SkillRegistry
 from skills.skill_executor import SkillExecutor
@@ -34,26 +35,38 @@ logger = logging.getLogger("VoiceAssistant.AssistantRuntime")
 import re as _re
 
 # Mapping intent → (tool_name, static_args)
-# None come static_args = i parametri vengono costruiti dinamicamente
-_INTENT_TOOL_MAP: dict = {
-    "volume_up":       ("system_volume",     {"action": "increase", "level": 10}),
-    "volume_down":     ("system_volume",     {"action": "decrease", "level": 10}),
-    "mute":            ("system_volume",     {"action": "mute"}),
-    "unmute":          ("system_volume",     {"action": "unmute"}),
-    "get_time":        ("date_time",         {"format": "time"}),
-    "get_date":        ("date_time",         {"format": "date"}),
-    "get_datetime":    ("date_time",         {"format": "full"}),
-    "set_theme_dark":  ("dark_mode",         {"mode": "dark"}),
-    "set_theme_light": ("dark_mode",         {"mode": "light"}),
-    "theme_dark":      ("dark_mode",         {"mode": "dark"}),
-    "theme_light":     ("dark_mode",         {"mode": "light"}),
-    "media_play":      ("system_media",      {"action": "play"}),
-    "media_pause":     ("system_media",      {"action": "pause"}),
-    "media_next":      ("system_media",      {"action": "next"}),
-    "media_prev":      ("system_media",      {"action": "previous"}),
-    "brightness_up":   ("screen_brightness", {"action": "increase"}),
-    "brightness_down": ("screen_brightness", {"action": "decrease"}),
-}
+def _load_intent_tool_map() -> dict:
+    """Carica la mappatura intent -> (tool, args) da data/mcp/intent_tools.json."""
+    try:
+        from core.data_loader import load_json_data
+        raw = load_json_data("mcp/intent_tools.json", fallback_default={}) or {}
+        res = {}
+        for intent, val in raw.items():
+            if isinstance(val, dict):
+                res[intent] = (val.get("tool", ""), val.get("args", {}))
+            elif isinstance(val, (list, tuple)) and len(val) >= 2:
+                res[intent] = (val[0], val[1])
+        if res:
+            return res
+    except Exception as e:
+        logger.debug(f"Errore caricamento intent_tools.json: {e}")
+
+    return {
+        "volume_up":       ("set_volume",        {"direction": "up"}),
+        "volume_down":     ("set_volume",        {"direction": "down"}),
+        "mute":            ("set_volume",        {"mute": True}),
+        "unmute":          ("set_volume",        {"mute": False}),
+        "set_theme_dark":  ("quick_settings",   {"setting": "dark_style", "enabled": True}),
+        "set_theme_light": ("quick_settings",   {"setting": "dark_style", "enabled": False}),
+        "theme_dark":      ("quick_settings",   {"setting": "dark_style", "enabled": True}),
+        "theme_light":     ("quick_settings",   {"setting": "dark_style", "enabled": False}),
+        "media_play":      ("media_control",     {"action": "play"}),
+        "media_pause":     ("media_control",     {"action": "pause"}),
+        "media_next":      ("media_control",     {"action": "next"}),
+        "media_prev":      ("media_control",     {"action": "previous"}),
+    }
+
+_INTENT_TOOL_MAP: dict = _load_intent_tool_map()
 
 
 class AssistantRuntimeController:
@@ -85,8 +98,59 @@ class AssistantRuntimeController:
         )
         return (success, response)
 
+    def _launch_desktop_app_native(self, app_name: str) -> bool:
+        """Fallback nativo per l'avvio delle applicazioni desktop su GNOME/Linux."""
+        if not app_name or not app_name.strip():
+            return False
+        clean = app_name.lower().strip()
+        try:
+            from gi.repository import Gio
+            app_map = {
+                "calendario": ["org.gnome.Calendar.desktop", "gnome-calendar.desktop", "gnome-calendar"],
+                "calendar": ["org.gnome.Calendar.desktop", "gnome-calendar.desktop", "gnome-calendar"],
+                "calcolatrice": ["org.gnome.Calculator.desktop", "gnome-calculator.desktop", "gnome-calculator"],
+                "calculator": ["org.gnome.Calculator.desktop", "gnome-calculator.desktop", "gnome-calculator"],
+                "terminale": ["org.gnome.Terminal.desktop", "gnome-terminal.desktop", "ptyxis.desktop", "org.gnome.Ptyxis.desktop", "xterm"],
+                "terminal": ["org.gnome.Terminal.desktop", "gnome-terminal.desktop", "ptyxis.desktop", "org.gnome.Ptyxis.desktop", "xterm"],
+                "impostazioni": ["org.gnome.Settings.desktop", "gnome-control-center.desktop", "gnome-control-center"],
+                "settings": ["org.gnome.Settings.desktop", "gnome-control-center.desktop", "gnome-control-center"],
+                "orologio": ["org.gnome.clocks.desktop", "org.gnome.Clocks.desktop", "gnome-clocks"],
+                "clocks": ["org.gnome.clocks.desktop", "org.gnome.Clocks.desktop", "gnome-clocks"],
+                "file": ["org.gnome.Nautilus.desktop", "nautilus.desktop", "nautilus"],
+                "nautilus": ["org.gnome.Nautilus.desktop", "nautilus.desktop", "nautilus"],
+                "browser": ["firefox.desktop", "org.mozilla.firefox.desktop", "google-chrome.desktop", "chromium.desktop", "firefox"],
+                "firefox": ["firefox.desktop", "org.mozilla.firefox.desktop", "firefox"],
+            }
+            candidates = app_map.get(clean, [f"{clean}.desktop", clean])
+            for cand in candidates:
+                if cand.endswith(".desktop"):
+                    app_info = Gio.DesktopAppInfo.new(cand)
+                    if app_info:
+                        return app_info.launch([], None)
+                else:
+                    import shutil, subprocess
+                    bin_path = shutil.which(cand)
+                    if bin_path:
+                        subprocess.Popen([bin_path], start_new_session=True)
+                        return True
+
+            all_apps = Gio.AppInfo.get_all()
+            for info in all_apps:
+                name = (info.get_name() or "").lower()
+                disp = (info.get_display_name() or "").lower()
+                if clean in name or clean in disp:
+                    return info.launch([], None)
+        except Exception as e:
+            logger.debug(f"Native app launch fallback error for '{app_name}': {e}")
+        return False
+
     def _handle_fast_path_intent(self, intent_name: str, params, text: str = ""):
         if not self.owner.mcp_manager:
+            if intent_name == "launch_app":
+                app = params.get("app") or params.get("app_name") or ""
+                if self._launch_desktop_app_native(app):
+                    target_name = app if app else "l'applicazione"
+                    return (True, f"Apro {target_name}.")
             return (False, "")
 
         def run_tool(tool_name, args):
@@ -99,7 +163,7 @@ class AssistantRuntimeController:
             # --- Intent con parametri dinamici ---
             if intent_name == "set_volume":
                 vol = max(0, min(100, int(params.get("volume", 50))))
-                return (True, run_tool("system_volume", {"action": "set", "level": vol}))
+                return (True, run_tool("set_volume", {"volume": float(vol)}))
 
             if intent_name == "launch_app":
                 app = params.get("app") or params.get("app_name") or ""
@@ -110,16 +174,49 @@ class AssistantRuntimeController:
                     )
                     if m:
                         app = m.group(1).strip()
-
                 resolved = self.app_matcher.match(app) if app else None
                 if resolved:
-                    run_tool("app_launcher", {"app_name": resolved["desktop_id"]})
-                    return (True, f"Apro {resolved['name']}.")
-                return (True, run_tool("app_launcher", {"app_name": app or "firefox"}))
+                    res = run_tool("launch_application", {"app_name": resolved["desktop_id"]})
+                    if isinstance(res, str) and ("Successfully launched" in res or '"success":true' in res or '"success": true' in res):
+                        return (True, f"Apro {resolved['name']}.")
+                    if self._launch_desktop_app_native(app):
+                        return (True, f"Apro {resolved['name']}.")
+                    return (True, res)
 
-            if intent_name == "set_brightness":
-                lvl = max(0, min(100, int(params.get("level", 50))))
-                return (True, run_tool("screen_brightness", {"action": "set", "level": lvl}))
+                res = run_tool("launch_application", {"app_name": app or "firefox"})
+                if isinstance(res, str) and ("Successfully launched" in res or '"success":true' in res or '"success": true' in res):
+                    target_name = app if app else "l'applicazione"
+                    return (True, f"Apro {target_name}.")
+                if self._launch_desktop_app_native(app):
+                    target_name = app if app else "l'applicazione"
+                    return (True, f"Apro {target_name}.")
+                return (True, res)
+
+            if intent_name == "system_control":
+                if text:
+                    success, response = self._execute_skill("system_control", text)
+                    if success:
+                        return (success, response)
+                action = str(params.get("action", params.get("mode", "") or "")).lower()
+                if action in {"volume_up", "increase", "up"}:
+                    return (True, run_tool("set_volume", {"direction": "up"}))
+                if action in {"volume_down", "decrease", "down"}:
+                    return (True, run_tool("set_volume", {"direction": "down"}))
+                if action in {"mute", "silence", "silent"}:
+                    return (True, run_tool("set_volume", {"mute": True}))
+                if action in {"theme_dark", "dark", "set_theme_dark"}:
+                    return (True, run_tool("quick_settings", {"setting": "dark_style", "enabled": True}))
+                if action in {"theme_light", "light", "set_theme_light"}:
+                    return (True, run_tool("quick_settings", {"setting": "dark_style", "enabled": False}))
+                app_name = params.get("app") or params.get("app_name") or "firefox"
+                if action in {"launch_app", "app", "open_app"}:
+                    res = run_tool("launch_application", {"app_name": app_name})
+                    if isinstance(res, str) and ("Successfully launched" in res or '"success":true' in res or '"success": true' in res):
+                        return (True, f"Apro {app_name}.")
+                    if self._launch_desktop_app_native(app_name):
+                        return (True, f"Apro {app_name}.")
+                    return (True, res)
+                return (False, "")
 
             # --- Tema (gestisce anche i parametri bool legacy) ---
             if intent_name in ("set_theme_dark", "set_theme_light", "theme_control"):
@@ -130,8 +227,8 @@ class AssistantRuntimeController:
                 if dark is not None:
                     mode = "dark" if dark else "light"
                 mode = str(mode or "dark").lower()
-                mode = "dark" if mode in {"dark", "night", "black", "scuro", "set_theme_dark", "theme_dark"} else "light"
-                return (True, run_tool("dark_mode", {"mode": mode}))
+                is_dark = mode in {"dark", "night", "black", "scuro", "set_theme_dark", "theme_dark"}
+                return (True, run_tool("quick_settings", {"setting": "dark_style", "enabled": is_dark}))
 
             # --- Tabella statica ---
             mapping = _INTENT_TOOL_MAP.get(intent_name)
@@ -165,6 +262,10 @@ class AssistantRuntimeController:
         if key == "wakeword":
             self.owner.wakeword = settings.get_string(key)
             self.reset_wakeword_recognizer()
+            if getattr(self.owner, 'wakeword_engine', 'vosk') == 'sherpa-onnx':
+                self.owner.sherpa_spotter = None
+                self.owner.sherpa_stream = None
+                self.owner.runtime_manager.initialize_wakeword()
             while not self.owner.q.empty():
                 try:
                     self.owner.q.get_nowait()
@@ -231,6 +332,24 @@ class AssistantRuntimeController:
                     self.owner._oww_buffer = []
                     self.owner.runtime_manager.initialize_wakeword()
                     logger.info(f"Modello OpenWakeWord cambiato a: {new_model}")
+        elif key == "vosk-ww-model":
+            new_model = settings.get_string(key)
+            if new_model and new_model != getattr(self.owner, 'vosk_ww_model', ''):
+                self.owner.vosk_ww_model = new_model
+                if getattr(self.owner, 'wakeword_engine', 'vosk') == 'vosk':
+                    self.owner.ww_recognizer = None
+                    self.owner.ww_model = None
+                    self.owner.runtime_manager.initialize_wakeword()
+                logger.info(f"Modello Vosk Wakeword cambiato a: {new_model}")
+        elif key == "sherpa-model":
+            new_model = settings.get_string(key)
+            if new_model and new_model != getattr(self.owner, 'sherpa_model', ''):
+                self.owner.sherpa_model = new_model
+                if getattr(self.owner, 'wakeword_engine', 'vosk') == 'sherpa-onnx':
+                    self.owner.sherpa_spotter = None
+                    self.owner.sherpa_stream = None
+                    self.owner.runtime_manager.initialize_wakeword()
+                logger.info(f"Modello Sherpa-ONNX cambiato a: {new_model}")
         elif key == "sherpa-ww-model-dir":
             new_dir = settings.get_string(key) or ""
             if new_dir != getattr(self.owner, 'sherpa_ww_model_dir', ''):
@@ -254,12 +373,29 @@ class AssistantRuntimeController:
                     self.owner.runtime_manager.initialize_wakeword()
                 self._schedule_reload()
                 logger.info(f"Lingua assistente cambiata a: {new_lang}")
+        elif key in ("fast-path-enabled", "medium-path-enabled"):
+            enabled = settings.get_boolean(key)
+            pipeline = self.owner.pipeline_controller
+            if pipeline:
+                if key == "fast-path-enabled":
+                    pipeline.fast_path_enabled = enabled
+                else:
+                    pipeline.medium_path_enabled = enabled
+            label = "Fast-Path" if key == "fast-path-enabled" else "Medium-Path"
+            logger.info(f"{label} {'abilitato' if enabled else 'disabilitato'}.")
+        elif key == "audio-aec-enabled":
+            enabled = settings.get_boolean(key)
+            logger.info(
+                f"Cancellazione eco (AEC) {'abilitata' if enabled else 'disabilitata'}: "
+                "verrà applicata alla prossima apertura dello stream audio."
+            )
+        elif key in AUDIO_FILTER_KEYS:
+            from core.audio_runtime import apply_filter_settings
+            apply_filter_settings(getattr(self.owner, 'audio_filter', None), settings)
         elif key == "mcp-registry-url" and getattr(self.owner, "mcp_manager", None):
             self.owner.mcp_manager.set_registry_url(settings.get_string(key))
         elif key == "mcp-enabled" and getattr(self.owner, "mcp_manager", None):
             self.owner.mcp_manager.enabled = settings.get_boolean(key)
-        elif key == "direct-action-engine-enabled" and getattr(self.owner, "pipeline_controller", None):
-            self.owner.pipeline_controller.direct_action_enabled = settings.get_boolean(key)
         elif key == "semantic-router-confidence-threshold" and getattr(self.owner, "pipeline_controller", None):
             self.owner.pipeline_controller.fast_path.semantic_min_score = settings.get_double(key)
         elif key in {"idle-unload-timeout", "stt-idle-unload-timeout", "llm-idle-unload-timeout", "tts-idle-unload-timeout"}:
@@ -269,8 +405,59 @@ class AssistantRuntimeController:
                 "llm": settings.get_int("llm-idle-unload-timeout"),
                 "tts": settings.get_int("tts-idle-unload-timeout"),
             })
+        elif key in ("tts-provider", "tts-engine"):
+            new_prov = settings.get_string(key)
+            logger.info(f"Motore/provider TTS aggiornato a: '{new_prov}'")
+        elif key == "tts-voice":
+            new_voice = settings.get_string(key)
+            tts_mgr = getattr(self.owner, "tts_manager", None)
+            if tts_mgr and hasattr(tts_mgr, "providers") and "piper" in tts_mgr.providers:
+                piper_p = tts_mgr.providers["piper"]
+                if hasattr(piper_p, "unload_voice"):
+                    piper_p.unload_voice()
+            logger.info(f"Voce TTS aggiornata a: '{new_voice}'")
+        elif key in ("llm-mode", "llm-model"):
+            new_val = settings.get_string(key)
+            llm_svc = getattr(self.owner, "llm_service", None)
+            if llm_svc and hasattr(llm_svc, "local_gguf_provider"):
+                llm_svc.local_gguf_provider.unload_model()
+            logger.info(f"Impostazione LLM '{key}' aggiornata a: '{new_val}'")
 
     def reset_wakeword_recognizer(self):
+        engine = getattr(self.owner, 'wakeword_engine', 'vosk')
+        if engine == 'openwakeword':
+            self.owner._oww_buffer = []
+            oww = getattr(self.owner, 'oww_model_instance', None)
+            if oww is not None:
+                try:
+                    if hasattr(oww, 'reset'):
+                        oww.reset()
+                    if hasattr(oww, 'preprocessor') and oww.preprocessor:
+                        import numpy as np
+                        prep = oww.preprocessor
+                        if hasattr(prep, 'raw_data_buffer'):
+                            prep.raw_data_buffer.clear()
+                        prep.accumulated_samples = 0
+                        prep.melspectrogram_buffer = np.ones((76, 32))
+                        prep.feature_buffer = np.zeros((116, 96), dtype=np.float32)
+                except Exception as e:
+                    logger.warning(f"Errore reset OpenWakeWord: {e}")
+            return
+
+        if engine == 'sherpa-onnx':
+            spotter = getattr(self.owner, 'sherpa_spotter', None)
+            stream = getattr(self.owner, 'sherpa_stream', None)
+            if spotter is not None and stream is not None:
+                try:
+                    if hasattr(spotter, 'reset_stream'):
+                        spotter.reset_stream(stream)
+                    elif hasattr(stream, 'reset'):
+                        stream.reset()
+                except Exception as e:
+                    logger.warning(f"Errore reset stream Sherpa-ONNX: {e}")
+            return
+
+        # Vosk
         ww_model = getattr(self.owner, 'ww_model', None)
         if not ww_model:
             return
@@ -288,7 +475,17 @@ class AssistantRuntimeController:
             return
 
         try:
-            self.owner.ww_recognizer = KaldiRecognizer(ww_model, 16000)
+            import json as _json
+            wakeword = getattr(self.owner, 'wakeword', 'assistente').lower().strip()
+            ww_no_h = wakeword.replace('h', '')
+            ww_variants = list({wakeword, ww_no_h})
+            if wakeword == "assistente":
+                ww_variants += ["assistenti", "assistenza", "assiste"]
+            elif "anthon" in wakeword or "anton" in wakeword:
+                ww_variants += ["anthon", "anton", "antonio", "anthony"]
+            ww_variants += ["stop", "basta", "zitto", "fermati", "silenzio", "interrompi", "cancella"]
+            grammar = _json.dumps(list(set(ww_variants)) + ["[unk]"])
+            self.owner.ww_recognizer = KaldiRecognizer(ww_model, 16000, grammar)
         except Exception as e:
             logger.warning(f"Errore reset ww_recognizer: {e}")
             self.owner.ww_recognizer = None
@@ -307,13 +504,21 @@ class AssistantRuntimeController:
         try:
             stream.accept_waveform(sample_rate=16000, waveform=samples)
             while spotter.is_ready(stream):
-                spotter.decode(stream)
-            result = spotter.get_result(stream)
-            keyword = getattr(result, 'keyword', result) if not isinstance(result, str) else result
-            if keyword and keyword.strip():
-                logger.info(f"Sherpa-ONNX: keyword '{keyword.strip()}' rilevata!")
-                stream.reset()
-                self.trigger_assistant()
+                if hasattr(spotter, 'decode_stream'):
+                    spotter.decode_stream(stream)
+                elif hasattr(spotter, 'decode'):
+                    spotter.decode(stream)
+
+                result = spotter.get_result(stream)
+                keyword = getattr(result, 'keyword', result) if not isinstance(result, str) else result
+                if keyword and str(keyword).strip():
+                    logger.info(f"Sherpa-ONNX: keyword '{str(keyword).strip()}' rilevata!")
+                    if hasattr(spotter, 'reset_stream'):
+                        spotter.reset_stream(stream)
+                    elif hasattr(stream, 'reset'):
+                        stream.reset()
+                    self.trigger_assistant()
+                    return
         except Exception as e:
             logger.warning(f"Errore Sherpa-ONNX detect: {e}")
 
@@ -326,20 +531,29 @@ class AssistantRuntimeController:
 
         buf: list = self.owner._oww_buffer
         if data:
-            chunk = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+            chunk = np.frombuffer(data, dtype=np.int16)
             buf.extend(chunk.tolist())
 
         OWW_FRAME = 1280
         while len(buf) >= OWW_FRAME:
-            frame = np.array(buf[:OWW_FRAME], dtype=np.float32)
+            frame = np.array(buf[:OWW_FRAME], dtype=np.int16)
             del buf[:OWW_FRAME]
             try:
                 prediction = oww.predict(frame)
                 model_name = getattr(self.owner, 'oww_model_name', 'alexa')
-                score = prediction.get(model_name, 0.0)
+                score = 0.0
+                if model_name in prediction:
+                    score = prediction[model_name]
+                else:
+                    matched_scores = [v for k, v in prediction.items() if model_name.lower() in k.lower()]
+                    if matched_scores:
+                        score = max(matched_scores)
+                    elif len(prediction) == 1:
+                        score = list(prediction.values())[0]
+
                 if score > 0.5:
                     logger.info(f"OpenWakeWord: '{model_name}' rilevata (score={score:.2f})")
-                    self.owner._oww_buffer = buf
+                    self.reset_wakeword_recognizer()
                     self.trigger_assistant()
                     return
             except Exception as e:
@@ -360,7 +574,7 @@ class AssistantRuntimeController:
             except Exception:
                 break
 
-        self.owner._ignore_audio_until = time.time() + 0.35
+        self.owner._ignore_audio_until = time.time() + 0.5
 
         self.reset_wakeword_recognizer()
         if hasattr(self.owner, 'provider') and self.owner.provider:
@@ -382,7 +596,11 @@ class AssistantRuntimeController:
 
         if not hasattr(self.owner, 'audio_filter') or self.owner.audio_filter is None:
             from audio.filter import AudioFilter
-            self.owner.audio_filter = AudioFilter(sample_rate=16000)
+            from core.audio_runtime import build_filter_config
+            self.owner.audio_filter = AudioFilter(
+                sample_rate=16000,
+                **build_filter_config(getattr(self.owner, 'settings', None)),
+            )
 
         try:
             while True:
@@ -405,23 +623,26 @@ class AssistantRuntimeController:
                 if self.owner._state in ("idle", "speaking", "processing", "AssistantState.IDLE", "AssistantState.SPEAKING", "AssistantState.PROCESSING"):
                     engine = getattr(self.owner, 'wakeword_engine', 'vosk')
                     if engine == 'openwakeword':
-                        self._check_oww_wakeword(data)
+                        if getattr(self.owner, 'oww_model_instance', None) is not None:
+                            self._check_oww_wakeword(data)
                         continue
                     if engine == 'sherpa-onnx':
-                        self._check_sherpa_wakeword(data)
+                        if getattr(self.owner, 'sherpa_spotter', None) is not None:
+                            self._check_sherpa_wakeword(data)
                         continue
-                    if self.owner.ww_recognizer:
+                    ww_recognizer = self.owner.ww_recognizer
+                    if ww_recognizer:
                         import json as json_mod
                         wakeword_lower = self.owner.wakeword.lower().strip()
                         ww_no_h = wakeword_lower.replace('h', '')
 
                         recognized_str = ""
-                        if self.owner.ww_recognizer.AcceptWaveform(data):
-                            res_json = self.owner.ww_recognizer.Result()
+                        if ww_recognizer.AcceptWaveform(data):
+                            res_json = ww_recognizer.Result()
                             res = json_mod.loads(res_json)
                             recognized_str = res.get("text", "").strip().lower()
                         else:
-                            partial_json = self.owner.ww_recognizer.PartialResult()
+                            partial_json = ww_recognizer.PartialResult()
                             partial = json_mod.loads(partial_json)
                             recognized_str = partial.get("partial", "").strip().lower()
 
@@ -470,7 +691,7 @@ class AssistantRuntimeController:
 
                             if is_valid_command:
                                 logger.info(f"Comando allegato alla wakeword valido: '{remainder}'")
-                                self._process_text(remainder)
+                                self._process_text(remainder, is_voice=True)
                                 self.owner._listening_start_time = None
                                 self.owner._last_speech_time = None
                                 self.owner._last_partial_text = ""
@@ -577,10 +798,11 @@ class AssistantRuntimeController:
 
         logger.info(f"[Testo Riconosciuto]: {text} (is_voice={is_voice})")
 
-        try:
-            self.owner.TranscriptReceived(text, True)
-        except Exception:
-            pass
+        if is_voice:
+            try:
+                self.owner.TranscriptReceived(text, True)
+            except Exception:
+                pass
 
         self.owner.set_state("processing")
 
@@ -590,6 +812,18 @@ class AssistantRuntimeController:
             resp = res.get("response")
             try:
                 self.owner.ResponseTokenStreamed(resp, True)
+            except Exception:
+                pass
+        elif res.get("medium_path") and res.get("response"):
+            resp = res.get("response")
+            try:
+                self.owner.ResponseTokenStreamed(resp, True)
+            except Exception:
+                pass
+        elif res.get("smart_path") or (not res.get("fast_path") and res.get("response")):
+            # Streamed tokens were emitted via on_token_callback; signal stream completion
+            try:
+                self.owner.ResponseTokenStreamed("", True)
             except Exception:
                 pass
         elif not res.get("fast_path") and not res.get("response"):

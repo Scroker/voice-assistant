@@ -42,18 +42,18 @@ class TestListeningLoopResilience(unittest.TestCase):
         mock_assistant._load_id = 1
         del mock_assistant._settings_observer  # Ensure attribute does not exist
 
-        with patch('main.get_provider') as mock_get_provider, \
-             patch('main.notify2') as mock_notify:
+        with patch('providers.get_provider') as mock_get_provider, \
+             patch('notify2.Notification') as mock_notify:
             
             mock_provider_inst = MagicMock()
             mock_get_provider.return_value = mock_provider_inst
 
-            # Import load_provider bound logic or call directly
-            from main import VoiceAssistant
+            from core.provider_manager import ProviderManager
+            mock_assistant.provider_manager = ProviderManager(mock_assistant)
             
             # Execute load_provider on mock instance
             try:
-                VoiceAssistant.load_provider(mock_assistant, load_id=1)
+                mock_assistant.provider_manager.load_provider(load_id=1)
                 error_raised = False
             except AttributeError as e:
                 error_raised = True

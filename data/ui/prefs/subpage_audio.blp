@@ -1,0 +1,133 @@
+// AUDIO FILTERS SUBPAGE
+Adw.NavigationPage audio_subpage {
+  tag: "audio_subpage";
+  title: _("Audio Filters");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Audio Filters");
+      };
+    }
+
+    content: Adw.PreferencesPage audio_page {
+      title: _("Audio Filters");
+      icon-name: "audio-input-microphone-symbolic";
+      name: "audio";
+
+      Adw.PreferencesGroup {
+        title: _("Echo Cancellation");
+        description: _("System-level PipeWire WebRTC processing, applied before the assistant receives audio. Prevents the assistant from hearing its own voice.");
+
+        Adw.SwitchRow audio_aec_row {
+          title: _("Cancel echo and suppress noise");
+          subtitle: _("Requires restarting listening to take effect");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("High-Pass Filter");
+        description: _("Removes low-frequency hum, desk vibrations and fan noise from the microphone signal.");
+
+        Adw.SwitchRow audio_highpass_row {
+          title: _("Enable high-pass filter");
+        }
+
+        Adw.SpinRow audio_highpass_cutoff_row {
+          title: _("Cutoff frequency");
+          subtitle: _("Hz — higher values remove more rumble but thin out the voice");
+
+          adjustment: Gtk.Adjustment {
+            lower: 20;
+            upper: 500;
+            step-increment: 5;
+            page-increment: 20;
+          };
+
+          digits: 0;
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Automatic Gain Control");
+        description: _("Normalizes speech volume to compensate for a microphone whose system gain is too low or too high.");
+
+        Adw.SwitchRow audio_agc_row {
+          title: _("Enable automatic gain control");
+        }
+
+        Adw.SpinRow audio_agc_target_row {
+          title: _("Target speech level");
+          subtitle: _("RMS level the assistant tries to reach");
+
+          adjustment: Gtk.Adjustment {
+            lower: 200;
+            upper: 8000;
+            step-increment: 50;
+            page-increment: 200;
+          };
+
+          digits: 0;
+        }
+
+        Adw.SpinRow audio_agc_max_gain_row {
+          title: _("Maximum gain");
+          subtitle: _("High values pick up distant voices but also amplify background noise");
+
+          adjustment: Gtk.Adjustment {
+            lower: 1.0;
+            upper: 8.0;
+            step-increment: 0.1;
+            page-increment: 0.5;
+          };
+
+          digits: 1;
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Noise Gate");
+        description: _("Attenuates audio below a threshold computed from the room's background noise, so ambient noise is not sent to speech recognition.");
+
+        Adw.SwitchRow audio_gate_row {
+          title: _("Enable adaptive noise gate");
+        }
+
+        Adw.SpinRow audio_gate_threshold_row {
+          title: _("Sensitivity");
+          subtitle: _("Multiplier over the detected noise floor — higher values require louder speech");
+
+          adjustment: Gtk.Adjustment {
+            lower: 1.0;
+            upper: 10.0;
+            step-increment: 0.1;
+            page-increment: 0.5;
+          };
+
+          digits: 1;
+        }
+
+        Adw.SpinRow audio_gate_attenuation_row {
+          title: _("Attenuation");
+          subtitle: _("0.00 mutes below-threshold audio completely, 1.00 leaves it untouched");
+
+          adjustment: Gtk.Adjustment {
+            lower: 0.0;
+            upper: 1.0;
+            step-increment: 0.05;
+            page-increment: 0.1;
+          };
+
+          digits: 2;
+        }
+      }
+
+      Adw.PreferencesGroup {
+        Adw.ButtonRow audio_reset_btn {
+          title: _("Restore Default Values");
+        }
+      }
+    };
+  };
+}

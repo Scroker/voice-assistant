@@ -1,0 +1,154 @@
+{
+  "endpoints": {
+    "vosk": "https://alphacephei.com/vosk/models/model-list.json",
+    "whisper": "https://huggingface.co/api/models?author=Systran&search=faster-whisper"
+  },
+  "defaults": {
+    "vosk": {
+      "it": "vosk-model-small-it-0.22",
+      "en": "vosk-model-small-en-us-0.15",
+      "fr": "vosk-model-small-fr-0.22",
+      "de": "vosk-model-small-de-0.15",
+      "es": "vosk-model-small-es-0.42",
+      "default": "vosk-model-small-en-us-0.15"
+    },
+    "whisper": "base",
+    "cloud": {
+      "openai_cloud": "whisper-1",
+      "groq_cloud": "whisper-large-v3"
+    }
+  },
+  "cloud_models": [
+    {
+      "id": "whisper-1",
+      "provider": "openai_cloud",
+      "name": "OpenAI Whisper Cloud (whisper-1)",
+      "subtitle": "OpenAI Cloud • High Accuracy • Fast",
+      "lang": "multilingual",
+      "lang_text": "Multilingual",
+      "size_text": "Cloud API"
+    },
+    {
+      "id": "whisper-large-v3",
+      "provider": "groq_cloud",
+      "name": "Groq Whisper Cloud (whisper-large-v3)",
+      "subtitle": "Groq Cloud • Ultra Fast Whisper",
+      "lang": "multilingual",
+      "lang_text": "Multilingual",
+      "size_text": "Cloud API"
+    }
+  ],
+  "seed_fallback": {
+    "vosk": [
+      {
+        "id": "vosk-model-small-it-0.22",
+        "name": "Italian - vosk-model-small-it-0.22 (47.4MiB)",
+        "lang": "it",
+        "lang_text": "Italian",
+        "size_text": "47.4MiB",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip",
+        "type": "small"
+      },
+      {
+        "id": "vosk-model-it-0.22",
+        "name": "Italian - vosk-model-it-0.22 (1.2GiB)",
+        "lang": "it",
+        "lang_text": "Italian",
+        "size_text": "1.2GiB",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-it-0.22.zip",
+        "type": "big"
+      },
+      {
+        "id": "vosk-model-small-en-us-0.15",
+        "name": "English - vosk-model-small-en-us-0.15 (40MiB)",
+        "lang": "en",
+        "lang_text": "English",
+        "size_text": "40MiB",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
+        "type": "small"
+      },
+      {
+        "id": "vosk-model-en-us-0.22",
+        "name": "English - vosk-model-en-us-0.22 (1.8GiB)",
+        "lang": "en",
+        "lang_text": "English",
+        "size_text": "1.8GiB",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip",
+        "type": "big"
+      }
+    ],
+    "whisper": [
+      {
+        "id": "tiny",
+        "name": "Tiny (~75MB - Multilingua, Veloce)",
+        "lang": "multilingual",
+        "lang_text": "Multilingual",
+        "size_text": "~75MB"
+      },
+      {
+        "id": "tiny.en",
+        "name": "Tiny English (~75MB - Solo Inglese)",
+        "lang": "en",
+        "lang_text": "English",
+        "size_text": "~75MB"
+      },
+      {
+        "id": "base",
+        "name": "Base (~140MB - Bilanciato, Consigliato)",
+        "lang": "multilingual",
+        "lang_text": "Multilingual",
+        "size_text": "~140MB",
+        "recommended": true
+      },
+      {
+        "id": "base.en",
+        "name": "Base English (~140MB - Solo Inglese)",
+        "lang": "en",
+        "lang_text": "English",
+        "size_text": "~140MB"
+      },
+      {
+        "id": "small",
+        "name": "Small (~466MB - Buona accuratezza)",
+        "lang": "multilingual",
+        "lang_text": "Multilingual",
+        "size_text": "~466MB"
+      },
+      {
+        "id": "small.en",
+        "name": "Small English (~466MB - Solo Inglese)",
+        "lang": "en",
+        "lang_text": "English",
+        "size_text": "~466MB"
+      },
+      {
+        "id": "medium",
+        "name": "Medium (~1.5GB - Alta accuratezza)",
+        "lang": "multilingual",
+        "lang_text": "Multilingual",
+        "size_text": "~1.5GB"
+      },
+      {
+        "id": "medium.en",
+        "name": "Medium English (~1.5GB - Solo Inglese)",
+        "lang": "en",
+        "lang_text": "English",
+        "size_text": "~1.5GB"
+      },
+      {
+        "id": "large-v3",
+        "name": "Large v3 (~3.1GB - Massima accuratezza)",
+        "lang": "multilingual",
+        "lang_text": "Multilingual",
+        "size_text": "~3.1GB"
+      },
+      {
+        "id": "large-v3-turbo",
+        "name": "Large v3 Turbo (~1.6GB - Alta velocità)",
+        "lang": "multilingual",
+        "lang_text": "Multilingual",
+        "size_text": "~1.6GB"
+      }
+    ]
+  }
+}

@@ -187,14 +187,40 @@ class VoiceAssistant(object):
         pass
 
     def GetMissingDependencies(self) -> str:
-        """Ritorna la lista JSON delle dipendenze Python opzionali mancanti."""
+        """Ritorna la lista JSON delle dipendenze mancanti (Python e di sistema) aggiornata."""
+        if hasattr(self, 'runtime_manager') and hasattr(self.runtime_manager, 'refresh_missing_deps'):
+            try:
+                self.runtime_manager.refresh_missing_deps()
+            except Exception as e:
+                logger.warning(f"Errore durante refresh_missing_deps: {e}")
         return json.dumps(self._missing_deps)
 
-    def notify_dependency_required(self, package: str, description: str, is_critical: bool) -> None:
+    def notify_dependency_required(
+        self,
+        package: str,
+        description: str,
+        is_critical: bool,
+        dep_type: str = "pip",
+        system_packages: dict | None = None,
+        mcp_server: str | None = None,
+    ) -> None:
         """Registra una dipendenza mancante ed emette il segnale D-Bus corrispondente."""
-        entry = {"package": package, "description": description, "is_critical": is_critical}
-        if entry not in self._missing_deps:
+        entry = {
+            "package": package,
+            "description": description,
+            "is_critical": is_critical,
+            "type": dep_type,
+            "system_packages": system_packages or {},
+            "mcp_server": mcp_server,
+        }
+        existing = next(
+            (item for item in self._missing_deps if item.get("package") == package and item.get("type", "pip") == dep_type),
+            None
+        )
+        if not existing:
             self._missing_deps.append(entry)
+        else:
+            existing.update(entry)
         try:
             self.DependencyRequired(package, description, is_critical)
         except Exception:
@@ -256,6 +282,10 @@ class VoiceAssistant(object):
         """Ritorna una stringa JSON contenente la lista dei modelli disponibili per il provider indicato."""
         return self.provider_manager.get_available_models(provider)
 
+    def GetInstalledModels(self, provider: str = "") -> str:
+        """Ritorna una stringa JSON contenente la lista dei modelli installati dal manifest."""
+        return self.provider_manager.get_installed_models(provider)
+
     def GetDownloadingModels(self) -> str:
         """Ritorna una stringa JSON con i modelli attualmente in fase di scaricamento e la relativa percentuale."""
         return json.dumps(self._downloading_models)
@@ -303,26 +333,62 @@ class VoiceAssistant(object):
         """Annulla lo scaricamento di un modello in corso."""
         return self.provider_manager.cancel_download(provider, model_name)
 
+    def DeleteModel(self, provider: str, model_name: str) -> bool:
+        """Elimina un modello scaricato dal disco via D-Bus."""
+        return self.provider_manager.delete_model(provider, model_name)
+
     def ShowWindow(self):
         """Metodo D-Bus per lanciare la finestra interattiva dell'assistente (app separata)."""
         logger.info("[D-Bus] Richiesta apertura finestra interattiva assistente.")
-        import subprocess
-        daemon_dir = os.path.dirname(os.path.abspath(__file__))
-        ext_dir = os.path.dirname(daemon_dir)
-        gui_start = os.path.join(ext_dir, "gui", "start.sh")
-        if os.path.exists(gui_start):
-            subprocess.Popen(["bash", gui_start])
-        else:
-            logger.warning(f"[ShowWindow] GUI start.sh non trovato: {gui_start}")
+        self._launch_gui()
 
     def OpenSettings(self):
         """Metodo D-Bus per aprire il pannello di preferenze dell'assistente vocale."""
         logger.info("[D-Bus] Richiesta apertura finestra impostazioni assistente.")
-        try:
-            import subprocess
-            subprocess.Popen(["gnome-extensions", "prefs", "voice-assistant@scroker.github.io"])
-        except Exception as e:
-            logger.error(f"Errore avvio impostazioni: {e}")
+        self._launch_gui("--open-settings")
+
+    def _launch_gui(self, *args):
+        """Lancia l'applicazione GUI con argomenti opzionali."""
+        logger.info(f"[_launch_gui] Richiesta apertura finestra interattiva (args={args}).")
+        import subprocess
+        daemon_dir = os.path.dirname(os.path.abspath(__file__))
+        ext_dir = os.path.dirname(daemon_dir)
+        cmd_args = list(args) if args else []
+
+        candidates = [
+            os.path.join(ext_dir, "gui", "start.sh"),
+            os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@mkswap.github.io/gui/start.sh"),
+            os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@scroker.github.io/gui/start.sh"),
+        ]
+        gui_start = next((p for p in candidates if os.path.exists(p)), None)
+
+        env = os.environ.copy()
+        runtime_dir = env.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+        if "WAYLAND_DISPLAY" not in env:
+            for name in ("wayland-0", "wayland-1"):
+                if os.path.exists(os.path.join(runtime_dir, name)):
+                    env["WAYLAND_DISPLAY"] = name
+                    break
+        if "DISPLAY" not in env:
+            env["DISPLAY"] = ":0"
+
+        if gui_start:
+            cmd = ["bash", gui_start] + cmd_args
+            logger.info(f"[_launch_gui] Esecuzione: {cmd}")
+            subprocess.Popen(cmd, env=env)
+        else:
+            main_candidates = [
+                os.path.join(ext_dir, "gui", "main.py"),
+                os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@mkswap.github.io/gui/main.py"),
+                os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@scroker.github.io/gui/main.py"),
+            ]
+            gui_main = next((p for p in main_candidates if os.path.exists(p)), None)
+            if gui_main:
+                cmd = [sys.executable, gui_main] + cmd_args
+                logger.info(f"[_launch_gui] Fallback esecuzione: {cmd}")
+                subprocess.Popen(cmd, env=env)
+            else:
+                logger.warning(f"[_launch_gui] GUI non trovata in {candidates}")
 
     def ProcessTextInput(self, text: str):
         """Metodo D-Bus per inviare testo direttamente alla pipeline dell'assistente (senza sintesi audio)."""
@@ -333,7 +399,8 @@ class VoiceAssistant(object):
     @staticmethod
     def _run_mcp_operation(operation, *args):
         """Resolve an MCP coroutine in the synchronous dasbus handler thread."""
-        return asyncio.run(operation(*args))
+        from core.async_bridge import run_async
+        return run_async(operation(*args))
 
     def get_marketplace_featured(self) -> str:
         """Returns the featured MCP servers JSON list."""
@@ -378,8 +445,30 @@ class VoiceAssistant(object):
         if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
             return False, "MCP manager non inizializzato"
         if hasattr(self.mcp_manager, 'install_mcp_server'):
-            return self._run_mcp_operation(self.mcp_manager.install_mcp_server, server_name, server_config, env_vars)
+            res = self._run_mcp_operation(self.mcp_manager.install_mcp_server, server_name, server_config, env_vars)
+            if hasattr(self, 'runtime_manager') and hasattr(self.runtime_manager, 'refresh_missing_deps'):
+                self.runtime_manager.refresh_missing_deps()
+                self.runtime_manager._notify_missing_deps_summary()
+            return res
         return False, "install_mcp_server non supportato"
+
+    def InstallMCPServer(self, server_name: str, server_config: str, env_vars: str = ""):
+        return self.install_mcp_server(server_name, server_config, env_vars)
+
+    def start_mcp_server(self, server_name: str):
+        """Avvia un server MCP configurato e aggiorna la disponibilità dei tool."""
+        if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
+            return False, "MCP manager non inizializzato"
+        if hasattr(self.mcp_manager, 'start_server'):
+            res = self._run_mcp_operation(self.mcp_manager.start_server, server_name)
+            if hasattr(self, 'runtime_manager') and hasattr(self.runtime_manager, 'refresh_missing_deps'):
+                self.runtime_manager.refresh_missing_deps()
+                self.runtime_manager._notify_missing_deps_summary()
+            return res
+        return False, "start_server non supportato"
+
+    def StartMCPServer(self, server_name: str):
+        return self.start_mcp_server(server_name)
 
     def uninstall_mcp_server(self, server_name: str):
         """Uninstalls a configured MCP server."""
@@ -389,6 +478,9 @@ class VoiceAssistant(object):
             return self._run_mcp_operation(self.mcp_manager.uninstall_mcp_server, server_name)
         return False, "uninstall_mcp_server non supportato"
 
+    def UninstallMCPServer(self, server_name: str):
+        return self.uninstall_mcp_server(server_name)
+
     def test_mcp_server(self, server_name: str):
         """Runs a quick smoke test for a configured MCP server."""
         if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
@@ -396,6 +488,9 @@ class VoiceAssistant(object):
         if hasattr(self.mcp_manager, 'test_mcp_server'):
             return self._run_mcp_operation(self.mcp_manager.test_mcp_server, server_name)
         return False, "test_mcp_server non supportato"
+
+    def TestMCPServer(self, server_name: str):
+        return self.test_mcp_server(server_name)
 
     def update_server_config(self, server_name: str, env_vars: str, enabled: bool):
         """Updates a server's runtime config in the manager."""
@@ -405,6 +500,9 @@ class VoiceAssistant(object):
             return self._run_mcp_operation(self.mcp_manager.update_server_config, server_name, env_vars, enabled)
         return False, "update_server_config non supportato"
 
+    def UpdateServerConfig(self, server_name: str, env_vars: str, enabled: bool):
+        return self.update_server_config(server_name, env_vars, enabled)
+
     def get_installed_servers(self) -> str:
         """Returns the installed MCP servers list."""
         if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
@@ -412,6 +510,9 @@ class VoiceAssistant(object):
         if hasattr(self.mcp_manager, 'get_installed_servers'):
             return self._run_mcp_operation(self.mcp_manager.get_installed_servers)
         return json.dumps([])
+
+    def GetInstalledServers(self) -> str:
+        return self.get_installed_servers()
 
     def _report_error(self, exc: Exception) -> None:
         """Raccoglie e invia a Bugzilla le eccezioni critiche del thread audio."""

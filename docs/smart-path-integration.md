@@ -2,22 +2,23 @@
 
 ## Overview
 
-The Voice Assistant now implements a **dual-path dispatch architecture** for intelligent query handling:
+The Voice Assistant implements a **dual-path dispatch architecture** for intelligent query handling, all inside `PipelineController` (`src/daemon/core/pipeline.py`):
 
-1. **FAST PATH** (<10ms): Regex patterns + sparse vector semantic matching
-2. **SMART PATH** (50-500ms): RAG retrieval + conversation memory + LLM tool calling
-3. **Fallback** (streaming): Traditional LLM streaming with token-based TTS
+1. **FAST PATH** (<10ms): Regex patterns + sparse vector semantic matching — **off by default**, user-toggleable via the `fast-path-enabled` GSettings key (Preferences → General → Command Dispatch)
+2. **MEDIUM PATH**: single-shot LLM tool selection (`_try_llm_tool_select`), run between Fast-Path and Smart-Path when both `mcp_manager` and `llm_streamer` are available — not covered by this guide's original scope, see [`docs/pipeline.md`](pipeline.md#25-medium-path-_try_llm_tool_select)
+3. **SMART PATH** (50-500ms): RAG retrieval + conversation memory + LLM tool calling
+4. **Fallback** (streaming): Traditional LLM streaming with token-based TTS
 
 ## Architecture
 
 ```
 User Input (STT)
     ↓
-Fast-Path Matcher
+Fast-Path Matcher (off by default, user-toggleable — see note above)
     ├─ Regex patterns (exact match)
-    ├─ Semantic similarity (>85% threshold)
+    ├─ Semantic similarity (score ≥ 0.35, VectorIntentMatcher default — not 85%)
     └─ Known intents (system_control, theme_control, etc.)
-    ↓ No match → proceed to SMART PATH
+    ↓ No match → Medium-Path LLM tool selection → proceed to SMART PATH if unresolved
     
 Smart-Path Controller (if mcp_manager available)
     ├─ Add to conversation memory (sliding window: 20 messages)
@@ -45,13 +46,14 @@ LLM Streaming Fallback
 
 ## Components
 
-### 1. Fast-Path Dispatcher (`src/daemon/core/fast_path_dispatcher.py`)
+### 1. Fast-Path Dispatcher (`FastPathDispatcher` class inside `src/daemon/core/pipeline.py`, not a separate `fast_path_dispatcher.py` file)
 - **Purpose**: Immediate dispatch for known patterns
 - **Latency**: <10ms
+- **Status**: off by default; `core/runtime_manager.py` reads the `fast-path-enabled` GSettings key at pipeline construction and `core/assistant_runtime.py` applies changes live
 - **Patterns**:
   - Regex rules for fixed responses
-  - VectorIntentMatcher for semantic similarity
-  - Stopword filtering to prevent false positives
+  - `VectorIntentMatcher` (`src/daemon/skills/vector_intent_matcher.py`) for semantic similarity, default `min_score=0.35` (no `SEMANTIC_SIMILARITY_THRESHOLD` constant exists in the codebase)
+  - Stopword filtering (`STOPWORDS` set in the same file) to prevent false positives
 - **Example**:
   ```python
   # Input: "Accendi la luce della cucina"
@@ -62,6 +64,7 @@ LLM Streaming Fallback
 ### 2. Smart-Path Controller (`src/daemon/core/smart_path_controller.py`)
 - **Purpose**: Contextual LLM with memory + RAG + tool calling
 - **Latency**: 50-500ms (depends on LLM response time)
+- **Construction**: `pipeline.py` instantiates it with no arguments (`SmartPathController()`); its memory/RAG capacity come from `ConversationMemory`/`VectorStore` constructor defaults, not from parameters passed through `PipelineController`
 - **Flow**:
   1. **Memory Management**: Add user message to sliding window
   2. **Prompt Building**: Inject RAG results + conversation context
@@ -81,11 +84,11 @@ LLM Streaming Fallback
   - JSON serialization for logging
 
 ### 4. RAG Vector Store (`src/daemon/services/rag_store.py`)
-- **Type**: In-memory vector database (no ML library dependency)
-- **Vectors**: Sparse token-based (simple word matching + TF-IDF)
-- **Search**: Cosine similarity with configurable threshold
-- **Deduplication**: Content hash + LRU eviction
-- **Capacity**: ~1000 documents (configurable)
+- **Type**: Hybrid in-memory + **persistent SQLite** vector database (`~/.local/share/voice-assistant/rag_store.db`, background sync every 30s) — no ML library dependency
+- **Vectors**: Sparse token-based, plain **term-frequency** (count / total) — there is no IDF component, so this is not TF-IDF despite the name similarity
+- **Search**: Cosine similarity with configurable threshold (`search()` default `min_score=0.1`; `smart_path_controller.py` calls it with `min_score=0.15`)
+- **Deduplication**: Content hash, confirmed. **Eviction is oldest-timestamp-first (FIFO), not LRU** — the timestamp is set once at document creation and never refreshed on access
+- **Capacity**: ~1000 documents (`max_documents` constructor default, confirmed)
 - **Example Query**:
   ```python
   results = rag_store.search("come controllare le luci", top_k=3)
@@ -145,10 +148,11 @@ LLM Streaming Fallback
   
   You can turn devices on/off by using the execute_shell_command tool...
   ```
-- **Loading**:
-  - Default: `~/.local/share/gnome-shell/extensions/voice-assistant@mkswap.github.io/skills/`
-  - User: `~/.config/voice-assistant/skills/`
-  - Dynamic reload on demand
+- **Loading** (`SkillRegistry.from_default_directory()`, searched in this order):
+  - `<daemon>/skills/default_skills`
+  - `<daemon>/default_skills`
+  - User override: `~/.config/voice-assistant/skills`
+  - (No dynamic `reload()` method exists on `SkillRegistry` — reloading requires re-instantiating the registry.)
 
 ## Pipeline Integration
 
@@ -239,26 +243,34 @@ Latency: 300-600ms
 
 ## Configuration
 
+There are no module-level constants for any of this — all limits below are constructor default parameters, verified against the current code:
+
 ### Memory Limits
 ```python
-# conversation_memory.py
-SLIDING_WINDOW_SIZE = 20  # messages
-MESSAGE_TTL_SECONDS = 3600  # 1 hour
+# src/daemon/services/memory_manager.py
+class ConversationMemory:
+    def __init__(self, max_messages: int = 20, max_age_seconds: int = 3600):
+        ...
 ```
 
 ### RAG Store Limits
 ```python
-# rag_store.py
-MAX_DOCUMENTS = 1000
-DOCUMENT_TTL_SECONDS = 86400  # 24 hours
-MIN_RELEVANCE_SCORE = 0.3
+# src/daemon/services/rag_store.py
+class VectorStore:
+    def __init__(self, max_documents: int = 1000, ttl_seconds: int = ..., ...):
+        ...
+    def search(self, query, top_k: int = 3, min_score: float = 0.1):
+        ...
 ```
 
 ### Fast-Path Thresholds
 ```python
-# fast_path_dispatcher.py
-SEMANTIC_SIMILARITY_THRESHOLD = 0.85
-STOPWORD_FILTERING = True
+# FastPathDispatcher class, inside src/daemon/core/pipeline.py
+# fast_path_enabled defaults to False and is passed as False in runtime_manager.py
+
+# VectorIntentMatcher, src/daemon/skills/vector_intent_matcher.py
+def match(self, text, min_score: float = 0.35):
+    ...
 ```
 
 ## Performance Considerations
@@ -288,8 +300,8 @@ systemctl --user restart voice-assistant
 
 ### Verify MCP Manager Connection
 ```python
-# In REPL
-from src.daemon.services.mcp_manager import MCPManager
+# In REPL — note the real module is mcp/manager.py, not services/mcp_manager.py
+from mcp.manager import MCPManager
 mcp = MCPManager()
 print(mcp.get_available_tools())
 # Should list all registered tools
@@ -303,11 +315,11 @@ print(mcp.get_available_tools())
 
 ### Memory Bloat
 - **Cause**: RAG store growing too large
-- **Fix**: Increase MIN_RELEVANCE_SCORE or decrease MAX_DOCUMENTS
+- **Fix**: Pass a smaller `max_documents` / larger `min_score` when constructing `VectorStore`
 
 ### False Positives in FAST-PATH
-- **Cause**: Semantic similarity threshold too low
-- **Fix**: Increase SEMANTIC_SIMILARITY_THRESHOLD or add stopwords
+- **Cause**: Semantic similarity threshold too low, or Fast-Path enabled without expecting it
+- **Fix**: Raise the `min_score` passed to `VectorIntentMatcher.match()` or add stopwords, or turn Fast-Path off entirely from Preferences → General → Command Dispatch (`fast-path-enabled`).
 
 ### Tool Calls Not Executing
 - **Cause**: Tool not in `tools_allowed` list in SKILL.md
@@ -315,7 +327,7 @@ print(mcp.get_available_tools())
 
 ## Future Enhancements
 
-1. **Persistent Storage**: SQLite backend for long-term RAG
+1. ~~**Persistent Storage**: SQLite backend for long-term RAG~~ — **already implemented**: `VectorStore` in `rag_store.py` persists to SQLite (`~/.local/share/voice-assistant/rag_store.db`) with a periodic background sync.
 2. **Streaming Responses**: Token-by-token output for SMART PATH
 3. **Custom RAG Sources**: User-provided documents/knowledge base
 4. **Performance Optimization**: Async RAG search + batch tool execution

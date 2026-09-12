@@ -45,29 +45,8 @@ class SmartPathController:
     def _resolve_maybe_async(value: Any) -> Any:
         if not asyncio.iscoroutine(value):
             return value
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            holder: Dict[str, Any] = {}
-
-            def run():
-                try:
-                    holder["result"] = asyncio.run(value)
-                except Exception as exc:
-                    holder["error"] = exc
-
-            thread = threading.Thread(target=run, daemon=True)
-            thread.start()
-            thread.join()
-            if "error" in holder:
-                raise holder["error"]
-            return holder.get("result")
-
-        return asyncio.run(value)
+        from core.async_bridge import run_async
+        return run_async(value)
 
     @staticmethod
     def _emit_sentence_chunks(text: str, buffer: str, sentence_callback: Optional[Any]) -> str:

@@ -18,13 +18,21 @@ logger = logging.getLogger("VoiceAssistant.STT.Vosk")
 from .base import STTProvider
 
 class VoskProvider(STTProvider):
-    MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
+    try:
+        from core.path_utils import get_models_dir
+        MODELS_DIR = str(get_models_dir())
+    except Exception:
+        MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
 
     def __init__(self, model_name: str, hardware: str, extra: dict, progress_callback=None, models_dir: str = None, download_only: bool = False):
         if models_dir and len(models_dir.strip()) > 0:
             self.MODELS_DIR = os.path.expanduser(models_dir)
         else:
-            self.MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
+            try:
+                from core.path_utils import get_models_dir
+                self.MODELS_DIR = str(get_models_dir())
+            except Exception:
+                self.MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
 
         stt_dir = os.path.join(self.MODELS_DIR, "stt")
         os.makedirs(stt_dir, exist_ok=True)
@@ -125,11 +133,32 @@ class VoskProvider(STTProvider):
                                     last_pct = pct
                                     progress_callback(pct)
                 break
+            except (InterruptedError, KeyboardInterrupt):
+                logger.info(f"Download di '{target_name}' annullato dall'utente.")
+                if os.path.exists(zip_path):
+                    try:
+                        os.remove(zip_path)
+                    except Exception:
+                        pass
+                raise
             except urllib.error.HTTPError as e:
                 if e.code == 404:
                     logger.error(f"Modello Vosk non trovato sul server (HTTP 404): {url}")
                     ErrorCollector.record_error(*sys.exc_info(), component="VoiceAssistant.STT.Vosk")
                     raise Exception(f"Modello Vosk '{target_name}' non trovato sul server remote (HTTP Error 404: Not Found)")
+                if e.code == 416:
+                    # Il file parziale è già grande quanto (o più de) il file remoto.
+                    # Lo eliminiamo e al prossimo tentativo ripartiamo dall'inizio.
+                    logger.warning(
+                        f"HTTP 416: file parziale '{zip_path}' non valido, lo elimino e riprovo da capo."
+                    )
+                    if os.path.exists(zip_path):
+                        try:
+                            os.remove(zip_path)
+                        except Exception:
+                            pass
+                    # Non aspettiamo, ricominciamo subito
+                    continue
                 logger.warning(f"Interruzione download Vosk (tentativo {attempt}/{max_retries}): {e}")
                 if attempt == max_retries:
                     ErrorCollector.record_error(*sys.exc_info(), component="VoiceAssistant.STT.Vosk")
@@ -145,9 +174,11 @@ class VoskProvider(STTProvider):
                 time.sleep(2)
                 
         try:
+            stt_dir = os.path.join(self.MODELS_DIR, "stt")
+            os.makedirs(stt_dir, exist_ok=True)
             logger.info(f"Download completato. Estrazione di '{zip_path}'...")
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(self.MODELS_DIR)
+                zip_ref.extractall(stt_dir)
                 
             if progress_callback:
                 progress_callback(100)
@@ -186,61 +217,27 @@ class VoskProvider(STTProvider):
         res = json.loads(res_json)
         return res.get("text", "").strip()
 
-    _models_cache = None
-
     @classmethod
     def get_available_models(cls, user_lang: str = None, force_refresh: bool = False) -> list[dict]:
-        if cls._models_cache and not force_refresh:
-            if user_lang:
-                u_lang = user_lang.split("_")[0].split("-")[0].lower()
-                return sorted(cls._models_cache, key=lambda m: (0 if m.get("lang", "").lower() == u_lang else 1, m.get("lang_text", ""), m.get("name", "")))
-            return cls._models_cache
-
-        url = "https://alphacephei.com/vosk/models/model-list.json"
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=6) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                models = []
-                for item in data:
-                    if item.get("obsolete") == "true":
-                        continue
-                    m_id = item.get("name")
-                    m_lang = item.get("lang", "en")
-                    m_lang_text = item.get("lang_text", m_lang.upper())
-                    m_size = item.get("size_text", "")
-                    m_url = item.get("url", f"https://alphacephei.com/vosk/models/{m_id}.zip")
-                    m_type = item.get("type", "")
-                    
-                    models.append({
-                        "id": m_id,
-                        "name": f"{m_lang_text} - {m_id} ({m_size})" if m_size else f"{m_lang_text} - {m_id}",
-                        "lang": m_lang,
-                        "lang_text": m_lang_text,
-                        "size_text": m_size,
-                        "url": m_url,
-                        "type": m_type
-                    })
-                
-                u_lang = (user_lang or "").split("_")[0].split("-")[0].lower()
-                def _sort_key(m):
-                    lang = m["lang"].lower()
-                    if u_lang and lang == u_lang:
-                        return (0, m["name"])
-                    return (1, m["lang_text"], m["name"])
-                
-                models.sort(key=_sort_key)
-                cls._models_cache = models
-                return models
+            from services.catalog_manager import catalog_service
+            return catalog_service.get_vosk_models(
+                user_lang=user_lang,
+                force_refresh=force_refresh,
+                models_dir=cls.MODELS_DIR,
+            )
         except Exception as e:
-            logger.warning(f"Impossibile recuperare la lista modelli Vosk online ({e}). Uso lista locale.")
-            fallback = [
-                {"id": "vosk-model-small-it-0.22", "name": "Italian - vosk-model-small-it-0.22 (47.4MiB)", "lang": "it", "lang_text": "Italian", "size_text": "47.4MiB", "url": "https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip", "type": "small"},
-                {"id": "vosk-model-it-0.22", "name": "Italian - vosk-model-it-0.22 (1.2GiB)", "lang": "it", "lang_text": "Italian", "size_text": "1.2GiB", "url": "https://alphacephei.com/vosk/models/vosk-model-it-0.22.zip", "type": "big"},
-                {"id": "vosk-model-small-en-us-0.15", "name": "English - vosk-model-small-en-us-0.15 (40MiB)", "lang": "en", "lang_text": "English", "size_text": "40MiB", "url": "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip", "type": "small"},
-                {"id": "vosk-model-en-us-0.22", "name": "English - vosk-model-en-us-0.22 (1.8GiB)", "lang": "en", "lang_text": "English", "size_text": "1.8GiB", "url": "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip", "type": "big"}
-            ]
-            cls._models_cache = fallback
+            logger.warning(f"Errore recupero modelli da catalog_service: {e}")
+            from core.data_loader import load_json_data
+            cfg = load_json_data("catalog/stt_models.json", fallback_default={}) or {}
+            fallback = cfg.get("seed_fallback", {}).get("vosk", [])
+            if not fallback:
+                fallback = [
+                    {"id": "vosk-model-small-it-0.22", "name": "Italian - vosk-model-small-it-0.22 (47.4MiB)", "lang": "it", "lang_text": "Italian", "size_text": "47.4MiB", "url": "https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip", "type": "small"},
+                    {"id": "vosk-model-it-0.22", "name": "Italian - vosk-model-it-0.22 (1.2GiB)", "lang": "it", "lang_text": "Italian", "size_text": "1.2GiB", "url": "https://alphacephei.com/vosk/models/vosk-model-it-0.22.zip", "type": "big"},
+                    {"id": "vosk-model-small-en-us-0.15", "name": "English - vosk-model-small-en-us-0.15 (40MiB)", "lang": "en", "lang_text": "English", "size_text": "40MiB", "url": "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip", "type": "small"},
+                    {"id": "vosk-model-en-us-0.22", "name": "English - vosk-model-en-us-0.22 (1.8GiB)", "lang": "en", "lang_text": "English", "size_text": "1.8GiB", "url": "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip", "type": "big"}
+                ]
             if user_lang:
                 u_lang = user_lang.split("_")[0].split("-")[0].lower()
                 return sorted(fallback, key=lambda m: (0 if m.get("lang", "").lower() == u_lang else 1, m.get("lang_text", ""), m.get("name", "")))
@@ -249,53 +246,26 @@ class VoskProvider(STTProvider):
     @classmethod
     def get_default_model(cls, lang: str = None, **kwargs) -> str:
         """
-        Ritorna l'ultimo modello Vosk 'small' disponibile per la lingua specificata.
-        Se la lingua non è specificata o è vuota, rileva la lingua di sistema dell'utente.
-        Estrae la lingua (es. 'it' da 'it_IT'), filtra i modelli contenenti 'small'
-        e seleziona l'ultima versione disponibile in base al numero di versione.
+        Ritorna l'ultimo modello Vosk 'small' disponibile per la lingua specificata o di sistema.
         """
-        import re
-
         if not lang or not lang.strip():
             try:
                 from core.locale_utils import get_system_language
                 lang = get_system_language()
             except ImportError:
-                lang = "en"
+                lang = "it"
+
+        try:
+            from services.catalog_manager import catalog_service
+            def_m = catalog_service.get_default_model("vosk", lang=lang)
+            if def_m:
+                return def_m
+        except Exception:
+            pass
 
         clean_lang = lang.split("_")[0].split("-")[0].lower()
-        models = cls.get_available_models(user_lang=clean_lang)
-
-        candidates = [
-            m for m in models
-            if m.get("lang", "").lower() == clean_lang
-            and ("small" in m.get("id", "").lower() or m.get("type") == "small")
-        ]
-
-        if not candidates:
-            candidates = [m for m in models if m.get("lang", "").lower() == clean_lang]
-
-        if not candidates and clean_lang != "en":
-            candidates = [
-                m for m in models
-                if m.get("lang", "").lower() == "en"
-                and ("small" in m.get("id", "").lower() or m.get("type") == "small")
-            ]
-
-        if candidates:
-            def _extract_version(m):
-                m_id = m.get("id", "")
-                match = re.search(r'(\d+(?:\.\d+)+)', m_id)
-                if match:
-                    try:
-                        return [int(x) for x in match.group(1).split(".")]
-                    except ValueError:
-                        pass
-                return [0]
-
-            candidates.sort(key=lambda m: (_extract_version(m), m.get("id", "")))
-            return candidates[-1]["id"]
-
+        if clean_lang == "it":
+            return "vosk-model-small-it-0.22"
         return f"vosk-model-small-{clean_lang}" if clean_lang else "vosk-model-small-en-us-0.15"
 
 

@@ -9,9 +9,9 @@ triggers:
   - "apri firefox"
   - "lancia il browser"
 tools_allowed:
-  - "system_volume"
-  - "dark_mode"
-  - "app_launcher"
+  - "set_volume"
+  - "quick_settings"
+  - "launch_application"
 intent: "system_control"
 ---
 

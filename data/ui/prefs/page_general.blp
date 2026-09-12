@@ -1,0 +1,120 @@
+// GENERAL PAGE
+Adw.PreferencesPage general_page {
+  title: _("General");
+  icon-name: "settings-symbolic";
+  name: "general";
+
+  Adw.PreferencesGroup {
+    title: _("Voice Assistant");
+    description: _("General configuration and assistant activation.");
+
+    Adw.SwitchRow enable_switch_row {
+      title: _("Enable Voice Assistant");
+      subtitle: _("Enable or disable background listening");
+    }
+  }
+
+  Adw.PreferencesGroup lang_group {
+    title: _("Assistant Language");
+    description: _("Language used for speech recognition and responses");
+
+    Adw.ActionRow lang_selection_row {
+      title: _("Language");
+      subtitle: _("System Language");
+      activatable: true;
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: _("Command Processing");
+    description: _("How a recognized command is dispatched before reaching the full assistant.");
+
+    Adw.ActionRow dispatch_subpage_row {
+      title: _("Command Dispatch");
+      subtitle: _("Enable or disable the Fast-Path and Medium-Path stages");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "media-playlist-consecutive-symbolic";
+        valign: center;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: _("Audio Input");
+    description: _("Microphone processing applied before wake word detection and speech recognition.");
+
+    Adw.ActionRow audio_subpage_row {
+      title: _("Audio Filters");
+      subtitle: _("Echo cancellation, high-pass, gain control and noise gate");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "audio-input-microphone-symbolic";
+        valign: center;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: _("System &amp; Maintenance");
+    description: _("Manage downloaded models, disk storage, and diagnostics.");
+
+    Adw.ActionRow models_subpage_row {
+      title: _("Storage and Models");
+      subtitle: _("Manage installed models and storage directory");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "drive-harddisk-symbolic";
+        valign: center;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+
+    Adw.ActionRow bugreport_subpage_row {
+      title: _("Bug Reporting");
+      subtitle: _("Configure automatic crash reporting to Bugzilla");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "dialog-warning-symbolic";
+        valign: center;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
+}

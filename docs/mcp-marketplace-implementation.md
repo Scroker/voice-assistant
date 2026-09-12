@@ -1,5 +1,14 @@
 # MCP Marketplace & Registry - Implementazione Completa
 
+> [!WARNING]
+> **Il titolo è fuorviante: solo il backend è implementato, la UI descritta in questo documento non esiste.** Verificato contro il codice attuale:
+> - Il backend (`installer.py`, `registry.py`, i metodi marketplace di `manager.py`) esiste davvero come descritto nella sezione "Backend" sotto.
+> - **La UI a 3 tab (Marketplace/Server Installati/Configurazione Avanzata) descritta in "Frontend" non esiste.** `src/gui/components/settings/mcp.py` è una classe `MCPSettings` di 44 righe che si limita a due binding GSettings (`mcp-enabled`, `mcp-registry-url`) e un'unica riga statica popolata da `mcp-servers`. Nessuna search bar, grid, dialog di installazione o tab: `grep -rl "marketplace\|Smithery" src/gui/` non produce risultati.
+> - I metodi `GetMarketplaceFeatured`, `SearchMarketplace`, `GetServerDetails` **non sono realmente esposti via D-Bus**: in `main.py` esistono solo come `get_marketplace_featured`, `search_marketplace`, `get_server_details` (snake_case) — dasbus richiede nomi CamelCase per l'esportazione automatica, quindi restano metodi Python interni non raggiungibili dal bus. Vedi [`docs/dbus.md`](dbus.md).
+> - `src/prefs/mcp.js` citato nella sezione "File Modificati" **non esiste**: non c'è alcuna directory `src/prefs/` nel repository.
+>
+> In sintesi: la funzionalità marketplace è un backend pronto ma senza consumer — né la GUI né l'interfaccia D-Bus reale la espongono oggi all'utente finale.
+
 ## Architettura Implementata
 
 ### Backend (Python - `src/daemon/mcp/`)
@@ -31,7 +40,7 @@ MCPRegistryClient
 └── filter_by_category(category) → Server per categoria
 
 Features:
-- Fetch da https://registry.smithery.ai
+- Fetch da https://api.smithery.ai
 - Fallback a FEATURED_SERVERS offline
 - Stato "installed" calcolato da mcp_servers.json
 - Timeout 5s su query remote
@@ -55,9 +64,12 @@ MCPManager (potenziato con installer + registry)
     └── get_installed_servers() → JSON
 ```
 
-### Frontend (JavaScript - `src/prefs/mcp.js`)
+### Frontend (Python — `src/gui/components/settings/mcp.py`)
 
-#### UI Structure: Stack di 3 Tab
+> [!NOTE]
+> Quanto segue descrive un **design non ancora implementato**. La classe `MCPSettings` reale ha solo ~44 righe: due binding GSettings (`mcp-enabled`, `mcp-registry-url`) e una riga di riepilogo statica dal contenuto di `mcp-servers`. Nessuno degli elementi UI sotto (search bar, grid, dialog, tab) esiste nel codice attuale.
+
+#### UI Structure: Stack di 3 Tab (proposta, non implementata)
 
 **Tab 1: Marketplace**
 ```
@@ -84,58 +96,45 @@ MCPManager (potenziato con installer + registry)
 **Tab 3: Configurazione Avanzata**
 ```
 ├─ Toggle MCP (enable/disable integrazione)
-├─ URL Registry (default: https://registry.smithery.ai)
+├─ URL Registry (default: https://api.smithery.ai)
 └─ Info panel (documentazione)
 ```
 
 ### D-Bus Integration
 
+> **Nota**: la sezione seguente mostrava in precedenza tutti questi metodi come parte dell'interfaccia D-Bus reale. In realtà, come spiegato nel warning in cima alla pagina, solo le **Installation/Configuration Methods** sono davvero raggiungibili via D-Bus (senza però valori di ritorno, perché i wrapper Python non hanno un'annotazione di tipo — vedi [`docs/dbus.md`](dbus.md)); i tre **Marketplace Methods** sono funzioni Python interne, mai esposte sul bus.
+
 ```xml
 <!-- Interface esposta al daemon -->
-<interface name="org.gnome.shell.extensions.voice_assistant.MCP">
-  <!-- Marketplace Methods -->
-  <method name="GetMarketplaceFeatured">
-    <arg type="s" direction="out" name="servers_json"/>
-  </method>
-  <method name="SearchMarketplace">
-    <arg type="s" direction="in" name="query"/>
-    <arg type="s" direction="out" name="results_json"/>
-  </method>
-  <method name="GetServerDetails">
-    <arg type="s" direction="in" name="server_name"/>
-    <arg type="s" direction="out" name="details_json"/>
-  </method>
-  
-  <!-- Installation Methods -->
+<interface name="org.local.VoiceAssistant">
+  <!-- Installation Methods (reali, ma nessun valore di ritorno via D-Bus) -->
   <method name="InstallMCPServer">
-    <arg type="s" direction="in" name="name"/>
-    <arg type="s" direction="in" name="config_json"/>
-    <arg type="s" direction="in" name="env_vars_json"/>
-    <arg type="b" direction="out" name="success"/>
-    <arg type="s" direction="out" name="message"/>
+    <arg type="s" direction="in" name="server_name"/>
+    <arg type="s" direction="in" name="server_config"/>
+    <arg type="s" direction="in" name="env_vars"/>
   </method>
   <method name="UninstallMCPServer">
-    <arg type="s" direction="in" name="name"/>
-    <arg type="b" direction="out" name="success"/>
-    <arg type="s" direction="out" name="message"/>
+    <arg type="s" direction="in" name="server_name"/>
   </method>
   <method name="TestMCPServer">
-    <arg type="s" direction="in" name="name"/>
-    <arg type="b" direction="out" name="success"/>
-    <arg type="s" direction="out" name="message"/>
+    <arg type="s" direction="in" name="server_name"/>
   </method>
-  
+
   <!-- Configuration Methods -->
   <method name="UpdateServerConfig">
-    <arg type="s" direction="in" name="name"/>
-    <arg type="s" direction="in" name="env_vars_json"/>
+    <arg type="s" direction="in" name="server_name"/>
+    <arg type="s" direction="in" name="env_vars"/>
     <arg type="b" direction="in" name="enabled"/>
-    <arg type="b" direction="out" name="success"/>
-    <arg type="s" direction="out" name="message"/>
   </method>
   <method name="GetInstalledServers">
     <arg type="s" direction="out" name="servers_json"/>
   </method>
+
+  <!-- Marketplace "Methods": esistono solo come funzioni Python snake_case
+       (get_marketplace_featured, search_marketplace, get_server_details,
+       get_marketplace_categories, filter_marketplace_by_category) in main.py.
+       Non essendo CamelCase, dasbus non le espone sul bus: NON fanno parte
+       dell'interfaccia D-Bus reale. -->
 </interface>
 ```
 
@@ -166,8 +165,8 @@ MCPManager (potenziato con installer + registry)
 ```json
 {
   "mcpServers": {
-    "gnome-system": {
-      "command": "builtin",
+    "gnome-mcp-server": {
+      "command": "gnome-mcp-server",
       "args": [],
       "env": {},
       "enabled": true,
@@ -184,6 +183,8 @@ MCPManager (potenziato con installer + registry)
   }
 }
 ```
+
+> Il nome legacy `"gnome-system"` con `"command": "builtin"` (usato in una versione precedente di questo esempio) viene automaticamente migrato al valore corrente da `config.py::get_default_config()` al primo avvio; entrambi i nomi restano comunque protetti dalla disinstallazione in `installer.py`.
 
 ## Dipendenze Backend
 
@@ -206,15 +207,15 @@ Già disponibili in GNOME 46+:
 
 ```
 src/daemon/mcp/
-├── installer.py              [NUOVO] 160 righe
-├── registry.py               [MODIFICATO] +80 righe (metodi marketplace)
-├── manager.py                [MODIFICATO] +110 righe (D-Bus methods)
-├── config.py                 [INVARIATO] ✓
-└── client.py                 [INVARIATO] ✓
-
-src/prefs/
-└── mcp.js                    [MODIFICATO] 280 → 450 righe (UI completa)
+├── installer.py              276 righe (non più 160: aggiornato da modifiche successive)
+├── registry.py                    (metodi marketplace)
+├── manager.py                     (D-Bus methods)
+├── config.py
+├── credentials.py                 (storage credenziali via keyring, vedi nota sicurezza sotto)
+└── client.py
 ```
+
+> Non esiste alcuna directory `src/prefs/` né un file `mcp.js` nel repository — l'unico file prefs GJS è `src/prefs.js` alla radice di `src/`, e non contiene codice relativo al marketplace (è uno stub che delega alla GUI Python, vedi [`docs/architecture.md`](architecture.md) sezione 4). L'eventuale UI marketplace, se implementata, andrebbe in `src/gui/components/settings/mcp.py` (Python/GTK4), non in GJS.
 
 ## Test Verificati
 
@@ -255,8 +256,8 @@ await registry.get_categories()  # ['Desktop', 'Web', 'Productivity', 'Data']
 ## Note di Implementazione
 
 1. **Isolamento D-Bus**: MCPManager espone metodi che ritornano JSON stringhe (non object), safer per D-Bus
-2. **Fallback Offline**: Se registry.smithery.ai non raggiungibile, usa FEATURED_SERVERS hardcoded
+2. **Fallback Offline**: Se api.smithery.ai non raggiungibile, usa FEATURED_SERVERS hardcoded
 3. **Built-in Protection**: Server "gnome-system" non può essere disinstallato
 4. **Timeouts**: 5s per fetch remote, 10s per test server startup
 5. **Error Handling**: Tutti i metodi ritornano (success: bool, message: str) strutturato
-6. **Env Var Security**: Password/API keys memorizzate plaintext in config JSON (TODO: encryption)
+6. **Env Var Security**: **già implementato**, non un TODO — `src/daemon/mcp/credentials.py` (`MCPCredentialStore`) salva i segreti nel keyring di sistema (`keyring.set_password`) e scrive in `mcp_servers.json` solo un riferimento `{"keyring": credential_name}`, non il valore in chiaro. `installer.py` la usa già nel flusso di installazione.

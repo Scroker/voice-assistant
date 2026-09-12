@@ -28,6 +28,13 @@ class MCPCredentialStore:
         return references
 
     def resolve_environment(self, environment: Dict[str, Any]) -> Dict[str, str]:
+        if not environment:
+            return {}
+
+        has_keyring_ref = any(isinstance(v, dict) and "keyring" in v for v in environment.values())
+        if not has_keyring_ref:
+            return {k: str(v) for k, v in environment.items()}
+
         try:
             import keyring
         except ImportError as error:

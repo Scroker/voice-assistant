@@ -1,0 +1,66 @@
+{
+  "openai": {
+    "name": "OpenAI",
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "default_model": "gpt-4o-mini",
+    "temperature": 0.3,
+    "api_key_header": "Authorization",
+    "api_key_prefix": "Bearer "
+  },
+  "ollama": {
+    "name": "Ollama",
+    "endpoint": "http://localhost:11434/v1/chat/completions",
+    "default_model": "llama3.2:3b",
+    "temperature": 0.3,
+    "api_key_header": "",
+    "api_key_prefix": ""
+  },
+  "groq": {
+    "name": "Groq",
+    "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+    "default_model": "llama-3.3-70b-versatile",
+    "temperature": 0.3,
+    "api_key_header": "Authorization",
+    "api_key_prefix": "Bearer "
+  },
+  "deepseek": {
+    "name": "DeepSeek",
+    "endpoint": "https://api.deepseek.com/v1/chat/completions",
+    "default_model": "deepseek-chat",
+    "temperature": 0.3,
+    "api_key_header": "Authorization",
+    "api_key_prefix": "Bearer "
+  },
+  "anthropic": {
+    "name": "Anthropic Claude",
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "default_model": "claude-haiku-4-5-20251001",
+    "temperature": 0.3,
+    "api_key_header": "x-api-key",
+    "api_key_prefix": ""
+  },
+  "local": {
+    "name": "Local GGUF (llama.cpp)",
+    "endpoint": "",
+    "default_model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+    "temperature": 0.3,
+    "api_key_header": "",
+    "api_key_prefix": ""
+  },
+  "ollama_cloud": {
+    "name": "Ollama Cloud",
+    "endpoint": "https://ollama.com/v1/chat/completions",
+    "default_model": "llama3.3",
+    "temperature": 0.3,
+    "api_key_header": "Authorization",
+    "api_key_prefix": "Bearer "
+  },
+  "custom": {
+    "name": "Custom HTTP",
+    "endpoint": "http://localhost:8080/v1/chat/completions",
+    "default_model": "",
+    "temperature": 0.3,
+    "api_key_header": "Authorization",
+    "api_key_prefix": "Bearer "
+  }
+}

@@ -9,6 +9,7 @@ This module provides the core engine for executing markdown-defined skills with:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -17,53 +18,58 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger("VoiceAssistant.SkillExecutor")
 
 
+def load_tool_keywords() -> Dict[str, str]:
+    """Carica la mappatura delle parole chiave dei tool da data/mcp/known_tools.json."""
+    from core.data_loader import load_json_data
+    data = load_json_data("mcp/known_tools.json", fallback_default={}) or {}
+    return data.get("keywords") or {
+        "volume": "set_volume",
+        "set_volume": "set_volume",
+        "theme": "quick_settings",
+        "quick_settings": "quick_settings",
+        "app": "launch_application",
+        "application": "launch_application",
+        "launch_application": "launch_application",
+        "media": "media_control",
+        "music": "media_control",
+        "media_control": "media_control",
+        "notification": "send_notification",
+        "send_notification": "send_notification",
+        "open_file": "open_file",
+        "file": "open_file",
+        "wallpaper": "set_wallpaper",
+        "set_wallpaper": "set_wallpaper",
+        "screenshot": "take_screenshot",
+        "take_screenshot": "take_screenshot",
+        "window": "window_management",
+        "window_management": "window_management",
+        "keyring": "keyring_management",
+        "keyring_management": "keyring_management",
+    }
+
+
+def load_standard_responses(lang: str = "") -> Dict[str, Dict[str, str]]:
+    """Carica le risposte standard dei tool da data/locales/responses.json."""
+    if not lang:
+        try:
+            from core.locale_utils import get_system_language
+            lang = get_system_language(default="it")
+        except Exception:
+            lang = "it"
+    from core.data_loader import load_json_data
+    data = load_json_data("locales/responses.json", fallback_default={}) or {}
+    loc_data = data.get(lang) or data.get("it") or {}
+    return {k: v for k, v in loc_data.items() if k != "fast_path"}
+
+
 class SkillExecutor:
     """Executes a matched SKILL.md skill with tool mapping and response generation."""
 
-    # Common tool patterns recognized in skill bodies
-    TOOL_KEYWORDS = {
-        "volume": "system_volume",
-        "brightness": "screen_brightness",
-        "theme": "dark_mode",
-        "app": "app_launcher",
-        "application": "app_launcher",
-        "time": "date_time",
-        "date": "date_time",
-        "media": "system_media",
-        "music": "system_media",
-        "notification": "notification",
-    }
+    # Common tool patterns recognized in skill bodies (loaded dynamically)
+    TOOL_KEYWORDS = load_tool_keywords()
 
-    STANDARD_RESPONSES = {
-        "system_volume": {
-            "set": "Volume impostato a {level}%.",
-            "increase": "Volume alzato.",
-            "decrease": "Volume abbassato.",
-            "mute": "Audio silenziato.",
-        },
-        "dark_mode": {
-            "dark": "Tema scuro attivato.",
-            "light": "Tema chiaro attivato.",
-        },
-        "app_launcher": {
-            "launch": "Lancio {app_name}.",
-        },
-        "date_time": {
-            "time": "Ecco l'orario: {result}",
-            "date": "Ecco la data: {result}",
-        },
-        "screen_brightness": {
-            "set": "Luminosità impostata a {level}%.",
-            "increase": "Luminosità aumentata.",
-            "decrease": "Luminosità diminuita.",
-        },
-        "system_media": {
-            "play": "Riproduzione avviata.",
-            "pause": "Riproduzione in pausa.",
-            "next": "Brano successivo.",
-            "previous": "Brano precedente.",
-        },
-    }
+    # Standardized response templates by tool and action (loaded dynamically)
+    STANDARD_RESPONSES = load_standard_responses()
 
     def __init__(self, skill: Dict[str, Any]):
         """Initialize executor with a skill definition."""
@@ -98,34 +104,57 @@ class SkillExecutor:
         """Infer the action and parameters from user text for a given tool."""
         text_lower = user_text.lower()
 
-        if tool_name == "system_volume":
+        if tool_name in ("set_volume", "system_volume"):
             if any(w in text_lower for w in ["alza", "aumenta", "più forte"]):
-                return ("increase", {"action": "increase", "level": 10})
+                return ("increase", {"direction": "up", "relative": True, "volume": 10.0, "action": "increase", "level": 10})
             if any(w in text_lower for w in ["abbassa", "riduc", "più basso"]):
-                return ("decrease", {"action": "decrease", "level": 10})
+                return ("decrease", {"direction": "down", "relative": True, "volume": -10.0, "action": "decrease", "level": 10})
             if any(w in text_lower for w in ["silen", "mute", "zitto"]):
-                return ("mute", {"action": "mute"})
+                return ("mute", {"mute": True, "action": "mute"})
+            if any(w in text_lower for w in ["riattiva", "unmute"]):
+                return ("unmute", {"mute": False, "action": "unmute"})
             if "volume" in text_lower and re.search(r"\d+", text_lower):
                 match = re.search(r"(\d+)", text_lower)
                 if match:
                     level = int(match.group(1))
-                    return ("set", {"action": "set", "level": min(100, max(0, level))})
-            return ("increase", {"action": "increase", "level": 10})
+                    clamped = min(100, max(0, level))
+                    return ("set", {"volume": float(clamped), "action": "set", "level": clamped})
+            return ("increase", {"direction": "up", "relative": True, "volume": 10.0, "action": "increase", "level": 10})
 
-        elif tool_name == "dark_mode":
+        elif tool_name in ("quick_settings", "dark_mode"):
             if any(w in text_lower for w in ["scuro", "dark", "night", "nero"]):
-                return ("dark", {"action": "set", "mode": "dark"})
-            if any(
-                w in text_lower for w in ["chiaro", "light", "day", "bianco", "giorno"]
-            ):
-                return ("light", {"action": "set", "mode": "light"})
+                return ("dark", {"setting": "dark_style", "enabled": True, "action": "set", "mode": "dark"})
+            if any(w in text_lower for w in ["chiaro", "light", "day", "bianco", "giorno"]):
+                return ("light", {"setting": "dark_style", "enabled": False, "action": "set", "mode": "light"})
+            if "wifi" in text_lower or "wi-fi" in text_lower:
+                if any(w in text_lower for w in ["disattiva", "spegni", "off"]):
+                    return ("wifi_off", {"setting": "wifi", "enabled": False})
+                return ("wifi_on", {"setting": "wifi", "enabled": True})
+            if "bluetooth" in text_lower:
+                if any(w in text_lower for w in ["disattiva", "spegni", "off"]):
+                    return ("bluetooth_off", {"setting": "bluetooth", "enabled": False})
+                return ("bluetooth_on", {"setting": "bluetooth", "enabled": True})
+            if "notturna" in text_lower or "night light" in text_lower:
+                if any(w in text_lower for w in ["disattiva", "spegni", "off"]):
+                    return ("night_light_off", {"setting": "night_light", "enabled": False})
+                return ("night_light_on", {"setting": "night_light", "enabled": True})
+            if "disturbare" in text_lower or "dnd" in text_lower:
+                if any(w in text_lower for w in ["disattiva", "spegni", "off"]):
+                    return ("dnd_off", {"setting": "do_not_disturb", "enabled": False})
+                return ("dnd_on", {"setting": "do_not_disturb", "enabled": True})
             return None
 
-        elif tool_name == "app_launcher":
-            apps = ["firefox", "browser", "terminale", "calendar", "impostazioni"]
+        elif tool_name in ("launch_application", "app_launcher"):
+            apps = ["firefox", "browser", "terminale", "calendar", "impostazioni", "files", "calculator"]
             for app in apps:
                 if app in text_lower:
-                    return ("launch", {"action": "launch", "app_name": app})
+                    return ("launch", {"app_name": app, "action": "launch"})
+            # Extract application after trigger words
+            m = re.search(r'(?:apri|avvia|lancia|open)\s+(?:il\s+|la\s+|le\s+|l\'|i\s+)?([\w\s]+)', text_lower)
+            if m:
+                extracted = m.group(1).strip()
+                if extracted:
+                    return ("launch", {"app_name": extracted, "action": "launch"})
             return None
 
         elif tool_name == "date_time":
@@ -149,16 +178,40 @@ class SkillExecutor:
                     return ("set", {"action": "set", "level": min(100, max(0, level))})
             return None
 
-        elif tool_name == "system_media":
+        elif tool_name in ("media_control", "system_media"):
             if any(w in text_lower for w in ["play", "riproduci", "avvia"]):
                 return ("play", {"action": "play"})
-            if any(w in text_lower for w in ["pausa", "stop", "interrompi"]):
+            if any(w in text_lower for w in ["pausa"]):
                 return ("pause", {"action": "pause"})
-            if any(w in text_lower for w in ["prossimo", "next", "successivo"]):
+            if any(w in text_lower for w in ["stop", "interrompi"]):
+                return ("stop", {"action": "stop"})
+            if any(w in text_lower for w in ["prossimo", "next", "successivo", "avanti"]):
                 return ("next", {"action": "next"})
             if any(w in text_lower for w in ["precedente", "prev", "indietro"]):
                 return ("previous", {"action": "previous"})
             return None
+
+        elif tool_name == "send_notification":
+            return ("send", {"summary": "Assistente Vocale", "body": user_text})
+
+        elif tool_name == "take_screenshot":
+            return ("take", {"interactive": "interattiv" in text_lower or "selezion" in text_lower})
+
+        elif tool_name == "open_file":
+            m = re.search(r'(?:apri|open)\s+(?:il\s+file\s+|il\s+|la\s+)?([^\s]+)', text_lower)
+            path = m.group(1).strip() if m else ""
+            return ("open", {"path": path})
+
+        elif tool_name == "set_wallpaper":
+            m = re.search(r'(?:sfondo|wallpaper)\s+(?:a\s+|con\s+)?([^\s]+)', text_lower)
+            path = m.group(1).strip() if m else ""
+            return ("set", {"image_path": path})
+
+        elif tool_name == "window_management":
+            return ("action", {"action": "list"})
+
+        elif tool_name == "keyring_management":
+            return ("action", {"action": "list"})
 
         return None
 
@@ -204,7 +257,12 @@ class SkillExecutor:
             if action_result:
                 action_name, action_params = action_result
                 try:
-                    result = mcp_manager.execute_tool(tool_name, action_params)
+                    res = mcp_manager.execute_tool(tool_name, action_params)
+                    if hasattr(res, "__await__") or asyncio.iscoroutine(res):
+                        from core.async_bridge import run_async
+                        result = run_async(res, timeout=10.0)
+                    else:
+                        result = res
                     response = self._generate_response(tool_name, action_name, result)
                     return (True, response, result)
                 except Exception as e:
@@ -231,6 +289,17 @@ class SkillExecutor:
     ) -> str:
         """Generate a standardized response based on tool execution result."""
         templates = self.STANDARD_RESPONSES.get(tool_name, {})
+        if not templates:
+            # Fallback for alias if queried
+            if tool_name == "system_volume":
+                templates = self.STANDARD_RESPONSES.get("set_volume", {})
+            elif tool_name == "dark_mode":
+                templates = self.STANDARD_RESPONSES.get("quick_settings", {})
+            elif tool_name == "app_launcher":
+                templates = self.STANDARD_RESPONSES.get("launch_application", {})
+            elif tool_name == "system_media":
+                templates = self.STANDARD_RESPONSES.get("media_control", {})
+
         template = templates.get(action, f"Azione {action} completata.")
 
         try:

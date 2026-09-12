@@ -122,7 +122,15 @@ class DaemonOwner(Protocol):
     # ------------------------------------------------------------------
     _missing_deps: list
 
-    def notify_dependency_required(self, package: str, description: str, is_critical: bool) -> None: ...
+    def notify_dependency_required(
+        self,
+        package: str,
+        description: str,
+        is_critical: bool,
+        dep_type: str = "pip",
+        system_packages: dict | None = None,
+        mcp_server: str | None = None,
+    ) -> None: ...
 
     # ------------------------------------------------------------------
     # Segnali D-Bus (chiamati come metodi normali dal demone)

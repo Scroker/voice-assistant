@@ -1,0 +1,171 @@
+// STT PAGE
+Adw.PreferencesPage stt_page {
+  title: _("Speech Engine (STT)");
+  icon-name: "audio-input-microphone-symbolic";
+  name: "stt";
+
+  Adw.PreferencesGroup stt_mode_group {
+    title: _("Speech Recognition Mode");
+    description: _("Select whether to process voice locally on device or via a cloud API service.");
+
+    Adw.ActionRow stt_mode_local_row {
+      title: _("Local");
+      subtitle: _("Offline speech recognition processed locally on device (Vosk / Whisper)");
+      activatable: true;
+      activatable-widget: stt_mode_local_radio;
+
+      [prefix]
+      Gtk.CheckButton stt_mode_local_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow stt_mode_cloud_row {
+      title: _("Cloud");
+      subtitle: _("High-accuracy online speech recognition via API (OpenAI / Groq)");
+      activatable: true;
+      activatable-widget: stt_mode_cloud_radio;
+
+      [prefix]
+      Gtk.CheckButton stt_mode_cloud_radio {
+        group: stt_mode_local_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup stt_local_engine_group {
+    title: _("Local Engine");
+    description: _("Select local speech recognition engine.");
+
+    Adw.ActionRow stt_engine_vosk_row {
+      title: _("Vosk");
+      subtitle: _("Fast streaming speech recognition (low CPU and RAM usage)");
+      activatable: true;
+      activatable-widget: stt_engine_vosk_radio;
+
+      [prefix]
+      Gtk.CheckButton stt_engine_vosk_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow stt_engine_whisper_row {
+      title: _("Whisper");
+      subtitle: _("High accuracy neural transformer (supports GPU acceleration)");
+      activatable: true;
+      activatable-widget: stt_engine_whisper_radio;
+
+      [prefix]
+      Gtk.CheckButton stt_engine_whisper_radio {
+        group: stt_engine_vosk_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup stt_local_group {
+    title: _("Local STT Model Configuration");
+    description: _("Configure offline model execution.");
+
+    Adw.ActionRow current_model_row {
+      title: _("Active Local STT Model");
+      subtitle: _("Loading information...");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "audio-input-microphone-symbolic";
+        margin-end: 12;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup whisper_hardware_group {
+    title: _("Hardware Acceleration (Whisper)");
+    description: _("Configure the compute device for Whisper execution.");
+
+    Adw.ActionRow hw_cpu_row {
+      title: _("CPU (Compatible with all systems)");
+      subtitle: _("Standard execution via CPU");
+      activatable: true;
+      activatable-widget: hw_cpu_radio;
+
+      [prefix]
+      Gtk.CheckButton hw_cpu_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow hw_cuda_row {
+      title: _("CUDA (Nvidia GPU)");
+      subtitle: _("Hardware acceleration via Nvidia graphics card");
+      activatable: true;
+      activatable-widget: hw_cuda_radio;
+
+      [prefix]
+      Gtk.CheckButton hw_cuda_radio {
+        group: hw_cpu_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup stt_cloud_group {
+    title: _("Cloud STT Provider");
+    description: _("Choose provider for Cloud STT.");
+    visible: false;
+
+    Adw.ActionRow stt_cloud_openai_row {
+      title: _("OpenAI Whisper Cloud");
+      subtitle: _("api.openai.com");
+      activatable: true;
+      activatable-widget: stt_cloud_openai_radio;
+
+      [prefix]
+      Gtk.CheckButton stt_cloud_openai_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow stt_cloud_groq_row {
+      title: _("Groq Whisper Cloud");
+      subtitle: _("api.groq.com");
+      activatable: true;
+      activatable-widget: stt_cloud_groq_radio;
+
+      [prefix]
+      Gtk.CheckButton stt_cloud_groq_radio {
+        group: stt_cloud_openai_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup stt_cloud_config_group {
+    title: _("Cloud Configuration");
+    visible: false;
+
+    Adw.EntryRow stt_cloud_api_key_row {
+      title: _("API Key");
+    }
+
+    Adw.EntryRow stt_cloud_model_row {
+      title: _("Cloud Model Name");
+    }
+  }
+}

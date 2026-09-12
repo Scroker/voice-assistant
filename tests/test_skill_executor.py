@@ -18,13 +18,13 @@ class TestSkillExecutor(unittest.TestCase):
             "name": "System Control",
             "description": "Controls volume, theme, and app launch actions",
             "triggers": ["alza il volume"],
-            "tools_allowed": ["system_volume"],
+            "tools_allowed": ["set_volume"],
             "_body": "Use native desktop tools for volume commands.",
         }
         executor = SkillExecutor(skill)
 
         # Test volume increase detection
-        action, params = executor._infer_action_from_text("alza il volume", "system_volume")
+        action, params = executor._infer_action_from_text("alza il volume", "set_volume")
         self.assertEqual(action, "increase")
         self.assertEqual(params["action"], "increase")
 
@@ -34,18 +34,18 @@ class TestSkillExecutor(unittest.TestCase):
             "name": "Theme Control",
             "description": "Switches between light and dark theme",
             "triggers": ["tema scuro"],
-            "tools_allowed": ["dark_mode"],
+            "tools_allowed": ["quick_settings"],
             "_body": "Switch the system theme appropriately.",
         }
         executor = SkillExecutor(skill)
 
         # Test dark theme detection
-        action, params = executor._infer_action_from_text("metti il tema scuro", "dark_mode")
+        action, params = executor._infer_action_from_text("metti il tema scuro", "quick_settings")
         self.assertEqual(action, "dark")
         self.assertEqual(params["mode"], "dark")
 
         # Test light theme detection
-        action, params = executor._infer_action_from_text("attiva il tema chiaro", "dark_mode")
+        action, params = executor._infer_action_from_text("attiva il tema chiaro", "quick_settings")
         self.assertEqual(action, "light")
         self.assertEqual(params["mode"], "light")
 
@@ -54,15 +54,15 @@ class TestSkillExecutor(unittest.TestCase):
             "intent": "system_control",
             "name": "System Control",
             "triggers": [],
-            "tools_allowed": ["system_volume"],
+            "tools_allowed": ["set_volume"],
             "_body": "Control volume.",
         }
         executor = SkillExecutor(skill)
 
-        response = executor._generate_response("system_volume", "increase", {})
+        response = executor._generate_response("set_volume", "increase", {})
         self.assertEqual(response, "Volume alzato.")
 
-        response = executor._generate_response("dark_mode", "dark", {})
+        response = executor._generate_response("quick_settings", "dark", {})
         self.assertEqual(response, "Tema scuro attivato.")
 
     def test_executor_executes_skill_with_mcp_manager(self):
@@ -70,7 +70,7 @@ class TestSkillExecutor(unittest.TestCase):
             "intent": "system_control",
             "name": "System Control",
             "triggers": [],
-            "tools_allowed": ["system_volume"],
+            "tools_allowed": ["set_volume"],
             "_body": "Control volume.",
         }
         executor = SkillExecutor(skill)
@@ -86,7 +86,7 @@ class TestSkillExecutor(unittest.TestCase):
         self.assertIsNotNone(response)
         mock_mcp.execute_tool.assert_called_once()
         call_args = mock_mcp.execute_tool.call_args
-        self.assertEqual(call_args[0][0], "system_volume")
+        self.assertEqual(call_args[0][0], "set_volume")
         self.assertEqual(call_args[0][1]["action"], "increase")
 
     def test_executor_detects_tools_from_body_keywords(self):
@@ -100,8 +100,8 @@ class TestSkillExecutor(unittest.TestCase):
         executor = SkillExecutor(skill)
 
         detected_tools = executor._extract_tool_keywords_from_body()
-        self.assertIn("system_volume", detected_tools)
-        self.assertIn("dark_mode", detected_tools)
+        self.assertIn("set_volume", detected_tools)
+        self.assertIn("quick_settings", detected_tools)
 
     def test_executor_falls_back_to_llm_when_no_tools_match(self):
         skill = {
@@ -129,12 +129,12 @@ class TestSkillExecutor(unittest.TestCase):
             "intent": "system_control",
             "name": "System Control",
             "triggers": [],
-            "tools_allowed": ["system_volume"],
+            "tools_allowed": ["set_volume"],
             "_body": "Control volume.",
         }
         executor = SkillExecutor(skill)
 
-        action, params = executor._infer_action_from_text("imposta volume a 75", "system_volume")
+        action, params = executor._infer_action_from_text("imposta volume a 75", "set_volume")
         self.assertEqual(action, "set")
         self.assertEqual(params["level"], 75)
 
@@ -143,12 +143,12 @@ class TestSkillExecutor(unittest.TestCase):
             "intent": "system_control",
             "name": "System Control",
             "triggers": [],
-            "tools_allowed": ["app_launcher"],
+            "tools_allowed": ["launch_application"],
             "_body": "Launch applications.",
         }
         executor = SkillExecutor(skill)
 
-        action, params = executor._infer_action_from_text("apri firefox", "app_launcher")
+        action, params = executor._infer_action_from_text("apri firefox", "launch_application")
         self.assertEqual(action, "launch")
         self.assertEqual(params["app_name"], "firefox")
 
@@ -157,7 +157,7 @@ class TestSkillExecutor(unittest.TestCase):
             "intent": "test",
             "name": "Test",
             "triggers": [],
-            "tools_allowed": ["system_volume"],
+            "tools_allowed": ["set_volume"],
             "_body": "",
         }
         executor = SkillExecutor(skill)

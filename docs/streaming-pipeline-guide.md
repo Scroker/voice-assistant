@@ -1,10 +1,13 @@
 # Streaming Pipeline Architecture Guide
 
+> [!WARNING]
+> **This engine is not wired into the running daemon.** `StreamingPipelineEngine` (`src/daemon/core/streaming_pipeline.py`) and its adapter `StreamingPipelineController` (`src/daemon/core/pipeline_integration.py`) are never imported by `main.py` or `core/runtime_manager.py` — the daemon actually constructs and runs `PipelineController` from `core/pipeline.py` (see [`docs/pipeline.md`](pipeline.md), which documents the code that is really active). The only references to `streaming_pipeline`/`pipeline_integration` in the repo are the two source files themselves and their own isolated unit tests (`tests/test_streaming_pipeline.py`, `tests/test_pipeline_integration_adapter.py`). Treat this guide as documentation for an unfinished/orphaned alternative implementation, not for the pipeline that actually runs today.
+
 ## Overview
 
-The **StreamingPipelineEngine** replaces the legacy sequential `PipelineController` with a true concurrent architecture. All processing stages run independently in parallel threads, communicating via thread-safe queues.
+The **StreamingPipelineEngine** is designed to replace the legacy sequential `PipelineController` with a true concurrent architecture, but has not been swapped into the daemon (see warning above). All processing stages that *are* implemented run independently in parallel threads, communicating via thread-safe queues.
 
-**Result**: Latency reduced from 3-6s → <500ms first audio playback.
+**Claimed result** (not independently verified against the active pipeline, since this engine doesn't run in production): latency reduced from 3-6s → <500ms first audio playback.
 
 ## Architecture
 
@@ -27,7 +30,7 @@ The **StreamingPipelineEngine** replaces the legacy sequential `PipelineControll
 │                                                                   │
 │  ┌──────────────────┐  ┌─────────────────┐  ┌──────────────────┐ │
 │  │  LLM Streaming   │  │  TTS Synthesis  │  │ Audio Playback   │ │
-│  │   [Thread 4]     │→→│    [Thread 5]    │→→│   [Thread 6]     │ │
+│  │  [NOT STARTED]   │→→│    [Thread 4]    │→→│   [Thread 5]     │ │
 │  │                  │  │                 │  │                  │ │
 │  │ Streams tokens   │  │ Synthesizes     │  │ Non-blocking     │ │
 │  │ as they arrive   │  │ in parallel     │  │ background play  │ │
@@ -38,6 +41,9 @@ The **StreamingPipelineEngine** replaces the legacy sequential `PipelineControll
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+> [!WARNING]
+> Only **5 threads** are actually started by `StreamingPipelineEngine.start()` (`streaming_pipeline.py:132-172`): `audio_capture`, `stt_processing`, `intent_dispatch`, `tts_synthesis`, `audio_playback`. `_llm_streaming_stage()` is fully implemented (`streaming_pipeline.py:355-420`) but is **never spawned as a `threading.Thread`** — there is no corresponding `self.threads["llm_streaming"] = ...` entry anywhere in the file. As written, `TTS Synthesis` would consume directly from whatever `Intent Dispatch` pushes onto `sentences_queue`, never seeing LLM-generated tokens, since nothing runs the LLM stage. This is not a "6-thread engine" as originally described — it's 5 running threads plus one dead-code stage.
 
 ## Stages Explained
 
@@ -62,15 +68,16 @@ The **StreamingPipelineEngine** replaces the legacy sequential `PipelineControll
 - **Short-circuit**: Stops pipeline if fast-path matches (e.g., "volume up")
 - **Intents**: Volume, theme, media, time, app launch, etc.
 
-### 4. LLM Streaming [Thread 4]
+### 4. LLM Streaming [defined but NOT started — see warning above]
 - **Purpose**: Generate response tokens as transcription completes
 - **Input**: `sentences_queue` (final transcribed user text)
 - **Output**: `sentences_queue` (LLM response tokens as SentenceChunk)
 - **Providers**: llama-cpp-python (local GGUF), OpenAI-compatible APIs
 - **Streaming**: Tokens flow immediately (no wait for full response)
 - **First Token Latency**: Tracked and reported
+- **Status**: `_llm_streaming_stage()` exists in code but `start()` never spawns it as a thread — it does not run.
 
-### 5. TTS Synthesis [Thread 5]
+### 5. TTS Synthesis [Thread 4]
 - **Purpose**: Synthesize speech from text chunks
 - **Input**: `sentences_queue` (LLM tokens/sentences)
 - **Output**: `audio_output_queue` (WAV bytes with duration)
@@ -78,7 +85,7 @@ The **StreamingPipelineEngine** replaces the legacy sequential `PipelineControll
 - **Parallel**: Synthesizes while LLM still generating tokens
 - **Latency**: ~100-300ms per sentence
 
-### 6. Audio Playback [Thread 6]
+### 6. Audio Playback [Thread 5]
 - **Purpose**: Play synthesized audio non-blocking
 - **Input**: `audio_output_queue` (AudioOutput with WAV data)
 - **Output**: Speaker output (PipeWire)
@@ -138,7 +145,8 @@ def _stt_processing_stage(self):
 ### Starting Pipeline
 ```python
 pipeline.start(operation_context=ctx)
-# All 6 threads spawn and begin processing
+# Spawns the 5 implemented threads (audio_capture, stt_processing,
+# intent_dispatch, tts_synthesis, audio_playback) — llm_streaming is not spawned.
 ```
 
 ### Pause/Resume
@@ -271,7 +279,6 @@ print(f"STT results: {status['stt_results']}")
 
 ## Backward Compatibility
 
-- Old `PipelineController` still works
-- `StreamingPipelineController` wraps new engine
-- Can be swapped in without changing daemon code
-- All callbacks routed through adapter layer
+- The old `PipelineController` (`core/pipeline.py`) is not just "still working" as a fallback — it is the **only one actually running** in the daemon today (see warning at top of this page).
+- `StreamingPipelineController` (`core/pipeline_integration.py`) wraps the new engine and is designed to be swappable in without changing daemon code, but **no such swap has happened** — `main.py`/`core/runtime_manager.py` never import or instantiate it.
+- All callbacks are routed through the adapter layer as designed; this part of the design is real, it's just unused in production.

@@ -3,7 +3,7 @@ import sys
 import glob
 import time
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Aggiunge venv site-packages se presente
 venv_sites = glob.glob(os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@scroker.github.io/daemon/venv/lib/python*/site-packages"))
@@ -81,14 +81,27 @@ class TestCorePipeline(unittest.TestCase):
         self.assertEqual(calls[0][0], "volume_up")
         self.assertEqual(calls[0][2], "alza il volume")
 
+    def test_fast_path_dispatcher_enabled_flag(self):
+        """Verifica che il flag enabled su FastPathDispatcher disabiliti il dispatch."""
+        dispatcher_disabled = FastPathDispatcher(enabled=False)
+        matched, intent, params, resp = dispatcher_disabled.dispatch("alza il volume")
+        self.assertFalse(matched)
+        self.assertIsNone(intent)
+
+        dispatcher_disabled.enabled = True
+        matched, intent, params, resp = dispatcher_disabled.dispatch("alza il volume")
+        self.assertTrue(matched)
+        self.assertEqual(intent, "volume_up")
+
     def test_pipeline_controller_fast_path_flow(self):
-        """Verifica il flusso del PipelineController con esecuzione Fast-Path."""
+        """Verifica il flusso del PipelineController con esecuzione Fast-Path quando abilitato."""
         state_machine = StateMachine()
         tts_mock = MagicMock()
 
         controller = PipelineController(
             state_machine=state_machine,
-            tts_engine=tts_mock
+            tts_engine=tts_mock,
+            fast_path_enabled=True,
         )
 
         result = controller.process_text_input("alza il volume", speak=False)
@@ -100,6 +113,53 @@ class TestCorePipeline(unittest.TestCase):
         self.assertTrue(result_voice["fast_path"])
         self.assertEqual(state_machine.state, AssistantState.SPEAKING)
         tts_mock.assert_called()
+
+    def test_pipeline_controller_fast_path_disabled_by_default(self):
+        """Verifica che di default il Fast-Path sia disabilitato nel PipelineController."""
+        state_machine = StateMachine()
+        tts_mock = MagicMock()
+
+        controller = PipelineController(
+            state_machine=state_machine,
+            tts_engine=tts_mock,
+        )
+        self.assertFalse(controller.fast_path_enabled)
+        self.assertFalse(controller.fast_path.enabled)
+
+        # Non deve catturare l'intento nel fast-path
+        result = controller.process_text_input("alza il volume", speak=False)
+        self.assertFalse(result["fast_path"])
+
+        # Abilitazione dinamica a runtime
+        controller.fast_path_enabled = True
+        self.assertTrue(controller.fast_path.enabled)
+        result_enabled = controller.process_text_input("alza il volume", speak=False)
+        self.assertTrue(result_enabled["fast_path"])
+
+    def test_pipeline_controller_medium_path_can_be_disabled(self):
+        """Verifica che il Medium-Path sia attivo di default e disattivabile a runtime."""
+        state_machine = StateMachine()
+
+        controller = PipelineController(
+            state_machine=state_machine,
+            tts_engine=MagicMock(),
+            llm_streamer=lambda prompt: iter(["irrilevante"]),
+            mcp_manager=MagicMock(),
+        )
+        self.assertTrue(controller.medium_path_enabled)
+
+        with patch.object(controller, "_try_llm_tool_select", return_value="Volume alzato") as tool_select:
+            result = controller.process_text_input("alza il volume", speak=False)
+            tool_select.assert_called_once()
+            self.assertTrue(result["medium_path"])
+            self.assertEqual(result["response"], "Volume alzato")
+
+        # Disattivato, lo stadio viene saltato del tutto e la richiesta prosegue oltre.
+        controller.medium_path_enabled = False
+        with patch.object(controller, "_try_llm_tool_select", return_value="Volume alzato") as tool_select:
+            result = controller.process_text_input("alza il volume", speak=False)
+            tool_select.assert_not_called()
+            self.assertNotIn("medium_path", result)
 
     def test_pipeline_controller_llm_streaming_flow(self):
         """Verifica il flusso di streaming LLM e transizioni di stato nel PipelineController."""
@@ -130,7 +190,7 @@ class TestCorePipeline(unittest.TestCase):
 
         def dummy_llm_stream(prompt):
             yield "Uso un tool. "
-            yield '{"tool": "system_volume", "args": {"action": "increase", "level": 10}}'
+            yield '{"tool": "set_volume", "args": {"direction": "up", "volume": 10.0}}'
 
         mcp_manager = MagicMock()
         mcp_manager.execute_tool.return_value = "Volume alzato."
@@ -152,7 +212,7 @@ class TestCorePipeline(unittest.TestCase):
         self.assertNotIn('"tool"', visible)
         self.assertEqual(spoken, ["Uso un tool.", "Volume alzato."])
         mcp_manager.execute_tool.assert_called_once_with(
-            "system_volume", {"action": "increase", "level": 10}
+            "set_volume", {"direction": "up", "volume": 10.0}
         )
 
 if __name__ == '__main__':

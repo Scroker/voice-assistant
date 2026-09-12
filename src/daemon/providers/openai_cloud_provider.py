@@ -19,10 +19,18 @@ class OpenAICloudSTTProvider(STTProvider):
     Cloud STT Provider supporting OpenAI Whisper API and Groq Cloud Whisper API.
     """
     def __init__(self, model: str = "whisper-1", hardware: str = "cloud", extra: Optional[dict] = None, progress_callback=None, models_dir=None, download_only=False):
-        self.model = model or "whisper-1"
         extra = extra or {}
-        self.api_key = extra.get("api_key") or os.environ.get("OPENAI_API_KEY", "")
-        self.endpoint = extra.get("endpoint") or "https://api.openai.com/v1/audio/transcriptions"
+        provider_name = extra.get("provider", "openai_cloud")
+        cloud_cfg = {}
+        try:
+            from core.cloud_config import get_cloud_config
+            cloud_cfg = get_cloud_config().get_provider_config("stt", provider_name)
+        except Exception:
+            pass
+
+        self.model = model or cloud_cfg.get("model") or "whisper-1"
+        self.api_key = extra.get("api_key") or cloud_cfg.get("api_key") or os.environ.get("OPENAI_API_KEY", "")
+        self.endpoint = extra.get("endpoint") or cloud_cfg.get("endpoint") or "https://api.openai.com/v1/audio/transcriptions"
         raw_lang = extra.get("language")
         if not raw_lang:
             try:
@@ -119,32 +127,50 @@ class OpenAICloudSTTProvider(STTProvider):
 
     @classmethod
     def get_available_models(cls) -> list[dict]:
-        return [
-            {
-                "id": "whisper-1",
-                "provider": "openai_cloud",
-                "name": "OpenAI Whisper Cloud (whisper-1)",
-                "subtitle": "OpenAI Cloud • High Accuracy • Fast",
-                "lang": "multilingual",
-                "lang_text": "Multilingual",
-                "size_text": "Cloud API"
-            },
-            {
-                "id": "whisper-large-v3",
-                "provider": "groq_cloud",
-                "name": "Groq Whisper Cloud (whisper-large-v3)",
-                "subtitle": "Groq Cloud • Ultra Fast Whisper",
-                "lang": "multilingual",
-                "lang_text": "Multilingual",
-                "size_text": "Cloud API"
-            }
-        ]
+        try:
+            from services.catalog_manager import catalog_service
+            return catalog_service.get_cloud_models()
+        except Exception as e:
+            logger.warning(f"Errore caricamento modelli cloud da catalog_service: {e}")
+            from core.data_loader import load_json_data
+            cfg = load_json_data("catalog/stt_models.json", fallback_default={}) or {}
+            models = cfg.get("cloud_models")
+            if models:
+                return models
+            return [
+                {
+                    "id": "whisper-1",
+                    "provider": "openai_cloud",
+                    "name": "OpenAI Whisper Cloud (whisper-1)",
+                    "subtitle": "OpenAI Cloud • High Accuracy • Fast",
+                    "lang": "multilingual",
+                    "lang_text": "Multilingual",
+                    "size_text": "Cloud API"
+                },
+                {
+                    "id": "whisper-large-v3",
+                    "provider": "groq_cloud",
+                    "name": "Groq Whisper Cloud (whisper-large-v3)",
+                    "subtitle": "Groq Cloud • Ultra Fast Whisper",
+                    "lang": "multilingual",
+                    "lang_text": "Multilingual",
+                    "size_text": "Cloud API"
+                }
+            ]
 
     @classmethod
     def get_default_model(cls, lang: str = None, provider: str = "openai_cloud", **kwargs) -> str:
         """
-        Ritorna il primo modello disponibile associato al provider cloud specificato.
+        Ritorna il modello predefinito associato al provider cloud specificato.
         """
+        try:
+            from services.catalog_manager import catalog_service
+            def_m = catalog_service.get_default_model(provider or "openai_cloud", lang=lang)
+            if def_m:
+                return def_m
+        except Exception:
+            pass
+
         models = cls.get_available_models()
         target_provider = (provider or "openai_cloud").lower()
         for m in models:

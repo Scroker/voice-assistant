@@ -1,0 +1,8 @@
+{
+  "uvx": "pip install uv; uv tool install mcp-server-*",
+  "npx": "npm install -g npx",
+  "python": "apt install python3-pip",
+  "python3": "apt install python3-pip",
+  "gnome-mcp-server": "cargo install --git https://github.com/bilelmoussaoui/gnome-mcp-server",
+  "cargo": "Installa cargo tramite il gestore pacchetti di sistema (es. sudo dnf install cargo)"
+}

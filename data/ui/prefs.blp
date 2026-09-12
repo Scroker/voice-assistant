@@ -1,944 +1,1419 @@
 using Gtk 4.0;
 using Adw 1;
 
-Adw.NavigationSplitView split_view {
-  min-sidebar-width: 260;
+Adw.PreferencesDialog preferences_dialog {
+  title: _("Preferences");
+  content-width: 860;
+  content-height: 600;
+  search-enabled: true;
 
-  sidebar: Adw.NavigationPage sidebar_page {
-    title: _("Preferences");
-    styles ["sidebar"]
+    // GENERAL PAGE
+  Adw.PreferencesPage general_page {
+    title: _("General");
+    icon-name: "settings-symbolic";
+    name: "general";
 
-    child: Adw.ToolbarView {
-      [top]
-      Adw.HeaderBar {
-        title-widget: Adw.WindowTitle {
-          title: _("Preferences");
-        };
+    Adw.PreferencesGroup {
+      title: _("Voice Assistant");
+      description: _("General configuration and assistant activation.");
+
+      Adw.SwitchRow enable_switch_row {
+        title: _("Enable Voice Assistant");
+        subtitle: _("Enable or disable background listening");
+      }
+    }
+
+    Adw.PreferencesGroup lang_group {
+      title: _("Assistant Language");
+      description: _("Language used for speech recognition and responses");
+
+      Adw.ActionRow lang_selection_row {
+        title: _("Language");
+        subtitle: _("System Language");
+        activatable: true;
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: _("Command Processing");
+      description: _("How a recognized command is dispatched before reaching the full assistant.");
+
+      Adw.ActionRow dispatch_subpage_row {
+        title: _("Command Dispatch");
+        subtitle: _("Enable or disable the Fast-Path and Medium-Path stages");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "media-playlist-consecutive-symbolic";
+          valign: center;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: _("Audio Input");
+      description: _("Microphone processing applied before wake word detection and speech recognition.");
+
+      Adw.ActionRow audio_subpage_row {
+        title: _("Audio Filters");
+        subtitle: _("Echo cancellation, high-pass, gain control and noise gate");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "audio-input-microphone-symbolic";
+          valign: center;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: _("System &amp; Maintenance");
+      description: _("Manage downloaded models, disk storage, and diagnostics.");
+
+      Adw.ActionRow models_subpage_row {
+        title: _("Storage and Models");
+        subtitle: _("Manage installed models and storage directory");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "drive-harddisk-symbolic";
+          valign: center;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
       }
 
-      content: Gtk.ScrolledWindow {
+      Adw.ActionRow bugreport_subpage_row {
+        title: _("Bug Reporting");
+        subtitle: _("Configure automatic crash reporting to Bugzilla");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "dialog-warning-symbolic";
+          valign: center;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+    }
+  }
+
+  // WAKEWORD PAGE
+  Adw.PreferencesPage wakeword_page {
+    title: _("Wake Word");
+    icon-name: "cafe-symbolic";
+    name: "wakeword";
+
+    Adw.PreferencesGroup wakeword_engine_group {
+      title: _("Wakeword Engine");
+      description: _("Vosk: any word — OpenWakeWord: fixed keywords — Sherpa-ONNX: custom ONNX keyword spotter");
+
+      Adw.ActionRow ww_engine_vosk_row {
+        title: _("Vosk (custom word)");
+        activatable: true;
+        activatable-widget: ww_engine_vosk_radio;
+
+        [prefix]
+        Gtk.CheckButton ww_engine_vosk_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow ww_engine_oww_row {
+        title: _("OpenWakeWord (fixed keywords)");
+        activatable: true;
+        activatable-widget: ww_engine_oww_radio;
+
+        [prefix]
+        Gtk.CheckButton ww_engine_oww_radio {
+          group: ww_engine_vosk_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow ww_engine_sherpa_row {
+        title: _("Sherpa-ONNX (keyword spotting)");
+        activatable: true;
+        activatable-widget: ww_engine_sherpa_radio;
+
+        [prefix]
+        Gtk.CheckButton ww_engine_sherpa_radio {
+          group: ww_engine_vosk_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup wakeword_config_group {
+      title: _("Configuration");
+
+      Adw.ActionRow current_vosk_ww_model_row {
+        title: _("Vosk Wake Word Model");
+        subtitle: _("Loading information...");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "audio-input-microphone-symbolic";
+          margin-end: 12;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+
+      Adw.ActionRow current_sherpa_model_row {
+        title: _("Sherpa-ONNX Model");
+        subtitle: _("Loading information...");
+        activatable: true;
+        visible: false;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "audio-input-microphone-symbolic";
+          margin-end: 12;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+
+      Adw.EntryRow wakeword_row {
+        title: _("Wakeword Keyword");
+      }
+    }
+
+    Adw.PreferencesGroup oww_keyword_group {
+      title: _("OpenWakeWord Keyword");
+      description: _("Pre-trained keyword model to detect");
+      visible: false;
+
+      Adw.ActionRow oww_alexa_row {
+        title: _("alexa");
+        activatable: true;
+        activatable-widget: oww_alexa_radio;
+
+        [prefix]
+        Gtk.CheckButton oww_alexa_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow oww_hey_jarvis_row {
+        title: _("hey_jarvis");
+        activatable: true;
+        activatable-widget: oww_hey_jarvis_radio;
+
+        [prefix]
+        Gtk.CheckButton oww_hey_jarvis_radio {
+          group: oww_alexa_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow oww_hey_mycroft_row {
+        title: _("hey_mycroft");
+        activatable: true;
+        activatable-widget: oww_hey_mycroft_radio;
+
+        [prefix]
+        Gtk.CheckButton oww_hey_mycroft_radio {
+          group: oww_alexa_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow oww_hey_rhasspy_row {
+        title: _("hey_rhasspy");
+        activatable: true;
+        activatable-widget: oww_hey_rhasspy_radio;
+
+        [prefix]
+        Gtk.CheckButton oww_hey_rhasspy_radio {
+          group: oww_alexa_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+  }
+
+  // STT PAGE
+  Adw.PreferencesPage stt_page {
+    title: _("Speech Engine (STT)");
+    icon-name: "audio-input-microphone-symbolic";
+    name: "stt";
+
+    Adw.PreferencesGroup stt_mode_group {
+      title: _("Speech Recognition Mode");
+      description: _("Select whether to process voice locally on device or via a cloud API service.");
+
+      Adw.ActionRow stt_mode_local_row {
+        title: _("Local");
+        subtitle: _("Offline speech recognition processed locally on device (Vosk / Whisper)");
+        activatable: true;
+        activatable-widget: stt_mode_local_radio;
+
+        [prefix]
+        Gtk.CheckButton stt_mode_local_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow stt_mode_cloud_row {
+        title: _("Cloud");
+        subtitle: _("High-accuracy online speech recognition via API (OpenAI / Groq)");
+        activatable: true;
+        activatable-widget: stt_mode_cloud_radio;
+
+        [prefix]
+        Gtk.CheckButton stt_mode_cloud_radio {
+          group: stt_mode_local_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup stt_local_engine_group {
+      title: _("Local Engine");
+      description: _("Select local speech recognition engine.");
+
+      Adw.ActionRow stt_engine_vosk_row {
+        title: _("Vosk");
+        subtitle: _("Fast streaming speech recognition (low CPU and RAM usage)");
+        activatable: true;
+        activatable-widget: stt_engine_vosk_radio;
+
+        [prefix]
+        Gtk.CheckButton stt_engine_vosk_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow stt_engine_whisper_row {
+        title: _("Whisper");
+        subtitle: _("High accuracy neural transformer (supports GPU acceleration)");
+        activatable: true;
+        activatable-widget: stt_engine_whisper_radio;
+
+        [prefix]
+        Gtk.CheckButton stt_engine_whisper_radio {
+          group: stt_engine_vosk_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup stt_local_group {
+      title: _("Local STT Model Configuration");
+      description: _("Configure offline model execution.");
+
+      Adw.ActionRow current_model_row {
+        title: _("Active Local STT Model");
+        subtitle: _("Loading information...");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "audio-input-microphone-symbolic";
+          margin-end: 12;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup whisper_hardware_group {
+      title: _("Hardware Acceleration (Whisper)");
+      description: _("Configure the compute device for Whisper execution.");
+
+      Adw.ActionRow hw_cpu_row {
+        title: _("CPU (Compatible with all systems)");
+        subtitle: _("Standard execution via CPU");
+        activatable: true;
+        activatable-widget: hw_cpu_radio;
+
+        [prefix]
+        Gtk.CheckButton hw_cpu_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow hw_cuda_row {
+        title: _("CUDA (Nvidia GPU)");
+        subtitle: _("Hardware acceleration via Nvidia graphics card");
+        activatable: true;
+        activatable-widget: hw_cuda_radio;
+
+        [prefix]
+        Gtk.CheckButton hw_cuda_radio {
+          group: hw_cpu_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup stt_cloud_group {
+      title: _("Cloud STT Provider");
+      description: _("Choose provider for Cloud STT.");
+      visible: false;
+
+      Adw.ActionRow stt_cloud_openai_row {
+        title: _("OpenAI Whisper Cloud");
+        subtitle: _("api.openai.com");
+        activatable: true;
+        activatable-widget: stt_cloud_openai_radio;
+
+        [prefix]
+        Gtk.CheckButton stt_cloud_openai_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow stt_cloud_groq_row {
+        title: _("Groq Whisper Cloud");
+        subtitle: _("api.groq.com");
+        activatable: true;
+        activatable-widget: stt_cloud_groq_radio;
+
+        [prefix]
+        Gtk.CheckButton stt_cloud_groq_radio {
+          group: stt_cloud_openai_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup stt_cloud_config_group {
+      title: _("Cloud Configuration");
+      visible: false;
+
+      Adw.EntryRow stt_cloud_api_key_row {
+        title: _("API Key");
+      }
+
+      Adw.EntryRow stt_cloud_model_row {
+        title: _("Cloud Model Name");
+      }
+    }
+  }
+
+  // LLM PAGE
+  Adw.PreferencesPage llm_page {
+    title: _("Artificial Intelligence (LLM)");
+    icon-name: "brain-augmented-symbolic";
+    name: "llm";
+
+    Adw.PreferencesGroup {
+      title: _("Large Language Model (LLM)");
+      description: _("Enable and configure text generation capabilities.");
+
+      Adw.SwitchRow llm_enable_row {
+        title: _("Enable LLM Responses");
+        subtitle: _("Send voice transcriptions to the LLM to generate intelligent responses");
+      }
+    }
+
+    Adw.PreferencesGroup llm_mode_group {
+      title: _("Execution Mode");
+      description: _("Select whether to run the language model locally on device or via a cloud API service.");
+
+      Adw.ActionRow llm_mode_local_row {
+        title: _("Local");
+        subtitle: _("Offline language model executed locally on device (GGUF / Ollama)");
+        activatable: true;
+        activatable-widget: llm_mode_local_radio;
+
+        [prefix]
+        Gtk.CheckButton llm_mode_local_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow llm_mode_cloud_row {
+        title: _("Cloud");
+        subtitle: _("High-capability online language model via cloud API (OpenAI / Anthropic / Custom)");
+        activatable: true;
+        activatable-widget: llm_mode_cloud_radio;
+
+        [prefix]
+        Gtk.CheckButton llm_mode_cloud_radio {
+          group: llm_mode_local_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup llm_local_engine_group {
+      title: _("Local Engine");
+      description: _("Select local runtime provider.");
+
+      Adw.ActionRow llm_local_gguf_row {
+        title: _("Local GGUF (In-Daemon Llama 3.2)");
+        subtitle: _("Runs locally within Python daemon");
+        activatable: true;
+        activatable-widget: llm_local_gguf_radio;
+
+        [prefix]
+        Gtk.CheckButton llm_local_gguf_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow llm_local_ollama_row {
+        title: _("Ollama (Local HTTP)");
+        subtitle: _("Connect to local Ollama instance (localhost:11434)");
+        activatable: true;
+        activatable-widget: llm_local_ollama_radio;
+
+        [prefix]
+        Gtk.CheckButton llm_local_ollama_radio {
+          group: llm_local_gguf_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup llm_local_group {
+      title: _("Local LLM Model Configuration");
+      description: _("Configure offline GGUF model execution.");
+
+      Adw.ActionRow current_llm_model_row {
+        title: _("Active Local LLM Model");
+        subtitle: _("Loading information...");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "brain-augmented-symbolic";
+          margin-end: 12;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup llm_cloud_engine_group {
+      title: _("Cloud LLM Provider");
+      description: _("Select cloud API provider for language modeling.");
+      visible: false;
+
+      Adw.ActionRow llm_cloud_openai_row {
+        title: _("OpenAI Cloud API");
+        subtitle: _("ChatGPT models via api.openai.com");
+        activatable: true;
+        activatable-widget: llm_cloud_openai_radio;
+
+        [prefix]
+        Gtk.CheckButton llm_cloud_openai_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow llm_cloud_anthropic_row {
+        title: _("Anthropic Claude API");
+        subtitle: _("Claude 3.5 models via api.anthropic.com");
+        activatable: true;
+        activatable-widget: llm_cloud_anthropic_radio;
+
+        [prefix]
+        Gtk.CheckButton llm_cloud_anthropic_radio {
+          group: llm_cloud_openai_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow llm_cloud_deepseek_row {
+        title: _("DeepSeek API");
+        subtitle: _("DeepSeek-V3 &amp; R1 models via api.deepseek.com");
+        activatable: true;
+        activatable-widget: llm_cloud_deepseek_radio;
+
+        [prefix]
+        Gtk.CheckButton llm_cloud_deepseek_radio {
+          group: llm_cloud_openai_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow llm_cloud_ollama_row {
+        title: _("Ollama Cloud");
+        subtitle: _("Ollama Cloud models via ollama.com");
+        activatable: true;
+        activatable-widget: llm_cloud_ollama_radio;
+
+        [prefix]
+        Gtk.CheckButton llm_cloud_ollama_radio {
+          group: llm_cloud_openai_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow llm_cloud_custom_row {
+        title: _("Custom HTTP Endpoint");
+        subtitle: _("Custom OpenAI-compatible API server");
+        activatable: true;
+        activatable-widget: llm_cloud_custom_radio;
+
+        [prefix]
+        Gtk.CheckButton llm_cloud_custom_radio {
+          group: llm_cloud_openai_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup llm_cloud_config_group {
+      title: _("Cloud Configuration");
+      visible: false;
+
+      Adw.EntryRow llm_api_key_row {
+        title: _("API Key");
+      }
+
+      Adw.EntryRow llm_url_row {
+        title: _("Server Endpoint URL");
+      }
+
+      Adw.ActionRow llm_cloud_model_row {
+        title: _("Active Cloud Model");
+        subtitle: _("Select model…");
+        activatable: true;
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup llm_system_prompt_group {
+      title: _("System Instructions");
+
+      Adw.EntryRow llm_system_prompt_row {
+        title: _("System Prompt (Instructions)");
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: _("Tools &amp; Extensions");
+      description: _("Model Context Protocol (MCP) integrations and capabilities.");
+
+      Adw.ActionRow mcp_subpage_row {
+        title: _("Tools (MCP)");
+        subtitle: _("Configure Model Context Protocol tools and servers");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "system-run-symbolic";
+          valign: center;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+    }
+  }
+
+  // TTS PAGE
+  Adw.PreferencesPage tts_page {
+    title: _("Text-to-Speech (TTS)");
+    icon-name: "audio-volume-high-symbolic";
+    name: "tts";
+
+    Adw.PreferencesGroup {
+      title: _("Speech Synthesis (Text-To-Speech)");
+      description: _("Configure the voice engine for audio playback of assistant responses.");
+
+      Adw.SwitchRow tts_enable_row {
+        title: _("Enable Speech Synthesis");
+        subtitle: _("Play assistant response through speakers");
+      }
+    }
+
+    Adw.PreferencesGroup tts_mode_group {
+      title: _("Speech Synthesis Mode");
+      description: _("Select whether to synthesize speech locally on device or via a cloud service.");
+
+      Adw.ActionRow tts_mode_local_row {
+        title: _("Local");
+        subtitle: _("Offline neural and lightweight synthesis on this computer (Piper / eSpeak / System)");
+        activatable: true;
+        activatable-widget: tts_mode_local_radio;
+
+        [prefix]
+        Gtk.CheckButton tts_mode_local_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow tts_mode_cloud_row {
+        title: _("Cloud");
+        subtitle: _("High-quality natural voice synthesis via cloud API (OpenAI)");
+        activatable: true;
+        activatable-widget: tts_mode_cloud_radio;
+
+        [prefix]
+        Gtk.CheckButton tts_mode_cloud_radio {
+          group: tts_mode_local_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup tts_local_engine_group {
+      title: _("Local Engine");
+      description: _("Select speech synthesis provider.");
+
+      Adw.ActionRow tts_engine_piper_row {
+        title: _("Piper (Local ONNX)");
+        subtitle: _("Fast local neural speech synthesis");
+        activatable: true;
+        activatable-widget: tts_engine_piper_radio;
+
+        [prefix]
+        Gtk.CheckButton tts_engine_piper_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow tts_engine_espeak_row {
+        title: _("eSpeak NG");
+        subtitle: _("Lightweight local formant synthesizer");
+        activatable: true;
+        activatable-widget: tts_engine_espeak_radio;
+
+        [prefix]
+        Gtk.CheckButton tts_engine_espeak_radio {
+          group: tts_engine_piper_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+
+      Adw.ActionRow tts_engine_system_row {
+        title: _("System Speech Dispatcher");
+        subtitle: _("Default OS speech synthesis engine");
+        activatable: true;
+        activatable-widget: tts_engine_system_radio;
+
+        [prefix]
+        Gtk.CheckButton tts_engine_system_radio {
+          group: tts_engine_piper_radio;
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup tts_local_group {
+      title: _("Local Voice Configuration");
+      description: _("Configure offline Piper neural voice.");
+
+      Adw.ActionRow current_tts_model_row {
+        title: _("Active Voice Model (Piper)");
+        subtitle: _("Loading information...");
+        activatable: true;
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "audio-volume-high-symbolic";
+          margin-end: 12;
+        }
+
+        [suffix]
+        Gtk.Image {
+          icon-name: "go-next-symbolic";
+          valign: center;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup tts_cloud_engine_group {
+      title: _("Cloud TTS Provider");
+      description: _("Select cloud speech synthesis service.");
+      visible: false;
+
+      Adw.ActionRow tts_engine_openai_row {
+        title: _("OpenAI Cloud TTS");
+        subtitle: _("High quality cloud speech synthesis");
+        activatable: true;
+        activatable-widget: tts_engine_openai_radio;
+
+        [prefix]
+        Gtk.CheckButton tts_engine_openai_radio {
+          valign: center;
+          margin-end: 12;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup tts_cloud_config_group {
+      title: _("Cloud Configuration");
+      visible: false;
+
+      Adw.EntryRow tts_cloud_api_key_row {
+        title: _("API Key");
+      }
+
+      Adw.EntryRow tts_cloud_endpoint_row {
+        title: _("Endpoint URL");
+      }
+
+      Adw.EntryRow tts_cloud_model_row {
+        title: _("Cloud Model Name");
+      }
+
+      Adw.EntryRow tts_cloud_voice_row {
+        title: _("Cloud Voice Name");
+      }
+    }
+  }
+}
+
+// MODEL SELECTOR AND LANGUAGE SUB-PAGES
+Adw.NavigationPage model_selector_page {
+  tag: "model_selector_page";
+  title: _("Select Model");
+
+  child: Adw.BreakpointBin selector_breakpoint_bin {
+    Adw.Breakpoint selector_breakpoint {
+      condition ("max-width: 550sp")
+      setters {
+        selector_header_bar.title-widget: null;
+        selector_view_switcher_bar.reveal: true;
+      }
+    }
+
+    child: Adw.ToolbarView selector_toolbar_view {
+      [top]
+      Adw.HeaderBar selector_header_bar {
+        title-widget: Adw.ViewSwitcher selector_view_switcher {
+          stack: selector_view_stack;
+          policy: wide;
+        };
+
+        [end]
+        Gtk.Button hf_download_dialog_btn {
+          icon-name: "list-add-symbolic";
+          tooltip-text: _("Download from Hugging Face");
+          valign: center;
+          visible: false;
+        }
+      }
+
+    content: Gtk.ScrolledWindow selector_scrolled_window {
+      hscrollbar-policy: never;
+      vexpand: true;
+
+      child: Gtk.Box selector_content_box {
+        orientation: vertical;
+        spacing: 12;
+        margin-top: 12;
+        margin-bottom: 12;
+        margin-start: 12;
+        margin-end: 12;
+
+        Adw.Clamp {
+          maximum-size: 600;
+
+          Gtk.SearchEntry search_entry {
+            placeholder-text: _("Search by name, language (it, en), size or provider...");
+            hexpand: true;
+          }
+        }
+
+        Adw.Clamp {
+          maximum-size: 800;
+
+          Adw.PreferencesGroup llm_hf_custom_group {
+            visible: false;
+
+            Adw.ActionRow hf_download_dialog_row {
+              title: _("Hugging Face Repository Download");
+              subtitle: _("Download custom GGUF models directly from Hugging Face");
+              activatable: true;
+
+              [prefix]
+              Gtk.Image {
+                icon-name: "folder-download-symbolic";
+                valign: center;
+              }
+
+              [suffix]
+              Gtk.Image {
+                icon-name: "go-next-symbolic";
+                valign: center;
+              }
+            }
+          }
+        }
+
+        Adw.Clamp {
+          maximum-size: 800;
+
+          Adw.ViewStack selector_view_stack {
+            vhomogeneous: false;
+            hhomogeneous: false;
+
+            Adw.ViewStackPage page_all {
+              name: "all";
+              title: _("All");
+              icon-name: "brain-augmented-symbolic";
+
+              child: Adw.PreferencesGroup models_group_all {
+                title: _("Available Models");
+              };
+            }
+
+            Adw.ViewStackPage page_installed {
+              name: "installed";
+              title: _("Installed");
+              icon-name: "folder-download-symbolic";
+
+              child: Adw.PreferencesGroup models_group_installed {
+                title: _("Installed Models");
+              };
+            }
+
+            Adw.ViewStackPage page_downloading {
+              name: "downloading";
+              title: _("Downloading");
+              icon-name: "system-run-symbolic";
+
+              child: Adw.PreferencesGroup models_group_downloading {
+                title: _("Downloading Models");
+              };
+            }
+          }
+        }
+      };
+    };
+
+    [bottom]
+    Adw.ViewSwitcherBar selector_view_switcher_bar {
+      stack: selector_view_stack;
+    }
+  };
+};
+}
+
+Adw.NavigationPage lang_nav_page {
+  tag: "lang_page";
+  title: _("Select Language");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Select Language");
+      };
+    }
+
+    content: Gtk.Box {
+      orientation: vertical;
+      spacing: 12;
+      margin-top: 12;
+      margin-bottom: 12;
+      margin-start: 16;
+      margin-end: 16;
+
+      Gtk.SearchEntry lang_search_entry {
+        placeholder-text: _("Search language or code...");
+      }
+
+      Gtk.ScrolledWindow {
         hscrollbar-policy: never;
         vexpand: true;
 
-        child: Gtk.ListBox sidebar_list_box {
-          selection-mode: single;
-          styles ["navigation-sidebar"]
-
-          Adw.ActionRow row_general {
-            title: _("General");
-            activatable: true;
-
-            [prefix]
-            Gtk.Image {
-              icon-name: "preferences-system-symbolic";
-              margin-end: 12;
-            }
-          }
-
-          Adw.ActionRow row_wakeword {
-            title: _("Wake Word");
-            activatable: true;
-
-            [prefix]
-            Gtk.Image {
-              icon-name: "cafe-symbolic";
-              margin-end: 12;
-            }
-          }
-
-          Adw.ActionRow row_stt {
-            title: _("Speech Engine (STT)");
-            activatable: true;
-
-            [prefix]
-            Gtk.Image {
-              icon-name: "audio-input-microphone-symbolic";
-              margin-end: 12;
-            }
-          }
-
-          Adw.ActionRow row_llm {
-            title: _("Artificial Intelligence (LLM)");
-            activatable: true;
-
-            [prefix]
-            Gtk.Image {
-              icon-name: "brain-augmented-symbolic";
-              margin-end: 12;
-            }
-          }
-
-          Adw.ActionRow row_tts {
-            title: _("Text-to-Speech (TTS)");
-            activatable: true;
-
-            [prefix]
-            Gtk.Image {
-              icon-name: "audio-volume-high-symbolic";
-              margin-end: 12;
-            }
-          }
-
-          Adw.ActionRow row_mcp {
-            title: _("Tools (MCP)");
-            activatable: true;
-
-            [prefix]
-            Gtk.Image {
-              icon-name: "system-run-symbolic";
-              margin-end: 12;
-            }
-          }
-
-          Adw.ActionRow row_models {
-            title: _("Storage and Models");
-            activatable: true;
-
-            [prefix]
-            Gtk.Image {
-              icon-name: "drive-harddisk-symbolic";
-              margin-end: 12;
-            }
-          }
-
-          Adw.ActionRow row_bugreport {
-            title: _("Bug Reporting");
-            activatable: true;
-
-            [prefix]
-            Gtk.Image {
-              icon-name: "dialog-warning-symbolic";
-              margin-end: 12;
-            }
-          }
-
-          Adw.ActionRow row_about {
-            title: _("About");
-            activatable: true;
-
-            [prefix]
-            Gtk.Image {
-              icon-name: "help-about-symbolic";
-              margin-end: 12;
-            }
-          }
+        child: Gtk.ListBox lang_list_box {
+          selection-mode: none;
+          styles ["boxed-list"]
         };
-      };
+      }
     };
   };
+}
 
-  content: Adw.NavigationPage content_wrapper_page {
-    title: _("Content");
+// MODELS / STORAGE SUBPAGE
+Adw.NavigationPage models_subpage {
+  tag: "models_subpage";
+  title: _("Storage and Models");
 
-    child: Adw.NavigationView content_navigation_view {
-      Adw.NavigationPage main_content_nav_page {
-        title: _("General");
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Storage and Models");
+      };
+    }
 
-        child: Adw.ToolbarView content_toolbar_view {
-          [top]
-          Adw.HeaderBar content_header_bar {
-            title-widget: Adw.WindowTitle content_title {
-              title: _("General");
-            };
+    content: Adw.PreferencesPage models_page {
+      title: _("Storage and Models");
+      icon-name: "drive-harddisk-symbolic";
+      name: "models";
+
+      Adw.PreferencesGroup {
+        title: _("Storage Location");
+        description: _("Base directory for all downloaded models. Subfolders are created automatically.");
+
+        Adw.ActionRow models_path_row {
+          title: _("Base Directory");
+
+          [suffix]
+          Gtk.Button choose_path_btn {
+            icon-name: "folder-open-symbolic";
+            valign: center;
+            tooltip-text: _("Select directory");
+            styles ["flat"]
           }
 
-          content: Gtk.ScrolledWindow {
-            hscrollbar-policy: never;
-            vexpand: true;
-
-            child: Gtk.Stack stack {
-              transition-type: crossfade;
-              vexpand: true;
-              hexpand: true;
-
-              // 1. GENERAL PAGE
-              Adw.PreferencesPage general_page {
-                Adw.PreferencesGroup {
-                  title: _("Voice Assistant");
-                  description: _("General configuration and assistant activation.");
-
-                  Adw.SwitchRow enable_switch_row {
-                    title: _("Enable Voice Assistant");
-                    subtitle: _("Enable or disable background listening");
-                  }
-                }
-
-                Adw.PreferencesGroup lang_group {
-                  title: _("Assistant Language");
-                  description: _("Language used for speech recognition and responses");
-
-                  Adw.ActionRow lang_selection_row {
-                    title: _("Language");
-                    subtitle: _("System Language");
-                    activatable: true;
-
-                    [suffix]
-                    Gtk.Image {
-                      icon-name: "go-next-symbolic";
-                      valign: center;
-                    }
-                  }
-                }
-              }
-
-              Adw.PreferencesPage wakeword_page {
-                Adw.PreferencesGroup wakeword_engine_group {
-                  title: _("Wakeword Engine");
-                  description: _("Vosk: any word — OpenWakeWord: fixed keywords — Sherpa-ONNX: custom ONNX keyword spotter");
-
-                  Adw.ActionRow ww_engine_vosk_row {
-                    title: _("Vosk (custom word)");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton ww_engine_vosk_radio {
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow ww_engine_oww_row {
-                    title: _("OpenWakeWord (fixed keywords)");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton ww_engine_oww_radio {
-                      group: ww_engine_vosk_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow ww_engine_sherpa_row {
-                    title: _("Sherpa-ONNX (keyword spotting)");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton ww_engine_sherpa_radio {
-                      group: ww_engine_vosk_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-                }
-
-                Adw.PreferencesGroup wakeword_config_group {
-                  title: _("Configuration");
-
-                  Adw.EntryRow wakeword_row {
-                    title: _("Wakeword");
-                  }
-
-                  Adw.EntryRow sherpa_model_dir_row {
-                    title: _("Sherpa-ONNX Model Directory");
-                    visible: false;
-                  }
-                }
-
-                Adw.PreferencesGroup oww_keyword_group {
-                  title: _("OpenWakeWord Keyword");
-                  description: _("Pre-trained keyword model to detect");
-                  visible: false;
-
-                  Adw.ActionRow oww_alexa_row {
-                    title: _("alexa");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton oww_alexa_radio {
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow oww_hey_jarvis_row {
-                    title: _("hey_jarvis");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton oww_hey_jarvis_radio {
-                      group: oww_alexa_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow oww_hey_mycroft_row {
-                    title: _("hey_mycroft");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton oww_hey_mycroft_radio {
-                      group: oww_alexa_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow oww_hey_rhasspy_row {
-                    title: _("hey_rhasspy");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton oww_hey_rhasspy_radio {
-                      group: oww_alexa_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-                }
-              }
-
-              // 2. STT PAGE
-              Adw.PreferencesPage stt_page {
-                Adw.PreferencesGroup stt_mode_group {
-                  title: _("Speech Recognition Mode");
-                  description: _("Select whether to process voice locally on device or via a cloud API service.");
-
-                  Adw.ActionRow stt_mode_local_row {
-                    title: _("Local Models (Vosk / Whisper)");
-                    subtitle: _("Offline speech recognition processed locally on device");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton stt_mode_local_radio {
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow stt_mode_cloud_row {
-                    title: _("Cloud Service (OpenAI / Groq)");
-                    subtitle: _("High-accuracy online speech recognition via API");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton stt_mode_cloud_radio {
-                      group: stt_mode_local_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-                }
-
-                Adw.PreferencesGroup stt_local_group {
-                  title: _("Local STT Model Configuration");
-                  description: _("Configure offline model execution.");
-
-                  Adw.ActionRow current_model_row {
-                    title: _("Active Local STT Model");
-                    subtitle: _("Loading information...");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.Image {
-                      icon-name: "audio-input-microphone-symbolic";
-                      margin-end: 12;
-                    }
-
-                    [suffix]
-                    Gtk.Button open_model_selector_btn {
-                      icon-name: "go-next-symbolic";
-                      valign: center;
-                      styles ["flat"]
-                    }
-                  }
-                }
-
-                Adw.PreferencesGroup stt_cloud_group {
-                  title: _("Cloud STT Provider");
-                  description: _("Choose provider and API credentials for Cloud STT.");
-
-                  Adw.ActionRow stt_cloud_openai_row {
-                    title: _("OpenAI Whisper Cloud");
-                    subtitle: _("api.openai.com");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton stt_cloud_openai_radio {
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow stt_cloud_groq_row {
-                    title: _("Groq Whisper Cloud");
-                    subtitle: _("api.groq.com");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton stt_cloud_groq_radio {
-                      group: stt_cloud_openai_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.EntryRow stt_cloud_api_key_row {
-                    title: _("API Key");
-                  }
-
-                  Adw.EntryRow stt_cloud_model_row {
-                    title: _("Cloud Model Name");
-                  }
-                }
-
-                Adw.PreferencesGroup whisper_hardware_group {
-                  title: _("Hardware Acceleration (Whisper)");
-                  description: _("Configure the compute device for Whisper execution.");
-
-                  Adw.ActionRow hw_cpu_row {
-                    title: _("CPU (Compatible with all systems)");
-                    subtitle: _("Standard execution via CPU");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton hw_cpu_radio {
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow hw_cuda_row {
-                    title: _("CUDA (Nvidia GPU)");
-                    subtitle: _("Hardware acceleration via Nvidia graphics card");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton hw_cuda_radio {
-                      group: hw_cpu_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-                }
-              }
-
-              // 3. LLM PAGE
-              Adw.PreferencesPage llm_page {
-                Adw.PreferencesGroup {
-                  title: _("Large Language Model (LLM)");
-                  description: _("Enable and configure text generation capabilities.");
-
-                  Adw.SwitchRow llm_enable_row {
-                    title: _("Enable LLM Responses");
-                    subtitle: _("Send voice transcriptions to the LLM to generate intelligent responses");
-                  }
-                }
-
-                Adw.PreferencesGroup llm_mode_group {
-                  title: _("Execution Engine");
-                  description: _("Select how the language model is executed.");
-
-                  Adw.ActionRow llm_mode_local_row {
-                    title: _("Local GGUF (In-Daemon Llama 3.2)");
-                    subtitle: _("Runs locally within Python daemon");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton llm_mode_local_radio {
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow llm_mode_ollama_row {
-                    title: _("Ollama (Local HTTP)");
-                    subtitle: _("Connect to local Ollama instance");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton llm_mode_ollama_radio {
-                      group: llm_mode_local_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow llm_mode_openai_row {
-                    title: _("OpenAI Cloud API");
-                    subtitle: _("ChatGPT models via api.openai.com");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton llm_mode_openai_radio {
-                      group: llm_mode_local_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow llm_mode_anthropic_row {
-                    title: _("Anthropic Claude API");
-                    subtitle: _("Claude 3.5 models via api.anthropic.com");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton llm_mode_anthropic_radio {
-                      group: llm_mode_local_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow llm_mode_custom_row {
-                    title: _("Custom HTTP Endpoint");
-                    subtitle: _("Custom OpenAI-compatible API server");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton llm_mode_custom_radio {
-                      group: llm_mode_local_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-                }
-
-                Adw.PreferencesGroup llm_local_group {
-                  title: _("Local LLM Model Configuration");
-                  description: _("Configure offline GGUF model execution.");
-
-                  Adw.ActionRow current_llm_model_row {
-                    title: _("Active Local LLM Model");
-                    subtitle: _("Loading information...");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.Image {
-                      icon-name: "brain-augmented-symbolic";
-                      margin-end: 12;
-                    }
-
-                    [suffix]
-                    Gtk.Button open_llm_model_selector_btn {
-                      icon-name: "go-next-symbolic";
-                      valign: center;
-                      styles ["flat"]
-                    }
-                  }
-                }
-
-                Adw.PreferencesGroup llm_hf_custom_group {
-                  title: _("Hugging Face Repository Download");
-                  description: _("Download any GGUF model directly from Hugging Face by entering the repository ID or model path (e.g. bartowski/Llama-3.2-1B-Instruct-GGUF or repo_id:file.gguf)");
-
-                  Adw.EntryRow custom_hf_entry_row {
-                    title: _("Import Hugging Face Model");
-                    show-apply-button: true;
-                  }
-                }
-
-                Adw.PreferencesGroup llm_config_group {
-                  title: _("Engine Configuration");
-
-                  Adw.EntryRow llm_api_key_row {
-                    title: _("API Key");
-                  }
-
-                  Adw.EntryRow llm_system_prompt_row {
-                    title: _("System Prompt (Instructions)");
-                  }
-
-                  Adw.EntryRow llm_url_row {
-                    title: _("Server Endpoint URL");
-                  }
-
-                  Adw.EntryRow llm_model_row {
-                    title: _("Model Name");
-                  }
-                }
-              }
-
-              // 4. TTS PAGE
-              Adw.PreferencesPage tts_page {
-                Adw.PreferencesGroup {
-                  title: _("Speech Synthesis (Text-To-Speech)");
-                  description: _("Configure the voice engine for audio playback of assistant responses.");
-
-                  Adw.SwitchRow tts_enable_row {
-                    title: _("Enable Speech Synthesis");
-                    subtitle: _("Play assistant response through speakers");
-                  }
-                }
-
-                Adw.PreferencesGroup tts_engine_group {
-                  title: _("TTS Engine");
-                  description: _("Select speech synthesis provider.");
-
-                  Adw.ActionRow tts_engine_piper_row {
-                    title: _("Piper (Local ONNX)");
-                    subtitle: _("Fast local neural speech synthesis");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton tts_engine_piper_radio {
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow tts_engine_espeak_row {
-                    title: _("eSpeak NG");
-                    subtitle: _("Lightweight local formant synthesizer");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton tts_engine_espeak_radio {
-                      group: tts_engine_piper_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow tts_engine_openai_row {
-                    title: _("OpenAI Cloud TTS");
-                    subtitle: _("High quality cloud speech synthesis");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton tts_engine_openai_radio {
-                      group: tts_engine_piper_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-
-                  Adw.ActionRow tts_engine_system_row {
-                    title: _("System Speech Dispatcher");
-                    subtitle: _("Default OS speech synthesis engine");
-                    activatable: true;
-
-                    [prefix]
-                    Gtk.CheckButton tts_engine_system_radio {
-                      group: tts_engine_piper_radio;
-                      valign: center;
-                      margin-end: 12;
-                    }
-                  }
-                }
-
-                Adw.PreferencesGroup tts_config_group {
-                  title: _("Voice Configuration");
-
-                  Adw.EntryRow tts_voice_row {
-                    title: _("Voice Model / Name");
-                  }
-                }
-              }
-
-              // 5. MCP PAGE
-              Adw.PreferencesPage mcp_page {
-                Adw.PreferencesGroup {
-                  title: _("Model Context Protocol (MCP)");
-                  description: _("Integration with system tools and services.");
-
-                  Adw.ActionRow {
-                    title: _("MCP Integration Status");
-                    subtitle: _("Ready for tool &amp; function calling integration");
-                  }
-                }
-
-                Adw.PreferencesGroup {
-                  title: _("Direct Action Engine");
-                  description: _("Executes quick commands (regex and semantic router) directly via MCP, without going through the conversational LLM.");
-
-                  Adw.SwitchRow direct_action_enable_row {
-                    title: _("Enable Direct Action Engine");
-                    subtitle: _("If disabled, every phrase is always sent to the conversational LLM");
-                  }
-
-                  Adw.SpinRow semantic_threshold_row {
-                    title: _("Semantic Router Confidence Threshold");
-                    subtitle: _("Minimum similarity score required to execute an action directly");
-                    digits: 2;
-                    adjustment: Gtk.Adjustment {
-                      lower: 0.50;
-                      upper: 0.95;
-                      step-increment: 0.05;
-                      page-increment: 0.05;
-                      value: 0.62;
-                    };
-                  }
-
-                  Adw.ActionRow last_route_row {
-                    title: _("Last Routing");
-                    subtitle: _("Not available yet");
-                  }
-                }
-              }
-
-              // 6. MODELS / STORAGE PAGE
-              Adw.PreferencesPage models_page {
-                Adw.PreferencesGroup {
-                  title: _("Storage Location");
-                  description: _("Base directory for all downloaded models. Subfolders are created automatically.");
-
-                  Adw.ActionRow models_path_row {
-                    title: _("Base Directory");
-
-                    [suffix]
-                    Gtk.Button choose_path_btn {
-                      icon-name: "folder-open-symbolic";
-                      valign: center;
-                      tooltip-text: _("Select directory");
-                      styles ["flat"]
-                    }
-
-                    [suffix]
-                    Gtk.Button reset_path_btn {
-                      icon-name: "edit-clear-symbolic";
-                      valign: center;
-                      tooltip-text: _("Reset to default path");
-                      styles ["flat"]
-                    }
-                  }
-                }
-
-                Adw.PreferencesGroup ww_models_group {
-                  title: _("Wake Word");
-                }
-
-                Adw.PreferencesGroup stt_models_group {
-                  title: _("Speech Recognition (STT)");
-
-                  [header-suffix]
-                  Gtk.Button stt_open_btn {
-                    label: _("Open");
-                    valign: center;
-                    has-frame: false;
-                  }
-                }
-
-                Adw.PreferencesGroup llm_models_group {
-                  title: _("Language Model (LLM)");
-
-                  [header-suffix]
-                  Gtk.Button llm_open_btn {
-                    label: _("Open");
-                    valign: center;
-                    has-frame: false;
-                  }
-                }
-
-                Adw.PreferencesGroup tts_models_group {
-                  title: _("Text-to-Speech (TTS)");
-
-                  [header-suffix]
-                  Gtk.Button tts_open_btn {
-                    label: _("Open");
-                    valign: center;
-                    has-frame: false;
-                  }
-                }
-
-                Adw.PreferencesGroup {
-                  Adw.ButtonRow clean_unused_btn {
-                    title: _("Remove Unused Models");
-                    styles ["destructive-action"]
-                    end-icon-name: "user-trash-symbolic";
-                  }
-                }
-              }
-
-              // 7. BUG REPORTING PAGE
-              Adw.PreferencesPage bugreport_page {
-                Adw.PreferencesGroup {
-                  title: _("Segnalazione errori");
-
-                  Adw.SwitchRow bugreport_enable_row {
-                    title: _("Abilita segnalazione automatica");
-                    subtitle: _("Invia le eccezioni non gestite all'istanza Bugzilla configurata");
-                  }
-                }
-
-                Adw.PreferencesGroup {
-                  title: _("Configurazione Bugzilla");
-                  description: _("Le credenziali vengono usate solo per inviare report e non vengono condivise con terze parti.");
-
-                  Adw.EntryRow bugreport_endpoint_row {
-                    title: _("Endpoint (URL base)");
-                    input-purpose: url;
-                  }
-
-                  Adw.PasswordEntryRow bugreport_apikey_row {
-                    title: _("API Key");
-                  }
-
-                  Adw.EntryRow bugreport_product_row {
-                    title: _("Prodotto");
-                  }
-
-                  Adw.EntryRow bugreport_component_row {
-                    title: _("Componente");
-                  }
-                }
-
-                Adw.PreferencesGroup {
-                  Adw.ActionRow {
-                    title: _("Test connessione");
-                    subtitle: _("Verifica che endpoint e API key siano corretti");
-
-                    [suffix]
-                    Gtk.Button test_bugreport_btn {
-                      label: _("Testa");
-                      valign: center;
-                      styles ["pill"]
-                    }
-                  }
-                }
-              }
-
-              // 8. ABOUT PAGE
-              Adw.PreferencesPage about_page {
-                Adw.PreferencesGroup {
-                  title: _("Voice Assistant");
-
-                  Adw.ActionRow {
-                    title: _("Voice Assistant GNOME Extension");
-                    subtitle: _("Offline and integrated voice assistant for GNOME Shell");
-                  }
-
-                  Adw.ActionRow {
-                    title: _("Version");
-                    subtitle: "1.0.0";
-                  }
-
-                  Adw.ActionRow {
-                    title: _("Backend D-Bus Service");
-                    subtitle: "org.local.VoiceAssistant";
-                  }
-
-                  Adw.ActionRow doc_row {
-                    title: _("Source Code &amp; Documentation");
-                    subtitle: "https://github.com/Scroker/voice-assistant";
-
-                    [suffix]
-                    Gtk.Button doc_btn {
-                      icon-name: "web-browser-symbolic";
-                      valign: center;
-                      styles ["flat"]
-                    }
-                  }
-                }
-              }
-            };
-          };
-        };
+          [suffix]
+          Gtk.Button reset_path_btn {
+            icon-name: "edit-clear-symbolic";
+            valign: center;
+            tooltip-text: _("Reset to default path");
+            styles ["flat"]
+          }
+        }
+
+        Adw.ActionRow models_total_size_row {
+          title: _("Total Occupied Space");
+          subtitle: _("Calculating...");
+          styles ["property"]
+        }
       }
 
-      // MODEL SELECTOR SUB-PAGE
-      Adw.NavigationPage model_selector_page {
-        child: Adw.ToolbarView selector_toolbar_view {
-          [top]
-          Adw.HeaderBar selector_header_bar {
-            title-widget: Adw.ViewSwitcher selector_view_switcher {
-              stack: selector_view_stack;
-              policy: wide;
-            };
-          }
-
-          content: Gtk.ScrolledWindow {
-            hscrollbar-policy: never;
-            vexpand: true;
-
-            child: Gtk.Box selector_content_box {
-              orientation: vertical;
-              spacing: 12;
-              margin-top: 12;
-              margin-bottom: 12;
-              margin-start: 12;
-              margin-end: 12;
-
-              Adw.Clamp {
-                maximum-size: 600;
-
-                Gtk.SearchEntry search_entry {
-                  placeholder-text: _("Search by name, language (it, en), size or provider...");
-                  hexpand: true;
-                }
-              }
-
-              Adw.Clamp {
-                maximum-size: 800;
-
-                Adw.ViewStack selector_view_stack {
-                  Adw.ViewStackPage page_all {
-                    name: "all";
-                    title: _("All");
-                    icon-name: "brain-augmented-symbolic";
-
-                    child: Adw.PreferencesGroup models_group_all {
-                      title: _("Available Models");
-                    };
-                  }
-
-                  Adw.ViewStackPage page_installed {
-                    name: "installed";
-                    title: _("Installed");
-                    icon-name: "folder-download-symbolic";
-
-                    child: Adw.PreferencesGroup models_group_installed {
-                      title: _("Installed Models");
-                    };
-                  }
-
-                  Adw.ViewStackPage page_downloading {
-                    name: "downloading";
-                    title: _("Downloading");
-                    icon-name: "system-run-symbolic";
-
-                    child: Adw.PreferencesGroup models_group_downloading {
-                      title: _("Downloading Models");
-                    };
-                  }
-                }
-              }
-            };
-          };
-
-          [bottom]
-          Adw.ViewSwitcherBar selector_view_switcher_bar {
-            stack: selector_view_stack;
-          }
-        };
+      Adw.PreferencesGroup {
+        Adw.ButtonRow clean_unused_btn {
+          title: _("Remove Unused Models");
+          styles ["destructive-action"]
+          end-icon-name: "user-trash-symbolic";
+        }
       }
 
-      Adw.NavigationPage lang_nav_page {
-        tag: "lang_page";
-        title: _("Select Language");
+      Adw.PreferencesGroup ww_models_group {
+        title: _("Wake Word");
 
-        child: Adw.ToolbarView {
-          [top]
-          Adw.HeaderBar {
-            title-widget: Adw.WindowTitle {
-              title: _("Select Language");
-            };
-          }
+        [header-suffix]
+        Gtk.Button ww_open_btn {
+          label: _("Open");
+          valign: center;
+          has-frame: false;
+        }
+      }
 
-          content: Gtk.Box {
-            orientation: vertical;
-            spacing: 12;
-            margin-top: 12;
-            margin-bottom: 12;
-            margin-start: 16;
-            margin-end: 16;
+      Adw.PreferencesGroup stt_models_group {
+        title: _("Speech Recognition (STT)");
 
-            Gtk.SearchEntry lang_search_entry {
-              placeholder-text: _("Search language or code...");
-            }
+        [header-suffix]
+        Gtk.Button stt_open_btn {
+          label: _("Open");
+          valign: center;
+          has-frame: false;
+        }
+      }
 
-            Gtk.ScrolledWindow {
-              hscrollbar-policy: never;
-              vexpand: true;
+      Adw.PreferencesGroup llm_models_group {
+        title: _("Language Model (LLM)");
 
-              child: Gtk.ListBox lang_list_box {
-                selection-mode: none;
-                styles ["boxed-list"]
-              };
-            }
+        [header-suffix]
+        Gtk.Button llm_open_btn {
+          label: _("Open");
+          valign: center;
+          has-frame: false;
+        }
+      }
+
+      Adw.PreferencesGroup tts_models_group {
+        title: _("Text-to-Speech (TTS)");
+
+        [header-suffix]
+        Gtk.Button tts_open_btn {
+          label: _("Open");
+          valign: center;
+          has-frame: false;
+        }
+      }
+    };
+  };
+}
+
+// AUDIO FILTERS SUBPAGE
+Adw.NavigationPage audio_subpage {
+  tag: "audio_subpage";
+  title: _("Audio Filters");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Audio Filters");
+      };
+    }
+
+    content: Adw.PreferencesPage audio_page {
+      title: _("Audio Filters");
+      icon-name: "audio-input-microphone-symbolic";
+      name: "audio";
+
+      Adw.PreferencesGroup {
+        title: _("Echo Cancellation");
+        description: _("System-level PipeWire WebRTC processing, applied before the assistant receives audio. Prevents the assistant from hearing its own voice.");
+
+        Adw.SwitchRow audio_aec_row {
+          title: _("Cancel echo and suppress noise");
+          subtitle: _("Requires restarting listening to take effect");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("High-Pass Filter");
+        description: _("Removes low-frequency hum, desk vibrations and fan noise from the microphone signal.");
+
+        Adw.SwitchRow audio_highpass_row {
+          title: _("Enable high-pass filter");
+        }
+
+        Adw.SpinRow audio_highpass_cutoff_row {
+          title: _("Cutoff frequency");
+          subtitle: _("Hz — higher values remove more rumble but thin out the voice");
+
+          adjustment: Gtk.Adjustment {
+            lower: 20;
+            upper: 500;
+            step-increment: 5;
+            page-increment: 20;
           };
-        };
+
+          digits: 0;
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Automatic Gain Control");
+        description: _("Normalizes speech volume to compensate for a microphone whose system gain is too low or too high.");
+
+        Adw.SwitchRow audio_agc_row {
+          title: _("Enable automatic gain control");
+        }
+
+        Adw.SpinRow audio_agc_target_row {
+          title: _("Target speech level");
+          subtitle: _("RMS level the assistant tries to reach");
+
+          adjustment: Gtk.Adjustment {
+            lower: 200;
+            upper: 8000;
+            step-increment: 50;
+            page-increment: 200;
+          };
+
+          digits: 0;
+        }
+
+        Adw.SpinRow audio_agc_max_gain_row {
+          title: _("Maximum gain");
+          subtitle: _("High values pick up distant voices but also amplify background noise");
+
+          adjustment: Gtk.Adjustment {
+            lower: 1.0;
+            upper: 8.0;
+            step-increment: 0.1;
+            page-increment: 0.5;
+          };
+
+          digits: 1;
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Noise Gate");
+        description: _("Attenuates audio below a threshold computed from the room's background noise, so ambient noise is not sent to speech recognition.");
+
+        Adw.SwitchRow audio_gate_row {
+          title: _("Enable adaptive noise gate");
+        }
+
+        Adw.SpinRow audio_gate_threshold_row {
+          title: _("Sensitivity");
+          subtitle: _("Multiplier over the detected noise floor — higher values require louder speech");
+
+          adjustment: Gtk.Adjustment {
+            lower: 1.0;
+            upper: 10.0;
+            step-increment: 0.1;
+            page-increment: 0.5;
+          };
+
+          digits: 1;
+        }
+
+        Adw.SpinRow audio_gate_attenuation_row {
+          title: _("Attenuation");
+          subtitle: _("0.00 mutes below-threshold audio completely, 1.00 leaves it untouched");
+
+          adjustment: Gtk.Adjustment {
+            lower: 0.0;
+            upper: 1.0;
+            step-increment: 0.05;
+            page-increment: 0.1;
+          };
+
+          digits: 2;
+        }
+      }
+
+      Adw.PreferencesGroup {
+        Adw.ButtonRow audio_reset_btn {
+          title: _("Restore Default Values");
+        }
+      }
+    };
+  };
+}
+
+// COMMAND DISPATCH SUBPAGE
+Adw.NavigationPage dispatch_subpage {
+  tag: "dispatch_subpage";
+  title: _("Command Dispatch");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Command Dispatch");
+      };
+    }
+
+    content: Adw.PreferencesPage dispatch_page {
+      title: _("Command Dispatch");
+      icon-name: "media-playlist-consecutive-symbolic";
+      name: "dispatch";
+
+      Adw.PreferencesGroup {
+        description: _("A recognized command goes through up to three stages, stopping at the first one that resolves it: Fast-Path, Medium-Path, then Smart-Path. Disabling a stage makes commands fall through to the next one.");
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Fast-Path");
+        description: _("Runs frequent commands (volume, theme, media, clock, launching apps) straight from regex patterns and semantic matching, without asking the language model. Responds in under 10 ms but only recognizes known phrasings.");
+
+        Adw.SwitchRow dispatch_fast_path_row {
+          title: _("Enable Fast-Path");
+          subtitle: _("Fastest, deterministic — no model involved");
+        }
+
+        Adw.SpinRow dispatch_semantic_threshold_row {
+          title: _("Semantic Router Confidence Threshold");
+          subtitle: _("Minimum similarity score required to execute an action directly instead of falling through");
+          digits: 2;
+          adjustment: Gtk.Adjustment {
+            lower: 0.50;
+            upper: 0.95;
+            step-increment: 0.05;
+            page-increment: 0.05;
+            value: 0.62;
+          };
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Medium-Path");
+        description: _("Asks the language model to pick a single tool to run, without generating free text. Slower than Fast-Path but understands phrasings it has never seen. Requires MCP tools and a configured model.");
+
+        Adw.SwitchRow dispatch_medium_path_row {
+          title: _("Enable Medium-Path");
+          subtitle: _("Model-assisted tool selection");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Smart-Path");
+        description: _("Always active as the final stage: full conversation with memory, document retrieval and tool calling. Handles everything the previous stages leave unresolved.");
+      }
+    };
+  };
+}
+
+// BUG REPORTING SUBPAGE
+Adw.NavigationPage bugreport_subpage {
+  tag: "bugreport_subpage";
+  title: _("Bug Reporting");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Bug Reporting");
+      };
+    }
+
+    content: Adw.PreferencesPage bugreport_page {
+      title: _("Bug Reporting");
+      icon-name: "dialog-warning-symbolic";
+      name: "bugreport";
+
+      Adw.PreferencesGroup {
+        title: _("Segnalazione errori");
+
+        Adw.SwitchRow bugreport_enable_row {
+          title: _("Abilita segnalazione automatica");
+          subtitle: _("Invia le eccezioni non gestite all'istanza Bugzilla configurata");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Configurazione Bugzilla");
+        description: _("Le credenziali vengono usate solo per inviare report e non vengono condivise con terze parti.");
+
+        Adw.EntryRow bugreport_endpoint_row {
+          title: _("Endpoint (URL base)");
+          input-purpose: url;
+        }
+
+        Adw.PasswordEntryRow bugreport_apikey_row {
+          title: _("API Key");
+        }
+
+        Adw.EntryRow bugreport_product_row {
+          title: _("Prodotto");
+        }
+
+        Adw.EntryRow bugreport_component_row {
+          title: _("Componente");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        Adw.ButtonRow test_bugreport_btn {
+          title: _("Test connessione");
+        }
+      }
+    };
+  };
+}
+
+// MCP SUBPAGE
+Adw.NavigationPage mcp_subpage {
+  tag: "mcp_subpage";
+  title: _("Tools (MCP)");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Tools (MCP)");
+      };
+    }
+
+    content: Adw.PreferencesPage mcp_page {
+      title: _("Tools (MCP)");
+      icon-name: "system-run-symbolic";
+      name: "mcp";
+
+      Adw.PreferencesGroup mcp_enable_group {
+        title: _("Model Context Protocol (MCP)");
+        description: _("Integration with system tools and external capabilities.");
+
+        Adw.SwitchRow mcp_enable_row {
+          title: _("Enable Model Context Protocol");
+          subtitle: _("Allow assistant to execute actions via MCP tools");
+        }
+      }
+
+      Adw.PreferencesGroup mcp_config_group {
+        title: _("MCP Configuration");
+        description: _("Settings for tool registries and servers.");
+
+        Adw.EntryRow mcp_registry_url_row {
+          title: _("Registry URL");
+        }
+      }
+
+      Adw.PreferencesGroup mcp_servers_group {
+        title: _("Configured Servers");
+        description: _("Active MCP server connections.");
+
+        Adw.ActionRow mcp_server_gnome_row {
+          title: _("GNOME MCP Server");
+          subtitle: _("System integration tools (desktop, notifications, apps)");
+        }
       }
     };
   };

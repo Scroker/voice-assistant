@@ -1,0 +1,38 @@
+{
+  "active_tools": [
+    "set_volume",
+    "quick_settings",
+    "launch_application",
+    "media_control",
+    "send_notification",
+    "open_file",
+    "set_wallpaper",
+    "take_screenshot",
+    "window_management",
+    "keyring_management"
+  ],
+  "keywords": {
+    "volume": "set_volume",
+    "set_volume": "set_volume",
+    "theme": "quick_settings",
+    "quick_settings": "quick_settings",
+    "app": "launch_application",
+    "application": "launch_application",
+    "launch_application": "launch_application",
+    "media": "media_control",
+    "music": "media_control",
+    "media_control": "media_control",
+    "notification": "send_notification",
+    "send_notification": "send_notification",
+    "open_file": "open_file",
+    "file": "open_file",
+    "wallpaper": "set_wallpaper",
+    "set_wallpaper": "set_wallpaper",
+    "screenshot": "take_screenshot",
+    "take_screenshot": "take_screenshot",
+    "window": "window_management",
+    "window_management": "window_management",
+    "keyring": "keyring_management",
+    "keyring_management": "keyring_management"
+  }
+}

@@ -1,8 +1,8 @@
 ---
 name: "Mute"
 intent: mute
-tool: system_volume
-args: {"action": "mute"}
+tool: set_volume
+args: {"mute": true}
 triggers:
   - "silenzia il volume"
   - "mute audio"

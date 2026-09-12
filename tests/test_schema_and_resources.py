@@ -38,9 +38,19 @@ class TestSchemaAndResources(unittest.TestCase):
         if not shutil.which("blueprint-compiler"):
             self.skipTest("blueprint-compiler non installato nel sistema")
         blp_path = os.path.join(ROOT_DIR, "data", "ui", "prefs.blp")
+        env = dict(os.environ)
+        # Assicura reperibilità di blueprintcompiler anche se HOME è temporaneo nei test
+        candidates = [
+            "/home/giorgiodramis/.local/lib/python3.14/site-packages",
+        ]
+        for c in candidates:
+            if os.path.isdir(c):
+                curr_pp = env.get("PYTHONPATH", "")
+                env["PYTHONPATH"] = f"{c}:{curr_pp}" if curr_pp else c
+                break
         res = subprocess.run(
             ["blueprint-compiler", "compile", blp_path],
-            capture_output=True, text=True
+            capture_output=True, text=True, env=env,
         )
         self.assertEqual(res.returncode, 0, f"Errore sintassi Blueprint UI:\n{res.stderr}")
 

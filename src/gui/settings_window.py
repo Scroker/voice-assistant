@@ -1,718 +1,286 @@
 """
-SettingsWindow — Preferences window native for the GUI.
+SettingsWindow — Finestra preferenze nativa per la GUI dell'Assistente Vocale.
 
-Opens prefs.ui from GResource as an Adw.Window transient_for the GUI.
-Used only when settings are opened from the GUI window.
-When opened from the GNOME Shell extension panel, the standard
-gnome-extensions prefs mechanism is used instead (no parent relationship).
+Orchestra i moduli di impostazioni specializzati in `components.settings`.
 """
 
 from __future__ import annotations
 
-import os
-import shutil
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw, Gio, GLib, Gdk
+gi.require_version('Gio', '2.0')
+from gi.repository import Gtk, Adw, Gio, Gdk
+
+Adw.init()
+
+import os
+import sys
+
+_gui_dir = os.path.dirname(os.path.abspath(__file__))
+if _gui_dir not in sys.path:
+    sys.path.insert(0, _gui_dir)
+
+try:
+    from components.resources import register_resources, register_icons
+    from components.settings import (
+        GeneralSettings,
+        AudioSettings,
+        DispatchSettings,
+        WakeWordSettings,
+        STTSettings,
+        LLMSettings,
+        TTSSettings,
+        MCPSettings,
+        ModelSelectorController,
+        ModelsStorageManager,
+        BugReportSettings,
+        AboutSettings,
+        SUPPORTED_LANGUAGES,
+    )
+except ImportError:
+    from gui.components.resources import register_resources, register_icons
+    from gui.components.settings import (
+        GeneralSettings,
+        AudioSettings,
+        DispatchSettings,
+        WakeWordSettings,
+        STTSettings,
+        LLMSettings,
+        TTSSettings,
+        MCPSettings,
+        ModelSelectorController,
+        ModelsStorageManager,
+        BugReportSettings,
+        AboutSettings,
+        SUPPORTED_LANGUAGES,
+    )
 
 _SCHEMA = "org.gnome.shell.extensions.voice-assistant"
 _PREFS_UI = "/org/gnome/shell/extensions/voice-assistant/ui/prefs.ui"
-_ICON_RESOURCE_BASE = "/org/gnome/shell/extensions/voice-assistant/icons"
 
-SUPPORTED_LANGUAGES = [
-    {"code": "it", "name": "Italiano", "english_name": "Italian"},
-    {"code": "en", "name": "English", "english_name": "English"},
-    {"code": "de", "name": "Deutsch", "english_name": "German"},
-    {"code": "fr", "name": "Français", "english_name": "French"},
-    {"code": "es", "name": "Español", "english_name": "Spanish"},
-    {"code": "pt", "name": "Português", "english_name": "Portuguese"},
-    {"code": "nl", "name": "Nederlands", "english_name": "Dutch"},
-    {"code": "ru", "name": "Русский", "english_name": "Russian"},
-    {"code": "zh", "name": "中文", "english_name": "Chinese"},
-    {"code": "ja", "name": "日本語", "english_name": "Japanese"},
-    {"code": "ko", "name": "한국어", "english_name": "Korean"},
-    {"code": "pl", "name": "Polski", "english_name": "Polish"},
-    {"code": "uk", "name": "Українська", "english_name": "Ukrainian"},
-    {"code": "tr", "name": "Türkçe", "english_name": "Turkish"},
-    {"code": "sv", "name": "Svenska", "english_name": "Swedish"},
-]
+_active_dialog: _SettingsDialog | None = None
 
 
-def open_settings_window(parent=None, application=None) -> None:
-    """Open the settings window, optionally transient_for *parent*.
-
-    *application* should be the active Adw.Application so the window is
-    registered with it (required when no chat window is open).
-    """
+def open_settings_window(parent=None, application=None) -> _SettingsDialog | None:
+    """Apre la finestra/dialog delle preferenze (Adw.PreferencesDialog).
+    Se parent è specificato (es. aperta dalla GUI principale),
+    il dialog delle preferenze viene presentato come sheet su parent.
+    Altrimenti viene presentato in modalità standalone."""
+    global _active_dialog
     try:
-        win = _SettingsWindow(transient_for=parent)
-        app = application or Adw.Application.get_default()
+        app = application or (parent.get_application() if parent and hasattr(parent, "get_application") else None) or Adw.Application.get_default()
         if app:
-            win.set_application(app)
-        win.present()
+            try:
+                if not app.get_is_registered():
+                    app.register(None)
+            except Exception:
+                pass
+
+        if _active_dialog is not None:
+            if parent:
+                _active_dialog.set_transient_for(parent)
+                _active_dialog.set_modal(True)
+                root = _active_dialog.get_root()
+                if root and hasattr(root, "set_transient_for"):
+                    root.set_transient_for(parent)
+            else:
+                _active_dialog.set_transient_for(None)
+                _active_dialog.set_modal(False)
+                root = _active_dialog.get_root()
+                if root and hasattr(root, "set_transient_for"):
+                    root.set_transient_for(None)
+            _active_dialog.present(parent)
+            return _active_dialog
+
+        dialog = _SettingsDialog(transient_for=parent)
+        if app:
+            dialog.set_application(app)
+        if parent:
+            dialog.set_transient_for(parent)
+            dialog.set_modal(True)
+        else:
+            dialog.set_transient_for(None)
+            dialog.set_modal(False)
+
+        def _on_closed(_d):
+            global _active_dialog
+            if _active_dialog is _d:
+                _active_dialog = None
+            if parent is None and app:
+                GLib.idle_add(lambda: app.quit() if len(app.get_windows()) <= 1 else None)
+
+        dialog.connect("closed", _on_closed)
+        _active_dialog = dialog
+
+        dialog.present(parent)
+
+        if parent is None and app:
+            root = dialog.get_root()
+            if root and isinstance(root, Gtk.Window):
+                root._settings_dialog = dialog
+                try:
+                    root.set_icon_name("vocal-assistant-icon")
+                    app.add_window(root)
+                except Exception:
+                    pass
+
+        return dialog
     except Exception as e:
-        print(f"[SettingsWindow] Cannot open settings window: {e}")
+        print(f"[SettingsWindow] Impossibile aprire dialog impostazioni: {e}")
+        return None
 
 
-class _SettingsWindow(Adw.Window):
+class _SettingsDialogMeta(type(Adw.PreferencesDialog)):
+    """Metaclasse per garantire compatibilità trasparente su isinstance(win, _SettingsWindow)."""
+    def __instancecheck__(cls, instance):
+        if super().__instancecheck__(instance):
+            return True
+        if getattr(instance, "_settings_dialog", None) is not None:
+            return True
+        return False
 
-    def __init__(self, transient_for=None):
-        super().__init__()
+
+class _SettingsDialog(Adw.PreferencesDialog, metaclass=_SettingsDialogMeta):
+    """Dialog delle preferenze nativo Libadwaita (Adw.PreferencesDialog)."""
+
+    def __new__(cls, *args, **kwargs):
+        Adw.init()
+        register_resources()
+        register_icons(Gdk.Display.get_default())
+
+        builder = Gtk.Builder()
+        ui_path = os.path.normpath(os.path.join(_gui_dir, "..", "..", "data", "ui", "prefs.ui"))
+        if os.path.exists(ui_path):
+            builder.add_from_file(ui_path)
+        else:
+            try:
+                builder.add_from_resource(_PREFS_UI)
+            except Exception:
+                raise
+
+        dialog = builder.get_object("preferences_dialog") or builder.get_object("preferences_window")
+        if not dialog:
+            raise RuntimeError("preferences_dialog non trovato in prefs.ui")
+        dialog.__class__ = cls
+        dialog._b = builder
+        return dialog
+
+    def __init__(self, transient_for=None, modal: bool | None = None):
+        if getattr(self, "_initialized", False):
+            return
+        self._initialized = True
+
         self.set_title("Preferenze — Assistente Vocale")
-        self.set_default_size(860, 600)
-        if transient_for:
-            self.set_transient_for(transient_for)
-            self.set_modal(False)
+        self.set_content_width(860)
+        self.set_content_height(600)
+        self._transient_parent = transient_for
+        self._is_modal = modal if modal is not None else bool(transient_for)
+        self._application = None
 
-        self._register_icons()
-
+        self._settings = None
         try:
-            self._settings = Gio.Settings.new(_SCHEMA)
+            source = Gio.SettingsSchemaSource.get_default()
+            if source and source.lookup(_SCHEMA, True):
+                self._settings = Gio.Settings.new(_SCHEMA)
+            else:
+                candidates = [
+                    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "schemas")),
+                    os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@scroker.github.io/schemas"),
+                ]
+                for c in candidates:
+                    if os.path.exists(os.path.join(c, "gschemas.compiled")):
+                        schema_src = Gio.SettingsSchemaSource.new_from_directory(c, source, False)
+                        schema = schema_src.lookup(_SCHEMA, True)
+                        if schema:
+                            self._settings = Gio.Settings.new_full(schema, None, None)
+                            break
         except Exception:
             self._settings = None
 
-        builder = Gtk.Builder()
-        builder.add_from_resource(_PREFS_UI)
-        self._b = builder
+        self._setup_components()
 
-        split_view = builder.get_object("split_view")
-        if not split_view:
-            raise RuntimeError("split_view not found in prefs.ui")
-        self.set_content(split_view)
+    def set_transient_for(self, parent) -> None:
+        self._transient_parent = parent
+        self._is_modal = bool(parent)
+        root = self.get_root()
+        if root and hasattr(root, "set_transient_for"):
+            try:
+                root.set_transient_for(parent)
+            except Exception:
+                pass
 
+    def get_transient_for(self):
+        return getattr(self, "_transient_parent", None)
+
+    def set_modal(self, modal: bool) -> None:
+        self._is_modal = bool(modal)
+
+    def get_modal(self) -> bool:
+        return getattr(self, "_is_modal", False)
+
+    def set_default_size(self, width: int, height: int) -> None:
+        self.set_content_width(width)
+        self.set_content_height(height)
+
+    def set_application(self, app) -> None:
+        self._application = app
+        root = self.get_root()
+        if root and hasattr(root, "set_application"):
+            try:
+                root.set_application(app)
+            except Exception:
+                pass
+
+    def get_application(self):
+        return getattr(self, "_application", None)
+
+    def present(self, parent=None) -> None:
+        target = parent if parent is not None else getattr(self, "_transient_parent", None)
+        if target is not None:
+            self._transient_parent = target
+            super().present(target)
+        else:
+            super().present(None)
+
+    def destroy(self) -> None:
         try:
-            bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 600px"))
-            bp.add_setter(split_view, "collapsed", True)
-            self.add_breakpoint(bp)
+            self.force_close()
         except Exception:
-            pass
-
-        self._setup_navigation()
-        self._setup_bindings()
-
-    # ------------------------------------------------------------------
-    # Icon theme
-    # ------------------------------------------------------------------
-
-    def _register_icons(self) -> None:
-        display = Gdk.Display.get_default()
-        if not display:
-            return
-        try:
-            theme = Gtk.IconTheme.get_for_display(display)
-            # Resource path: GTK looks for {base}/hicolor/{size}/{type}/{name}.svg
-            theme.add_resource_path(_ICON_RESOURCE_BASE)
-            # Also search the installed extension directory on disk
-            icons_dir = os.path.expanduser(
-                "~/.local/share/gnome-shell/extensions/"
-                "voice-assistant@scroker.github.io/icons"
-            )
-            if os.path.exists(icons_dir):
-                theme.add_search_path(icons_dir)
-        except Exception as e:
-            print(f"[SettingsWindow] Icon registration failed: {e}")
-
-    # ------------------------------------------------------------------
-    # Navigation
-    # ------------------------------------------------------------------
-
-    def _setup_navigation(self):
-        sidebar = self._b.get_object("sidebar_list_box")
-        stack = self._b.get_object("stack")
-        content_title = self._b.get_object("content_title")
-        main_nav_page = self._b.get_object("main_content_nav_page")
-        split_view = self._b.get_object("split_view")
-
-        if not sidebar or not stack:
-            return
-
-        page_defs = [
-            ("row_general",  "general_page",  "General"),
-            ("row_wakeword", "wakeword_page", "Wake Word"),
-            ("row_stt",      "stt_page",      "Speech Engine (STT)"),
-            ("row_llm",      "llm_page",      "Artificial Intelligence (LLM)"),
-            ("row_tts",      "tts_page",      "Text-to-Speech (TTS)"),
-            ("row_mcp",      "mcp_page",      "Tools (MCP)"),
-            ("row_models",     "models_page",     "Storage and Models"),
-            ("row_bugreport",  "bugreport_page",  "Bug Reporting"),
-            ("row_about",      "about_page",      "About"),
-        ]
-
-        row_map = {}
-        for row_id, page_id, title in page_defs:
-            row = self._b.get_object(row_id)
-            page = self._b.get_object(page_id)
-            if row and page:
-                row_map[row] = (page, title)
-
-        def on_row_selected(listbox, row):
-            if not row or row not in row_map:
-                return
-            page, title = row_map[row]
-            stack.set_visible_child(page)
-            if content_title:
-                content_title.set_title(title)
-            if main_nav_page:
-                main_nav_page.set_title(title)
-            if split_view:
-                split_view.set_show_content(True)
-
-        sidebar.connect("row-selected", on_row_selected)
-        first = sidebar.get_row_at_index(0)
-        if first:
-            sidebar.select_row(first)
-
-    # ------------------------------------------------------------------
-    # GSettings helpers
-    # ------------------------------------------------------------------
-
-    def _bind(self, key: str, widget_id: str, prop: str,
-              flags=Gio.SettingsBindFlags.DEFAULT) -> None:
-        if not self._settings:
-            return
-        widget = self._b.get_object(widget_id)
-        if not widget:
-            return
-        try:
-            self._settings.bind(key, widget, prop, flags)
-        except Exception as e:
-            print(f"[SettingsWindow] bind {key}→{widget_id}.{prop}: {e}")
-
-    def _radio_group(self, key: str, radio_value_map: dict) -> None:
-        """Connect a group of Gtk.CheckButton radio buttons to a GSettings string key."""
-        if not self._settings:
-            return
-        current = self._settings.get_string(key)
-        for widget_id, value in radio_value_map.items():
-            radio = self._b.get_object(widget_id)
-            if not radio:
-                continue
-            if value == current:
-                radio.set_active(True)
-
-            def _on_active(r, _pspec, v=value, k=key):
-                if r.get_active():
-                    self._settings.set_string(k, v)
-
-            radio.connect("notify::active", _on_active)
-
-    # ------------------------------------------------------------------
-    # Bindings setup
-    # ------------------------------------------------------------------
-
-    def _setup_bindings(self):
-        self._setup_general()
-        self._setup_wakeword()
-        self._setup_stt()
-        self._setup_llm()
-        self._setup_tts()
-        self._setup_mcp()
-        self._setup_models()
-        self._setup_bugreport()
-        self._setup_about()
-
-    def _setup_general(self):
-        self._bind("enabled", "enable_switch_row", "active")
-        self._setup_language_selector()
-
-    def _setup_language_selector(self):
-        lang_selection_row = self._b.get_object("lang_selection_row")
-        content_nav = self._b.get_object("content_navigation_view")
-        lang_nav_page = self._b.get_object("lang_nav_page")
-        lang_search_entry = self._b.get_object("lang_search_entry")
-        lang_list_box = self._b.get_object("lang_list_box")
-
-        if not lang_selection_row:
-            return
-
-        def _get_sys_lang():
-            try:
-                from core.locale_utils import get_system_language
-                return get_system_language()
-            except ImportError:
-                d = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "daemon"))
-                if d not in sys.path:
-                    sys.path.insert(0, d)
-                try:
-                    from core.locale_utils import get_system_language
-                    return get_system_language()
-                except Exception:
-                    return "en"
-
-        saved_c = self._settings.get_string("language") if self._settings else ""
-        curr_code = saved_c.strip() if saved_c and saved_c.strip() else _get_sys_lang()
-
-        def _get_lang_label(code: str) -> str:
-            for item in SUPPORTED_LANGUAGES:
-                if item["code"] == code:
-                    return f"{item['name']} ({item['code']})"
-            return f"{code.upper()} ({code})"
-
-        lang_selection_row.set_subtitle(_get_lang_label(curr_code))
-
-        if content_nav and lang_nav_page:
-            lang_selection_row.connect("activated", lambda *_: content_nav.push(lang_nav_page))
-
-        if not lang_list_box:
-            return
-
-        lang_rows = []
-        first_radio = None
-
-        for item in SUPPORTED_LANGUAGES:
-            code = item["code"]
-            row = Adw.ActionRow()
-            row.set_title(item["name"])
-            row.set_subtitle(f"{item['english_name']} • {code}")
-            row.set_activatable(True)
-
-            radio = Gtk.CheckButton()
-            radio.set_can_focus(False)
-            radio.set_valign(Gtk.Align.CENTER)
-            if first_radio is None:
-                first_radio = radio
-            else:
-                radio.set_group(first_radio)
-
-            if code == curr_code:
-                radio.set_active(True)
-
-            row.add_prefix(radio)
-            row._lang_item = item
-            row._radio = radio
-
-            def _on_row_activated(r, target_code=code):
-                if hasattr(r, "_radio"):
-                    r._radio.set_active(True)
-                if self._settings:
-                    self._settings.set_string("language", target_code)
-                lang_selection_row.set_subtitle(_get_lang_label(target_code))
-                if content_nav:
-                    content_nav.pop()
-
-            row.connect("activated", _on_row_activated)
-            lang_list_box.append(row)
-            lang_rows.append(row)
-
-        if lang_search_entry:
-            def _filter_row(row):
-                if not hasattr(row, "_lang_item"):
-                    return True
-                q = (lang_search_entry.get_text() or "").strip().lower()
-                if not q:
-                    return True
-                it = row._lang_item
-                return (
-                    q in it["code"].lower()
-                    or q in it["name"].lower()
-                    or q in it["english_name"].lower()
-                )
-
-            lang_list_box.set_filter_func(_filter_row)
-            lang_search_entry.connect("search-changed", lambda _: lang_list_box.invalidate_filter())
-
-        if self._settings:
-            def _on_settings_lang_changed(*_):
-                raw_c = self._settings.get_string("language") if self._settings else ""
-                new_c = raw_c.strip() if raw_c and raw_c.strip() else _get_sys_lang()
-                lang_selection_row.set_subtitle(_get_lang_label(new_c))
-                for r in lang_rows:
-                    if hasattr(r, "_lang_item") and hasattr(r, "_radio"):
-                        if r._lang_item["code"] == new_c:
-                            r._radio.set_active(True)
-
-            self._settings.connect("changed::language", _on_settings_lang_changed)
-
-    def _setup_wakeword(self):
-        self._radio_group("wakeword-engine", {
-            "ww_engine_vosk_radio":   "vosk",
-            "ww_engine_oww_radio":    "openwakeword",
-            "ww_engine_sherpa_radio": "sherpa-onnx",
-        })
-        self._bind("wakeword", "wakeword_row", "text")
-        self._bind("sherpa-ww-model-dir", "sherpa_model_dir_row", "text")
-        self._radio_group("oww-model", {
-            "oww_alexa_radio":       "alexa",
-            "oww_hey_jarvis_radio":  "hey_jarvis",
-            "oww_hey_mycroft_radio": "hey_mycroft",
-            "oww_hey_rhasspy_radio": "hey_rhasspy",
-        })
-        # Wire engine-dependent visibility
-        self._apply_engine_visibility()
-        for wid in ("ww_engine_vosk_radio", "ww_engine_oww_radio", "ww_engine_sherpa_radio"):
-            r = self._b.get_object(wid)
-            if r:
-                r.connect("notify::active", lambda *_: self._apply_engine_visibility())
-
-    def _apply_engine_visibility(self):
-        oww = self._b.get_object("ww_engine_oww_radio")
-        sherpa = self._b.get_object("ww_engine_sherpa_radio")
-        is_oww = bool(oww and oww.get_active())
-        is_sherpa = bool(sherpa and sherpa.get_active())
-        for wid, visible in [
-            ("wakeword_row",       not is_oww),
-            ("oww_keyword_group",  is_oww),
-            ("sherpa_model_dir_row", is_sherpa),
-        ]:
-            w = self._b.get_object(wid)
-            if w:
-                w.set_visible(visible)
-
-    def _setup_stt(self):
-        # Local vs Cloud mode
-        local_radio = self._b.get_object("stt_mode_local_radio")
-        cloud_radio = self._b.get_object("stt_mode_cloud_radio")
-        openai_radio = self._b.get_object("stt_cloud_openai_radio")
-        groq_radio = self._b.get_object("stt_cloud_groq_radio")
-
-        if local_radio and cloud_radio and self._settings:
-            provider = self._settings.get_string("stt-provider") or "vosk"
-            is_cloud = provider in ("openai_cloud", "groq_cloud")
-            if is_cloud:
-                cloud_radio.set_active(True)
-            else:
-                local_radio.set_active(True)
-
-            def _get_def_model(p_name: str, p_lang: str = None) -> str:
-                try:
-                    from providers import get_default_model
-                    return get_default_model(p_name, p_lang)
-                except ImportError:
-                    d = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "daemon"))
-                    if d not in sys.path:
-                        sys.path.insert(0, d)
-                    from providers import get_default_model
-                    return get_default_model(p_name, p_lang)
-
-            def _on_local(r, _p):
-                if r.get_active():
-                    self._settings.set_string("stt-provider", "vosk")
-                    curr = self._settings.get_string("stt-model")
-                    if not curr or not curr.startswith("vosk"):
-                        raw_l = self._settings.get_string("language") if self._settings else ""
-                        lang = raw_l.strip() if raw_l and raw_l.strip() else None
-                        self._settings.set_string("stt-model", _get_def_model("vosk", lang))
-
-            def _on_cloud(r, _p):
-                if r.get_active() and self._settings.get_string("stt-provider") not in ("openai_cloud", "groq_cloud"):
-                    self._settings.set_string("stt-provider", "openai_cloud")
-                    self._settings.set_string("stt-model", _get_def_model("openai_cloud"))
-
-            local_radio.connect("notify::active", _on_local)
-            cloud_radio.connect("notify::active", _on_cloud)
-
-        if openai_radio and groq_radio and self._settings:
-            provider = self._settings.get_string("stt-provider") or "vosk"
-            if provider == "groq_cloud":
-                groq_radio.set_active(True)
-            elif provider == "openai_cloud":
-                openai_radio.set_active(True)
-
-            def _on_openai(r, _p):
-                if r.get_active():
-                    self._settings.set_string("stt-provider", "openai_cloud")
-                    self._settings.set_string("stt-model", _get_def_model("openai_cloud"))
-
-            def _on_groq(r, _p):
-                if r.get_active():
-                    self._settings.set_string("stt-provider", "groq_cloud")
-                    self._settings.set_string("stt-model", _get_def_model("groq_cloud"))
-
-            openai_radio.connect("notify::active", _on_openai)
-            groq_radio.connect("notify::active", _on_groq)
-
-        self._radio_group("stt-hardware", {
-            "hw_cpu_radio":  "cpu",
-            "hw_cuda_radio": "cuda",
-        })
-        self._bind("stt-extra", "stt_cloud_api_key_row", "text")
-        self._bind("stt-model", "stt_cloud_model_row", "text")
-
-    def _setup_llm(self):
-        self._bind("llm-enabled", "llm_enable_row", "active")
-        self._radio_group("llm-mode", {
-            "llm_mode_local_radio":     "local",
-            "llm_mode_ollama_radio":    "ollama",
-            "llm_mode_openai_radio":    "openai",
-            "llm_mode_anthropic_radio": "anthropic",
-            "llm_mode_custom_radio":    "custom",
-        })
-        self._bind("llm-api-key",       "llm_api_key_row",       "text")
-        self._bind("llm-system-prompt", "llm_system_prompt_row", "text")
-        self._bind("llm-url",           "llm_url_row",           "text")
-        self._bind("llm-model",         "llm_model_row",         "text")
-
-    def _setup_tts(self):
-        self._bind("tts-enabled", "tts_enable_row", "active")
-        self._radio_group("tts-engine", {
-            "tts_engine_piper_radio":  "piper",
-            "tts_engine_espeak_radio": "espeak",
-            "tts_engine_openai_radio": "openai",
-            "tts_engine_system_radio": "system",
-        })
-        self._bind("tts-voice", "tts_voice_row", "text")
-
-    def _setup_mcp(self):
-        self._bind("direct-action-engine-enabled", "direct_action_enable_row", "active")
-        self._bind("semantic-router-confidence-threshold", "semantic_threshold_row", "value")
-
-    _DEFAULT_MODELS_DIR = "~/.local/share/voice-assistant/models"
-
-    def _setup_models(self):
-        if not self._settings:
-            return
-
-        def _base() -> str:
-            return self._settings.get_string("models-dir") or self._DEFAULT_MODELS_DIR
-
-        def _full(subdir: str | None = None) -> str:
-            base = os.path.expanduser(_base())
-            return os.path.join(base, subdir) if subdir else base
-
-        # --- All structure comes from Blueprint ---
-        base_row    = self._b.get_object("models_path_row")
-        choose_btn  = self._b.get_object("choose_path_btn")
-        reset_btn   = self._b.get_object("reset_path_btn")
-        grp_ww      = self._b.get_object("ww_models_group")
-        grp_stt     = self._b.get_object("stt_models_group")
-        grp_llm     = self._b.get_object("llm_models_group")
-        grp_tts     = self._b.get_object("tts_models_group")
-        clean_btn   = self._b.get_object("clean_unused_btn")
-        stt_open    = self._b.get_object("stt_open_btn")
-        llm_open    = self._b.get_object("llm_open_btn")
-        tts_open    = self._b.get_object("tts_open_btn")
-
-        if base_row:
-            base_row.set_subtitle(_base())
-        if choose_btn:
-            choose_btn.connect("clicked", self._on_choose_models_dir)
-        if reset_btn:
-            reset_btn.connect("clicked", lambda _: self._settings.reset("models-dir"))
-
-        # Connect "Open folder" buttons defined in Blueprint
-        for btn, subdir in ((stt_open, "stt"), (llm_open, "llm"), (tts_open, "tts")):
-            if btn:
-                d = subdir
-                btn.connect("clicked", lambda _b, sub=d: (
-                    os.makedirs(_full(sub), exist_ok=True),
-                    Gio.AppInfo.launch_default_for_uri(f"file://{_full(sub)}", None),
-                ))
-
-        # --- Helpers ---
-        def _fmt_size(n: int) -> str:
-            for unit in ("B", "KB", "MB", "GB"):
-                if n < 1024:
-                    return f"{n:.1f} {unit}"
-                n /= 1024
-            return f"{n:.1f} TB"
-
-        def _entry_size(path: str) -> int:
-            if os.path.isfile(path):
-                return os.path.getsize(path)
-            total = 0
-            try:
-                for e in os.scandir(path):
-                    total += _entry_size(e.path)
-            except OSError:
-                pass
-            return total
-
-        def _scan(subdir: str) -> list[tuple[str, str, int]]:
-            result = []
-            try:
-                for e in sorted(os.scandir(_full(subdir)), key=lambda x: x.name.lower()):
-                    if not e.name.startswith('.'):
-                        result.append((e.name, e.path, _entry_size(e.path)))
-            except FileNotFoundError:
-                pass
-            return result
-
-        def _active_match(name: str, active: str) -> bool:
-            if not active:
-                return False
-            n, a = name.lower(), active.lower()
-            return n == a or a in n or n in a
-
-        def _make_row(name: str, size: int, is_active: bool = False) -> Adw.ActionRow:
-            row = Adw.ActionRow(title=name, subtitle=_fmt_size(size))
-            if is_active:
-                row.add_suffix(Gtk.Image(icon_name="check-plain-symbolic", valign=Gtk.Align.CENTER))
-            return row
-
-        def _swap_rows(grp: Adw.PreferencesGroup | None, rows: list) -> None:
-            if not grp:
-                return
-            for r in getattr(grp, "_current_rows", []):
-                try:
-                    grp.remove(r)
-                except Exception:
-                    pass
-            for r in rows:
-                grp.add(r)
-            grp._current_rows = rows  # type: ignore[attr-defined]
-
-        # --- Refresh: repopulate Blueprint groups with current data ---
-        def _refresh(*_):
-            if base_row:
-                base_row.set_subtitle(_base())
-
-            active_stt = self._settings.get_string("stt-model")
-            active_llm = self._settings.get_string("llm-model")
-            active_tts = self._settings.get_string("tts-voice")
-            engine     = self._settings.get_string("wakeword-engine") or "vosk"
-
-            ww_rows: list = [
-                Adw.ActionRow(title="Engine",
-                    subtitle={"vosk": "Vosk", "openwakeword": "OpenWakeWord",
-                              "sherpa-onnx": "Sherpa-ONNX"}.get(engine, engine))
-            ]
-            if engine == "vosk":
-                ww = self._settings.get_string("wakeword") or "assistente"
-                ww_rows.append(Adw.ActionRow(title="Keyword", subtitle=ww))
-                ww_rows += [_make_row(n, sz, _active_match(n, active_stt)) for n, _, sz in _scan("stt")]
-            elif engine == "openwakeword":
-                kw = self._settings.get_string("oww-model") or "alexa"
-                ww_rows.append(Adw.ActionRow(title="Keyword", subtitle=f"{kw} (bundled)"))
-            elif engine == "sherpa-onnx":
-                md = self._settings.get_string("sherpa-ww-model-dir") or ""
-                ww_rows.append(Adw.ActionRow(title="Model directory", subtitle=md or "Not configured"))
-
-            def _dir_rows(subdir: str, active: str) -> list:
-                items = _scan(subdir)
-                if items:
-                    return [_make_row(n, sz, _active_match(n, active)) for n, _, sz in items]
-                return [Adw.ActionRow(title="No models found", subtitle=_full(subdir))]
-
-            _swap_rows(grp_ww,  ww_rows)
-            _swap_rows(grp_stt, _dir_rows("stt", active_stt))
-            _swap_rows(grp_llm, _dir_rows("llm", active_llm))
-            _swap_rows(grp_tts, _dir_rows("tts", active_tts))
-
-        _refresh()
-
-        # --- Clean: remove model files not matched by any active setting ---
-        def _on_clean(*_):
-            active = {
-                "stt": self._settings.get_string("stt-model"),
-                "llm": self._settings.get_string("llm-model"),
-                "tts": self._settings.get_string("tts-voice"),
-            }
-            unused = [
-                path
-                for sub, act in active.items()
-                for _, path, _ in _scan(sub)
-                if not _active_match(os.path.basename(path), act)
-            ]
-            if not unused:
-                dlg = Adw.AlertDialog(heading="Nothing to clean",
-                                      body="All models in the storage directory are in use.")
-                dlg.add_response("ok", "OK")
-                dlg.present(self)
-                return
-
-            names = "\n".join(f"  • {os.path.basename(p)}" for p in unused)
-            dlg = Adw.AlertDialog(
-                heading=f"Remove {len(unused)} unused model(s)?",
-                body=f"These items will be permanently deleted from disk:\n{names}",
-            )
-            dlg.add_response("cancel", "Cancel")
-            dlg.add_response("delete", "Delete")
-            dlg.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
-            dlg.set_default_response("cancel")
-            dlg.set_close_response("cancel")
-
-            def _do_delete(_, response: str) -> None:
-                if response != "delete":
-                    return
-                for path in unused:
-                    try:
-                        shutil.rmtree(path) if os.path.isdir(path) else os.remove(path)
-                    except Exception as e:
-                        print(f"[SettingsWindow] Cannot remove {path}: {e}")
-                _refresh()
-
-            dlg.connect("response", _do_delete)
-            dlg.present(self)
-
-        if clean_btn:
-            clean_btn.connect("activated", _on_clean)
-
-        for key in ("models-dir", "wakeword-engine", "oww-model", "sherpa-ww-model-dir",
-                    "stt-model", "llm-model", "tts-voice"):
-            self._settings.connect(f"changed::{key}", _refresh)
-
-    def _on_choose_models_dir(self, _btn):
-        chooser = Gtk.FileChooserNative(
-            title="Seleziona directory modelli",
-            action=Gtk.FileChooserAction.SELECT_FOLDER,
-            transient_for=self,
-            modal=True,
+            self.close()
+
+    def _setup_components(self) -> None:
+        """Inizializza i componenti modulari per ciascuna sezione delle preferenze."""
+        self.model_selector = ModelSelectorController(self._b, self._settings, parent_window=self)
+        self.general_settings = GeneralSettings(self._b, self._settings, parent_window=self)
+        self.audio_settings = AudioSettings(self._b, self._settings, parent_window=self)
+        self.dispatch_settings = DispatchSettings(self._b, self._settings, parent_window=self)
+        self.wakeword_settings = WakeWordSettings(
+            self._b,
+            self._settings,
+            on_open_model_selector=self.model_selector.open_selector,
         )
-        def on_response(dialog, response):
-            if response == Gtk.ResponseType.ACCEPT:
-                folder = dialog.get_file()
-                if folder and self._settings:
-                    self._settings.set_string("models-dir", folder.get_path())
-            dialog.destroy()
-        chooser.connect("response", on_response)
-        chooser.show()
+        self.stt_settings = STTSettings(
+            self._b,
+            self._settings,
+            on_open_model_selector=self.model_selector.open_selector,
+        )
+        self.llm_settings = LLMSettings(
+            self._b,
+            self._settings,
+            on_open_model_selector=self.model_selector.open_selector,
+            parent_window=self,
+        )
+        self.tts_settings = TTSSettings(
+            self._b,
+            self._settings,
+            on_open_model_selector=self.model_selector.open_selector,
+            parent_window=self,
+        )
+        self.mcp_settings = MCPSettings(self._b, self._settings)
+        self.models_manager = ModelsStorageManager(self._b, self._settings, parent_window=self)
+        self.bugreport_settings = BugReportSettings(self._b, self._settings, parent_window=self)
+        self.about_settings = AboutSettings(self._b)
 
-    def _setup_bugreport(self):
-        self._bind("bugreport-enabled",   "bugreport_enable_row",    "active")
-        self._bind("bugreport-endpoint",  "bugreport_endpoint_row",  "text")
-        self._bind("bugreport-api-key",   "bugreport_apikey_row",    "text")
-        self._bind("bugreport-product",   "bugreport_product_row",   "text")
-        self._bind("bugreport-component", "bugreport_component_row", "text")
-        test_btn = self._b.get_object("test_bugreport_btn")
-        if test_btn:
-            test_btn.connect("clicked", self._on_test_bugreport)
 
-    def _on_test_bugreport(self, _btn):
-        import threading
-        import urllib.request
-        import urllib.error
-        import json as _json
-
-        endpoint = self._settings.get_string("bugreport-endpoint").strip()
-        api_key  = self._settings.get_string("bugreport-api-key").strip()
-
-        if not endpoint or not api_key:
-            dlg = Adw.AlertDialog(
-                heading=_("Configurazione incompleta"),
-                body=_("Inserisci endpoint e API key prima di testare la connessione."),
-            )
-            dlg.add_response("ok", _("OK"))
-            dlg.present(self)
-            return
-
-        def _do_test():
-            url = endpoint.rstrip("/") + "/rest/version"
-            req = urllib.request.Request(url)
-            req.add_header("X-BUGZILLA-API-KEY", api_key)
-            try:
-                with urllib.request.urlopen(req, timeout=8) as resp:
-                    data = _json.loads(resp.read())
-                    version = data.get("version", "sconosciuta")
-                    GLib.idle_add(_show_result, True, f"Connessione OK — Bugzilla {version}")
-            except urllib.error.HTTPError as e:
-                GLib.idle_add(_show_result, False, f"Errore HTTP {e.code}: {e.reason}")
-            except Exception as e:
-                GLib.idle_add(_show_result, False, str(e))
-
-        def _show_result(ok, msg):
-            dlg = Adw.AlertDialog(
-                heading=_("Connessione riuscita") if ok else _("Connessione fallita"),
-                body=msg,
-            )
-            dlg.add_response("ok", _("OK"))
-            dlg.present(self)
-
-        threading.Thread(target=_do_test, daemon=True).start()
-
-    def _setup_about(self):
-        doc_btn = self._b.get_object("doc_btn")
-        if doc_btn:
-            doc_btn.connect("clicked", lambda _: Gio.AppInfo.launch_default_for_uri(
-                "https://github.com/Scroker/voice-assistant", None
-            ))
+_SettingsWindow = _SettingsDialog

@@ -1,7 +1,7 @@
 ---
 name: "Media Control"
 intent: media_pause
-tool: system_media
+tool: media_control
 args: {"action": "pause"}
 triggers:
   - "pausa musica"

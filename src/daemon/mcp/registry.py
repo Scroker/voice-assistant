@@ -14,10 +14,10 @@ DEFAULT_REGISTRY_URL = "https://api.smithery.ai"
 # Popular pre-configured MCP servers for quick discovery in offline/fallback mode
 FEATURED_SERVERS = [
     {
-        "name": "gnome-system",
-        "title": "Native GNOME System Controls",
-        "description": "Control desktop volume, dark mode, and open applications natively.",
-        "command": "builtin",
+        "name": "gnome-mcp-server",
+        "title": "GNOME Desktop MCP Server (Rust)",
+        "description": "Control GNOME desktop (audio, quick settings, applications, notifications, windows)",
+        "command": "gnome-mcp-server",
         "args": [],
         "env": {},
         "category": "Desktop",
@@ -89,16 +89,19 @@ class MCPRegistryClient:
         def _fetch_remote():
             return self._fetch_servers_sync(query)
 
-        remote_results = await asyncio.to_thread(_fetch_remote)
-        if remote_results:
-            results = remote_results
-        else:
-            # Fallback local filter
-            q_lower = query.lower()
-            results = [
-                s for s in FEATURED_SERVERS
-                if q_lower in s["name"].lower() or q_lower in s["description"].lower() or q_lower in s["category"].lower()
-            ]
+        remote_results = await asyncio.to_thread(_fetch_remote) or []
+
+        q_lower = query.lower()
+        matching_featured = [
+            s.copy() for s in FEATURED_SERVERS
+            if q_lower in s["name"].lower() or q_lower in s.get("title", "").lower() or q_lower in s["description"].lower() or q_lower in s["category"].lower()
+        ]
+
+        known_names = {s["name"] for s in matching_featured}
+        results = matching_featured
+        for server in remote_results:
+            if server.get("name") not in known_names:
+                results.append(server)
         
         # Add installation status
         installed_names = set(self.config_loader.get_servers().keys())

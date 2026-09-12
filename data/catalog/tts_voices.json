@@ -1,0 +1,89 @@
+{
+  "endpoints": {
+    "piper": "https://huggingface.co/rhasspy/piper-voices/raw/main/voices.json",
+    "piper_repo": "rhasspy/piper-voices",
+    "openai": "https://api.openai.com/v1/audio/speech"
+  },
+  "defaults": {
+    "piper": {
+      "it": "it_IT-paola-medium",
+      "en": "en_US-lessac-medium",
+      "de": "de_DE-thorsten-medium",
+      "fr": "fr_FR-siwis-medium",
+      "es": "es_ES-sharvard-medium",
+      "pt": "pt_BR-edresson-low",
+      "nl": "nl_NL-mls-medium",
+      "ru": "ru_RU-dmitri-medium",
+      "zh": "zh_CN-huayan-medium",
+      "pl": "pl_PL-darkman-medium",
+      "uk": "uk_UA-ukrainian_tts-medium",
+      "default": "en_US-lessac-medium"
+    },
+    "openai": "alloy"
+  },
+  "openai_voices": [
+    "alloy",
+    "echo",
+    "fable",
+    "onyx",
+    "nova",
+    "shimmer"
+  ],
+  "system": {
+    "binary": "spd-say",
+    "description": "Speech Dispatcher"
+  },
+  "seed_fallback": {
+    "piper": [
+      {
+        "id": "it_IT-paola-medium",
+        "name": "Paola (it_IT - Medium)",
+        "lang": "it",
+        "speaker": "paola",
+        "quality": "medium"
+      },
+      {
+        "id": "it_IT-riccardo-x_low",
+        "name": "Riccardo (it_IT - X-Low)",
+        "lang": "it",
+        "speaker": "riccardo",
+        "quality": "x_low"
+      },
+      {
+        "id": "en_US-lessac-medium",
+        "name": "Lessac (en_US - Medium)",
+        "lang": "en",
+        "speaker": "lessac",
+        "quality": "medium"
+      },
+      {
+        "id": "en_US-amy-medium",
+        "name": "Amy (en_US - Medium)",
+        "lang": "en",
+        "speaker": "amy",
+        "quality": "medium"
+      },
+      {
+        "id": "de_DE-thorsten-medium",
+        "name": "Thorsten (de_DE - Medium)",
+        "lang": "de",
+        "speaker": "thorsten",
+        "quality": "medium"
+      },
+      {
+        "id": "fr_FR-siwis-medium",
+        "name": "Siwis (fr_FR - Medium)",
+        "lang": "fr",
+        "speaker": "siwis",
+        "quality": "medium"
+      },
+      {
+        "id": "es_ES-sharvard-medium",
+        "name": "Sharvard (es_ES - Medium)",
+        "lang": "es",
+        "speaker": "sharvard",
+        "quality": "medium"
+      }
+    ]
+  }
+}

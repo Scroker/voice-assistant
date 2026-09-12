@@ -1,0 +1,32 @@
+[
+  {
+    "name": "dnf5",
+    "binary": "dnf5",
+    "install_cmd": ["pkexec", "dnf5", "install", "-y"]
+  },
+  {
+    "name": "dnf",
+    "binary": "dnf",
+    "install_cmd": ["pkexec", "dnf", "install", "-y"]
+  },
+  {
+    "name": "apt",
+    "binary": "apt-get",
+    "install_cmd": ["pkexec", "apt-get", "install", "-y"]
+  },
+  {
+    "name": "apt",
+    "binary": "apt",
+    "install_cmd": ["pkexec", "apt", "install", "-y"]
+  },
+  {
+    "name": "pacman",
+    "binary": "pacman",
+    "install_cmd": ["pkexec", "pacman", "-S", "--noconfirm"]
+  },
+  {
+    "name": "zypper",
+    "binary": "zypper",
+    "install_cmd": ["pkexec", "zypper", "--non-interactive", "install"]
+  }
+]

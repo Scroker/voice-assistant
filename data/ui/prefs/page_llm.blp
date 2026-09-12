@@ -1,0 +1,234 @@
+// LLM PAGE
+Adw.PreferencesPage llm_page {
+  title: _("Artificial Intelligence (LLM)");
+  icon-name: "brain-augmented-symbolic";
+  name: "llm";
+
+  Adw.PreferencesGroup {
+    title: _("Large Language Model (LLM)");
+    description: _("Enable and configure text generation capabilities.");
+
+    Adw.SwitchRow llm_enable_row {
+      title: _("Enable LLM Responses");
+      subtitle: _("Send voice transcriptions to the LLM to generate intelligent responses");
+    }
+  }
+
+  Adw.PreferencesGroup llm_mode_group {
+    title: _("Execution Mode");
+    description: _("Select whether to run the language model locally on device or via a cloud API service.");
+
+    Adw.ActionRow llm_mode_local_row {
+      title: _("Local");
+      subtitle: _("Offline language model executed locally on device (GGUF / Ollama)");
+      activatable: true;
+      activatable-widget: llm_mode_local_radio;
+
+      [prefix]
+      Gtk.CheckButton llm_mode_local_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow llm_mode_cloud_row {
+      title: _("Cloud");
+      subtitle: _("High-capability online language model via cloud API (OpenAI / Anthropic / Custom)");
+      activatable: true;
+      activatable-widget: llm_mode_cloud_radio;
+
+      [prefix]
+      Gtk.CheckButton llm_mode_cloud_radio {
+        group: llm_mode_local_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup llm_local_engine_group {
+    title: _("Local Engine");
+    description: _("Select local runtime provider.");
+
+    Adw.ActionRow llm_local_gguf_row {
+      title: _("Local GGUF (In-Daemon Llama 3.2)");
+      subtitle: _("Runs locally within Python daemon");
+      activatable: true;
+      activatable-widget: llm_local_gguf_radio;
+
+      [prefix]
+      Gtk.CheckButton llm_local_gguf_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow llm_local_ollama_row {
+      title: _("Ollama (Local HTTP)");
+      subtitle: _("Connect to local Ollama instance (localhost:11434)");
+      activatable: true;
+      activatable-widget: llm_local_ollama_radio;
+
+      [prefix]
+      Gtk.CheckButton llm_local_ollama_radio {
+        group: llm_local_gguf_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup llm_local_group {
+    title: _("Local LLM Model Configuration");
+    description: _("Configure offline GGUF model execution.");
+
+    Adw.ActionRow current_llm_model_row {
+      title: _("Active Local LLM Model");
+      subtitle: _("Loading information...");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "brain-augmented-symbolic";
+        margin-end: 12;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup llm_cloud_engine_group {
+    title: _("Cloud LLM Provider");
+    description: _("Select cloud API provider for language modeling.");
+    visible: false;
+
+    Adw.ActionRow llm_cloud_openai_row {
+      title: _("OpenAI Cloud API");
+      subtitle: _("ChatGPT models via api.openai.com");
+      activatable: true;
+      activatable-widget: llm_cloud_openai_radio;
+
+      [prefix]
+      Gtk.CheckButton llm_cloud_openai_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow llm_cloud_anthropic_row {
+      title: _("Anthropic Claude API");
+      subtitle: _("Claude 3.5 models via api.anthropic.com");
+      activatable: true;
+      activatable-widget: llm_cloud_anthropic_radio;
+
+      [prefix]
+      Gtk.CheckButton llm_cloud_anthropic_radio {
+        group: llm_cloud_openai_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow llm_cloud_deepseek_row {
+      title: _("DeepSeek API");
+      subtitle: _("DeepSeek-V3 &amp; R1 models via api.deepseek.com");
+      activatable: true;
+      activatable-widget: llm_cloud_deepseek_radio;
+
+      [prefix]
+      Gtk.CheckButton llm_cloud_deepseek_radio {
+        group: llm_cloud_openai_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow llm_cloud_ollama_row {
+      title: _("Ollama Cloud");
+      subtitle: _("Ollama Cloud models via ollama.com");
+      activatable: true;
+      activatable-widget: llm_cloud_ollama_radio;
+
+      [prefix]
+      Gtk.CheckButton llm_cloud_ollama_radio {
+        group: llm_cloud_openai_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow llm_cloud_custom_row {
+      title: _("Custom HTTP Endpoint");
+      subtitle: _("Custom OpenAI-compatible API server");
+      activatable: true;
+      activatable-widget: llm_cloud_custom_radio;
+
+      [prefix]
+      Gtk.CheckButton llm_cloud_custom_radio {
+        group: llm_cloud_openai_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup llm_cloud_config_group {
+    title: _("Cloud Configuration");
+    visible: false;
+
+    Adw.EntryRow llm_api_key_row {
+      title: _("API Key");
+    }
+
+    Adw.EntryRow llm_url_row {
+      title: _("Server Endpoint URL");
+    }
+
+    Adw.ActionRow llm_cloud_model_row {
+      title: _("Active Cloud Model");
+      subtitle: _("Select model…");
+      activatable: true;
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup llm_system_prompt_group {
+    title: _("System Instructions");
+
+    Adw.EntryRow llm_system_prompt_row {
+      title: _("System Prompt (Instructions)");
+    }
+  }
+
+  Adw.PreferencesGroup {
+    title: _("Tools &amp; Extensions");
+    description: _("Model Context Protocol (MCP) integrations and capabilities.");
+
+    Adw.ActionRow mcp_subpage_row {
+      title: _("Tools (MCP)");
+      subtitle: _("Configure Model Context Protocol tools and servers");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "system-run-symbolic";
+        valign: center;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
+}

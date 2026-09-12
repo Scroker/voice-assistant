@@ -15,7 +15,7 @@
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/help-about-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/mic-1-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/paper-plane-symbolic.svg</file>
-    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/preferences-system-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/settings-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/system-run-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/user-trash-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/hicolor/scalable/status/vocal-assistant-symbolic.svg</file>
@@ -45,7 +45,7 @@
     <file preprocess="xml-stripblanks">icons/help-about-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/mic-1-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/paper-plane-symbolic.svg</file>
-    <file preprocess="xml-stripblanks">icons/preferences-system-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/settings-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/system-run-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/user-trash-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/vocal-assistant-symbolic.svg</file>
@@ -58,5 +58,23 @@
     <file>services/org.local.VoiceAssistant.desktop.in</file>
     <file preprocess="xml-stripblanks" alias="ui/prefs.ui">prefs.ui</file>
     <file preprocess="xml-stripblanks" alias="ui/assistant_window.ui">assistant_window.ui</file>
+    <file>mcp/tools_gnome_defaults.json</file>
+    <file>mcp/default_servers.json</file>
+    <file>mcp/runner_hints.json</file>
+    <file>mcp/known_tools.json</file>
+    <file>mcp/intent_tools.json</file>
+    <file>dependencies/system_deps.json</file>
+    <file>dependencies/python_deps.json</file>
+    <file>dependencies/package_managers.json</file>
+    <file>prompts/system_prompt.md</file>
+    <file>locales/date_time_formats.json</file>
+    <file>locales/number_words.json</file>
+    <file>locales/responses.json</file>
+    <file>llm/default_providers.json</file>
+    <file>nlu/fast_path_patterns.json</file>
+    <file>catalog/stt_models.json</file>
+    <file>catalog/tts_voices.json</file>
+    <file>locales/supported_languages.json</file>
+    <file>config/defaults.json</file>
   </gresource>
 </gresources>

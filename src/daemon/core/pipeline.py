@@ -89,52 +89,76 @@ class SentenceAggregator:
         self._buffer = ""
 
 
-class FastPathDispatcher:
-    """
-    Fast-Path Vector & Intent Dispatcher for quick system actions (<10ms execution).
-    Bypasses the LLM for direct deterministic commands (volume, brightness, theme, app launch).
-    """
-
-    IT_NUMBERS = {
+def load_number_words(lang: str = "") -> Dict[str, int]:
+    """Carica la mappatura dei numeri in lettere da data/locales/number_words.json."""
+    if not lang:
+        try:
+            from core.locale_utils import get_system_language
+            lang = get_system_language(default="it")
+        except Exception:
+            lang = "it"
+    from core.data_loader import load_json_data
+    data = load_json_data("locales/number_words.json", fallback_default={}) or {}
+    return data.get(lang) or data.get("it") or {
         'zero': 0, 'uno': 1, 'due': 2, 'tre': 3, 'quattro': 4, 'cinque': 5,
         'sei': 6, 'sette': 7, 'otto': 8, 'nove': 9, 'dieci': 10, 'quindici': 15,
         'venti': 20, 'trenta': 30, 'quaranta': 40, 'cinquanta': 50,
         'sessanta': 60, 'settanta': 70, 'ottanta': 80, 'novanta': 90, 'cento': 100
     }
 
-    INTENT_PATTERNS = [
-        # Theme / Appearance
-        (r'(?:attiva|metti|imposta)?\s*(?:la\s*)?(?:modalità|tema)\s+scur[ao]', 'set_theme_dark', lambda m: {'dark': True}, 'Modalità scura attivata'),
-        (r'(?:attiva|metti|imposta)?\s*(?:la\s*)?(?:modalità|tema)\s+chiar[ao]', 'set_theme_light', lambda m: {'dark': False}, 'Modalità chiara attivata'),
 
-        # Date & Time
-        (r'(?:che\s+ore?\s+sono|che\s+ora\s+è|orario|dimmi\s+l\'ora)', 'get_time', lambda m: {}, 'Orario richiesto'),
-        (r'(?:che\s+giorno\s+è|data\s+di\s+oggi|dimmi\s+la\s+data)', 'get_date', lambda m: {}, 'Data richiesta'),
+def load_fast_path_responses(lang: str = "") -> Dict[str, str]:
+    """Carica le frasi di risposta predefinite da data/locales/responses.json."""
+    if not lang:
+        try:
+            from core.locale_utils import get_system_language
+            lang = get_system_language(default="it")
+        except Exception:
+            lang = "it"
+    from core.data_loader import load_json_data
+    data = load_json_data("locales/responses.json", fallback_default={}) or {}
+    loc_data = data.get(lang) or data.get("it") or {}
+    return loc_data.get("fast_path", {})
 
-        # App Launchers
-        (r'(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\s+vedere|aprimi)?\s*(?:il\s+|la\s+|le\s+|l\'|i\s+)?(?:browser|firefox)', 'launch_app', lambda m: {'app': 'firefox'}, 'Apro Firefox'),
-        (r'(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\s+vedere|aprimi)?\s*(?:il\s+|la\s+|le\s+|l\'|i\s+)?terminale', 'launch_app', lambda m: {'app': 'terminal'}, 'Apro il terminale'),
-        (r'(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\s+vedere|aprimi)?\s*(?:il\s+|la\s+|le\s+|l\'|i\s+)?calcolatrice', 'launch_app', lambda m: {'app': 'calculator'}, 'Apro la calcolatrice'),
-        (r'(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\s+vedere|aprimi)?\s*(?:il\s+|la\s+|le\s+|l\'|i\s+)?calendario', 'launch_app', lambda m: {'app': 'calendario'}, 'Apro il calendario'),
-        (r'(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\s+vedere|aprimi)?\s*(?:le\s+|i\s+|l\'|la\s+)?impostazioni', 'launch_app', lambda m: {'app': 'impostazioni'}, 'Apro le impostazioni'),
-        (r'(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\s+vedere|aprimi)?\s*(?:l\'|il\s+)?orologio', 'launch_app', lambda m: {'app': 'orologio'}, 'Apro l\'orologio'),
-        (r'(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\s+vedere|aprimi)?\s*(?:i\s+|la\s+cartella\s+)?file', 'launch_app', lambda m: {'app': 'nautilus'}, 'Apro i file'),
 
-        # Media Player
-        (r'pausa|interrompi\s+musica', 'media_pause', lambda m: {}, 'Musica in pausa'),
-        (r'riproduci|play', 'media_play', lambda m: {}, 'Riproduzione avviata'),
+def load_fast_path_patterns(lang: str = "") -> List[Tuple[str, str, Any, str]]:
+    """Carica i pattern regex Fast-Path da data/nlu/fast_path_patterns.json."""
+    from core.data_loader import load_json_data
+    raw_patterns = load_json_data("nlu/fast_path_patterns.json", fallback_default=[]) or []
+    responses = load_fast_path_responses(lang)
+    res = []
+    for item in raw_patterns:
+        pattern = item.get("pattern", "")
+        intent = item.get("intent", "")
+        params = item.get("params", {})
+        resp_key = item.get("response_key", intent)
+        resp_tmpl = responses.get(resp_key, "")
+        res.append((pattern, intent, lambda m, p=params: dict(p), resp_tmpl))
+    return res
 
-        # Relative Volume / Mute
-        (r'alza\s+(?:il\s+)?volume', 'volume_up', lambda m: {'delta': 10}, 'Volume alzato'),
-        (r'abbassa\s+(?:il\s+)?volume', 'volume_down', lambda m: {'delta': -10}, 'Volume abbassato'),
-        (r'(?:silenzia|disattiva)\s+(?:il\s+)?audio', 'mute', lambda m: {}, 'Audio silenziato'),
-    ]
 
-    def __init__(self, intent_handler: Optional[Callable[[str, Dict[str, Any]], Tuple[bool, str]]] = None):
+class FastPathDispatcher:
+    """
+    Fast-Path Vector & Intent Dispatcher for quick system actions (<10ms execution).
+    Bypasses the LLM for direct deterministic commands (volume, theme, app launch).
+    """
+
+    IT_NUMBERS = load_number_words("it")
+    INTENT_PATTERNS = load_fast_path_patterns("it")
+
+    def __init__(
+        self,
+        intent_handler: Optional[Callable[[str, Dict[str, Any]], Tuple[bool, str]]] = None,
+        enabled: bool = True,
+    ):
+        self.enabled = enabled
         self.intent_handler = intent_handler
         self.semantic_router = SemanticIntentRouter(SkillRegistry.from_default_directory())
         self.semantic_min_score = SemanticIntentRouter.DEFAULT_MIN_SCORE
         self._skill_patterns = self._load_skill_patterns()
+        self.number_words = load_number_words()
+        self.intent_patterns = load_fast_path_patterns()
+        self.responses = load_fast_path_responses()
 
     def _load_skill_patterns(self):
         """Carica pattern regex e tool routing dai file di skill."""
@@ -159,23 +183,25 @@ class FastPathDispatcher:
         """
         Analizza il testo. Se corrisponde a un intent Fast-Path, lo esegue e restituisce:
         (matched: bool, intent_name: str|None, params: dict, response_text: str|None)
-
-        Questo mantiene il comportamento deterministico del regex, ma aggiunge un fallback
-        semantico offline per varianti colloquiali non esplicitamente matchate.
         """
+        if not self.enabled:
+            return (False, None, {}, None)
+
         clean_text = text.strip().lower()
         if not clean_text:
             return (False, None, {}, None)
 
-        # 1. Check Volume Set Intent (Digits or Italian words)
-        vol_pattern = r'(?:impost[aeo]|metti|porta|regola|setta|cambia)?\s*(?:il\s*)?volume\s*(?:a|al|allo|del)?\s*(\d+|' + '|'.join(self.IT_NUMBERS.keys()) + r')\s*(?:%|per\s*cento)?'
+        # 1. Check Volume Set Intent (Digits or words)
+        words = self.number_words or self.IT_NUMBERS
+        vol_pattern = r'(?:impost[aeo]|metti|porta|regola|setta|cambia)?\s*(?:il\s*)?volume\s*(?:a|al|allo|del)?\s*(\d+|' + '|'.join(words.keys()) + r')\s*(?:%|per\s*cento)?'
         m_vol = re.search(vol_pattern, clean_text)
         if m_vol:
             raw_val = m_vol.group(1)
-            val = int(raw_val) if raw_val.isdigit() else self.IT_NUMBERS.get(raw_val, 50)
+            val = int(raw_val) if raw_val.isdigit() else words.get(raw_val, 50)
             val = max(0, min(100, val))
             params = {'volume': val}
-            response_text = f"Volume del sistema impostato al {val}%."
+            vol_tmpl = self.responses.get("volume_set", "Volume del sistema impostato al {volume}%.")
+            response_text = vol_tmpl.format(volume=val)
             if self.intent_handler:
                 try:
                     success, custom_resp = self.intent_handler('set_volume', params, clean_text)
@@ -186,7 +212,8 @@ class FastPathDispatcher:
             return (True, 'set_volume', params, response_text)
 
         # 2. Check Static Intent Patterns
-        for pattern, intent_name, param_extractor, response_template in self.INTENT_PATTERNS:
+        patterns_to_check = self.intent_patterns if self.intent_patterns else self.INTENT_PATTERNS
+        for pattern, intent_name, param_extractor, response_template in patterns_to_check:
             match = re.search(pattern, clean_text)
             if match:
                 params = param_extractor(match)
@@ -284,18 +311,32 @@ class PipelineController:
         llm_streamer: Optional[Callable[[str], Any]] = None,
         tts_engine: Optional[Callable[[str], None]] = None,
         mcp_manager: Optional[Any] = None,
+        fast_path_enabled: bool = False,
+        medium_path_enabled: bool = True,
     ):
         self.state_machine = state_machine
         self.audio_player = audio_player
         self.llm_streamer = llm_streamer
         self.tts_engine = tts_engine
         self.mcp_manager = mcp_manager
-        
-        self.fast_path = FastPathDispatcher()
+
+        self._fast_path_enabled = fast_path_enabled
+        self.medium_path_enabled = medium_path_enabled
+        self.fast_path = FastPathDispatcher(enabled=fast_path_enabled)
         self.smart_path = SmartPathController()
         self.sentence_aggregator = SentenceAggregator(sentence_callback=self._on_sentence_ready)
         self._streaming_active = False
-        self.direct_action_enabled = True
+
+    @property
+    def fast_path_enabled(self) -> bool:
+        """Flag per abilitare o disabilitare l'esecuzione del Fast-Path."""
+        return self._fast_path_enabled
+
+    @fast_path_enabled.setter
+    def fast_path_enabled(self, value: bool) -> None:
+        self._fast_path_enabled = bool(value)
+        if hasattr(self, 'fast_path') and self.fast_path:
+            self.fast_path.enabled = self._fast_path_enabled
 
     def _on_sentence_ready(self, sentence: str):
         """Callback invocata dall'aggregatore quando una frase completa è pronta."""
@@ -359,22 +400,12 @@ class PipelineController:
             result = self.mcp_manager.execute_tool(tool_name, args)
 
             if hasattr(result, '__await__') or (hasattr(result, '__class__') and result.__class__.__name__ == 'coroutine'):
-                import asyncio, threading
-                holder: Dict[str, Any] = {}
-
-                def _run_coro():
-                    try:
-                        holder["result"] = asyncio.run(result)
-                    except Exception as exc:
-                        holder["error"] = exc
-
-                t = threading.Thread(target=_run_coro, daemon=True)
-                t.start()
-                t.join(timeout=10)
-                if "error" in holder:
-                    logger.warning(f"[MediumPath] Tool async error: {holder['error']}")
+                from core.async_bridge import run_async
+                try:
+                    result = run_async(result, timeout=10.0)
+                except Exception as exc:
+                    logger.warning(f"[MediumPath] Tool async error: {exc}")
                     return None
-                result = holder.get("result", "")
 
             response = str(result).strip() if result else None
             if response:
@@ -400,28 +431,27 @@ class PipelineController:
 
         self.state_machine.set_state(AssistantState.PROCESSING)
 
-        # 1. Fast-Path Check (<10ms)
-        matched, intent, params, response_text = (
-            self.fast_path.dispatch(text) if self.direct_action_enabled else (False, None, {}, None)
-        )
-        if matched and response_text:
-            logger.info(f"[Pipeline] Fast-Path match: {intent} -> '{response_text}' (speak={speak})")
-            if speak:
-                self.state_machine.set_state(AssistantState.SPEAKING)
-                if self.tts_engine:
-                    self.tts_engine(response_text)
-            if not speak or not (self.audio_player and getattr(self.audio_player, 'is_playing', False) or self.state_machine.state == AssistantState.SPEAKING):
-                self.state_machine.set_state(AssistantState.IDLE)
-            return {
-                "fast_path": True,
-                "intent": intent,
-                "params": params,
-                "transcription": text,
-                "response": response_text
-            }
+        # 1. Fast-Path Check (<10ms) - solo se abilitato
+        if self.fast_path_enabled:
+            matched, intent, params, response_text = self.fast_path.dispatch(text)
+            if matched and response_text:
+                logger.info(f"[Pipeline] Fast-Path match: {intent} -> '{response_text}' (speak={speak})")
+                if speak:
+                    self.state_machine.set_state(AssistantState.SPEAKING)
+                    if self.tts_engine:
+                        self.tts_engine(response_text)
+                if not speak or not (self.audio_player and getattr(self.audio_player, 'is_playing', False) or self.state_machine.state == AssistantState.SPEAKING):
+                    self.state_machine.set_state(AssistantState.IDLE)
+                return {
+                    "fast_path": True,
+                    "intent": intent,
+                    "params": params,
+                    "transcription": text,
+                    "response": response_text
+                }
 
         # 1.5. Medium Path: LLM tool selection (structured output, no free text)
-        if self.mcp_manager and self.llm_streamer:
+        if self.medium_path_enabled and self.mcp_manager and self.llm_streamer:
             medium_response = self._try_llm_tool_select(text)
             if medium_response:
                 logger.info(f"[Pipeline] Medium-Path match: '{medium_response}' (speak={speak})")

@@ -1,0 +1,103 @@
+// MODELS / STORAGE SUBPAGE
+Adw.NavigationPage models_subpage {
+  tag: "models_subpage";
+  title: _("Storage and Models");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Storage and Models");
+      };
+    }
+
+    content: Adw.PreferencesPage models_page {
+      title: _("Storage and Models");
+      icon-name: "drive-harddisk-symbolic";
+      name: "models";
+
+      Adw.PreferencesGroup {
+        title: _("Storage Location");
+        description: _("Base directory for all downloaded models. Subfolders are created automatically.");
+
+        Adw.ActionRow models_path_row {
+          title: _("Base Directory");
+
+          [suffix]
+          Gtk.Button choose_path_btn {
+            icon-name: "folder-open-symbolic";
+            valign: center;
+            tooltip-text: _("Select directory");
+            styles ["flat"]
+          }
+
+          [suffix]
+          Gtk.Button reset_path_btn {
+            icon-name: "edit-clear-symbolic";
+            valign: center;
+            tooltip-text: _("Reset to default path");
+            styles ["flat"]
+          }
+        }
+
+        Adw.ActionRow models_total_size_row {
+          title: _("Total Occupied Space");
+          subtitle: _("Calculating...");
+          styles ["property"]
+        }
+      }
+
+      Adw.PreferencesGroup {
+        Adw.ButtonRow clean_unused_btn {
+          title: _("Remove Unused Models");
+          styles ["destructive-action"]
+          end-icon-name: "user-trash-symbolic";
+        }
+      }
+
+      Adw.PreferencesGroup ww_models_group {
+        title: _("Wake Word");
+
+        [header-suffix]
+        Gtk.Button ww_open_btn {
+          label: _("Open");
+          valign: center;
+          has-frame: false;
+        }
+      }
+
+      Adw.PreferencesGroup stt_models_group {
+        title: _("Speech Recognition (STT)");
+
+        [header-suffix]
+        Gtk.Button stt_open_btn {
+          label: _("Open");
+          valign: center;
+          has-frame: false;
+        }
+      }
+
+      Adw.PreferencesGroup llm_models_group {
+        title: _("Language Model (LLM)");
+
+        [header-suffix]
+        Gtk.Button llm_open_btn {
+          label: _("Open");
+          valign: center;
+          has-frame: false;
+        }
+      }
+
+      Adw.PreferencesGroup tts_models_group {
+        title: _("Text-to-Speech (TTS)");
+
+        [header-suffix]
+        Gtk.Button tts_open_btn {
+          label: _("Open");
+          valign: center;
+          has-frame: false;
+        }
+      }
+    };
+  };
+}

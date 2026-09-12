@@ -1,0 +1,57 @@
+// BUG REPORTING SUBPAGE
+Adw.NavigationPage bugreport_subpage {
+  tag: "bugreport_subpage";
+  title: _("Bug Reporting");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Bug Reporting");
+      };
+    }
+
+    content: Adw.PreferencesPage bugreport_page {
+      title: _("Bug Reporting");
+      icon-name: "dialog-warning-symbolic";
+      name: "bugreport";
+
+      Adw.PreferencesGroup {
+        title: _("Segnalazione errori");
+
+        Adw.SwitchRow bugreport_enable_row {
+          title: _("Abilita segnalazione automatica");
+          subtitle: _("Invia le eccezioni non gestite all'istanza Bugzilla configurata");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Configurazione Bugzilla");
+        description: _("Le credenziali vengono usate solo per inviare report e non vengono condivise con terze parti.");
+
+        Adw.EntryRow bugreport_endpoint_row {
+          title: _("Endpoint (URL base)");
+          input-purpose: url;
+        }
+
+        Adw.PasswordEntryRow bugreport_apikey_row {
+          title: _("API Key");
+        }
+
+        Adw.EntryRow bugreport_product_row {
+          title: _("Prodotto");
+        }
+
+        Adw.EntryRow bugreport_component_row {
+          title: _("Componente");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        Adw.ButtonRow test_bugreport_btn {
+          title: _("Test connessione");
+        }
+      }
+    };
+  };
+}

@@ -250,8 +250,8 @@ class SkillRegistry:
 
         user_dir = Path.home() / ".config" / "voice-assistant" / "skills"
         searched_dirs = [
-            base_dir / "default_skills",
             base_dir / "skills" / "default_skills",
+            base_dir / "default_skills",
             user_dir,
         ]
 

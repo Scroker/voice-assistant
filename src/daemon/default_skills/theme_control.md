@@ -8,7 +8,7 @@ triggers:
   - "metti il tema chiaro"
   - "tema chiaro"
 tools_allowed:
-  - "dark_mode"
+  - "quick_settings"
 intent: "theme_control"
 ---
 

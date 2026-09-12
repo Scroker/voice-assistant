@@ -72,13 +72,21 @@ def setup_tqdm_patch():
 setup_tqdm_patch()
 
 class WhisperProvider(STTProvider):
-    MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
+    try:
+        from core.path_utils import get_models_dir
+        MODELS_DIR = str(get_models_dir())
+    except Exception:
+        MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
     
     def __init__(self, model_size: str, hardware: str, extra: dict, progress_callback=None, models_dir: str = None, download_only: bool = False):
         if models_dir and len(models_dir.strip()) > 0:
             self.MODELS_DIR = os.path.expanduser(models_dir)
         else:
-            self.MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
+            try:
+                from core.path_utils import get_models_dir
+                self.MODELS_DIR = str(get_models_dir())
+            except Exception:
+                self.MODELS_DIR = os.path.expanduser("~/.local/share/voice-assistant/models")
 
         self.extra = extra or {}
         raw_lang = self.extra.get("language", "")
@@ -296,26 +304,49 @@ class WhisperProvider(STTProvider):
         self._silence_counter = 0
 
     @classmethod
-    def get_available_models(cls) -> list[dict]:
-        return [
-            {"id": "tiny", "name": "Tiny (~75MB - Multilingua, Veloce)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~75MB"},
-            {"id": "tiny.en", "name": "Tiny English (~75MB - Solo Inglese)", "lang": "en", "lang_text": "English", "size_text": "~75MB"},
-            {"id": "base", "name": "Base (~140MB - Bilanciato, Consigliato)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~140MB"},
-            {"id": "base.en", "name": "Base English (~140MB - Solo Inglese)", "lang": "en", "lang_text": "English", "size_text": "~140MB"},
-            {"id": "small", "name": "Small (~466MB - Buona accuratezza)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~466MB"},
-            {"id": "small.en", "name": "Small English (~466MB - Solo Inglese)", "lang": "en", "lang_text": "English", "size_text": "~466MB"},
-            {"id": "medium", "name": "Medium (~1.5GB - Alta accuratezza)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~1.5GB"},
-            {"id": "medium.en", "name": "Medium English (~1.5GB - Solo Inglese)", "lang": "en", "lang_text": "English", "size_text": "~1.5GB"},
-            {"id": "large-v3", "name": "Large v3 (~3.1GB - Massima accuratezza)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~3.1GB"}
-        ]
+    def get_available_models(cls, force_refresh: bool = False) -> list[dict]:
+        try:
+            from services.catalog_manager import catalog_service
+            return catalog_service.get_whisper_models(
+                force_refresh=force_refresh,
+                models_dir=cls.MODELS_DIR,
+            )
+        except Exception as e:
+            logger.warning(f"Errore recupero modelli Whisper da catalog_service: {e}")
+            from core.data_loader import load_json_data
+            cfg = load_json_data("catalog/stt_models.json", fallback_default={}) or {}
+            models = cfg.get("seed_fallback", {}).get("whisper", [])
+            if not models:
+                models = [
+                    {"id": "tiny", "name": "Tiny (~75MB - Multilingua, Veloce)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~75MB"},
+                    {"id": "tiny.en", "name": "Tiny English (~75MB - Solo Inglese)", "lang": "en", "lang_text": "English", "size_text": "~75MB"},
+                    {"id": "base", "name": "Base (~140MB - Bilanciato, Consigliato)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~140MB", "recommended": True},
+                    {"id": "base.en", "name": "Base English (~140MB - Solo Inglese)", "lang": "en", "lang_text": "English", "size_text": "~140MB"},
+                    {"id": "small", "name": "Small (~466MB - Buona accuratezza)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~466MB"},
+                    {"id": "small.en", "name": "Small English (~466MB - Solo Inglese)", "lang": "en", "lang_text": "English", "size_text": "~466MB"},
+                    {"id": "medium", "name": "Medium (~1.5GB - Alta accuratezza)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~1.5GB"},
+                    {"id": "medium.en", "name": "Medium English (~1.5GB - Solo Inglese)", "lang": "en", "lang_text": "English", "size_text": "~1.5GB"},
+                    {"id": "large-v3", "name": "Large v3 (~3.1GB - Massima accuratezza)", "lang": "multilingual", "lang_text": "Multilingual", "size_text": "~3.1GB"}
+                ]
+            return models
 
     @classmethod
     def get_default_model(cls, lang: str = None, **kwargs) -> str:
         """
         Ritorna il modello Whisper raccomandato o bilanciato dai modelli disponibili.
         """
+        try:
+            from services.catalog_manager import catalog_service
+            def_m = catalog_service.get_default_model("whisper", lang=lang)
+            if def_m:
+                return def_m
+        except Exception:
+            pass
+
         models = cls.get_available_models()
         for m in models:
+            if m.get("recommended"):
+                return m["id"]
             name_lower = m.get("name", "").lower()
             if "consigliato" in name_lower or "recommended" in name_lower:
                 return m["id"]

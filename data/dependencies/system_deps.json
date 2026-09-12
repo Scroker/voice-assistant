@@ -1,0 +1,105 @@
+[
+  {
+    "id": "portaudio",
+    "package": "portaudio",
+    "description": "Libreria audio PortAudio (richiesta per il microfono)",
+    "is_critical": true,
+    "check_type": "portaudio",
+    "packages": {
+      "dnf": "portaudio",
+      "dnf5": "portaudio",
+      "apt": "libportaudio2",
+      "pacman": "portaudio",
+      "zypper": "portaudio"
+    },
+    "provide_file": "libportaudio.so.2"
+  },
+  {
+    "id": "clipboard",
+    "package": "wl-clipboard",
+    "package_x11": "xclip",
+    "description": "Strumenti appunti di sistema (wl-clipboard / xclip)",
+    "is_critical": false,
+    "check_type": "clipboard",
+    "packages": {
+      "dnf": "wl-clipboard",
+      "dnf5": "wl-clipboard",
+      "apt": "wl-clipboard",
+      "pacman": "wl-clipboard",
+      "zypper": "wl-clipboard"
+    },
+    "packages_x11": {
+      "dnf": "xclip",
+      "dnf5": "xclip",
+      "apt": "xclip",
+      "pacman": "xclip",
+      "zypper": "xclip"
+    },
+    "provide_file": "/usr/bin/wl-copy",
+    "provide_file_x11": "/usr/bin/xclip"
+  },
+  {
+    "id": "espeak-ng",
+    "package": "espeak-ng",
+    "description": "Sintesi vocale offline di riserva (espeak-ng)",
+    "is_critical": false,
+    "check_type": "command",
+    "commands": ["espeak-ng", "espeak"],
+    "packages": {
+      "dnf": "espeak-ng",
+      "dnf5": "espeak-ng",
+      "apt": "espeak-ng",
+      "pacman": "espeak-ng",
+      "zypper": "espeak-ng"
+    },
+    "provide_file": "/usr/bin/espeak-ng"
+  },
+  {
+    "id": "speech-dispatcher",
+    "package": "speech-dispatcher",
+    "description": "Dispatcher vocale di sistema (speech-dispatcher)",
+    "is_critical": false,
+    "check_type": "command",
+    "commands": ["spd-say"],
+    "packages": {
+      "dnf": "speech-dispatcher",
+      "dnf5": "speech-dispatcher",
+      "apt": "speech-dispatcher",
+      "pacman": "speech-dispatcher",
+      "zypper": "speech-dispatcher"
+    },
+    "provide_file": "/usr/bin/spd-say"
+  },
+  {
+    "id": "pulseaudio-utils",
+    "package": "pulseaudio-utils",
+    "description": "Controllo audio pactl (Echo Cancellation / AEC PipeWire)",
+    "is_critical": false,
+    "check_type": "command",
+    "commands": ["pactl"],
+    "packages": {
+      "dnf": "pulseaudio-utils",
+      "dnf5": "pulseaudio-utils",
+      "apt": "pulseaudio-utils",
+      "pacman": "libpulse",
+      "zypper": "pulseaudio-utils"
+    },
+    "provide_file": "/usr/bin/pactl"
+  },
+  {
+    "id": "cargo",
+    "package": "cargo",
+    "description": "Compilatore Rust (richiesto per installare gnome-mcp-server)",
+    "is_critical": false,
+    "check_type": "command",
+    "commands": ["cargo"],
+    "packages": {
+      "dnf": "cargo",
+      "dnf5": "cargo",
+      "apt": "cargo",
+      "pacman": "rust",
+      "zypper": "cargo"
+    },
+    "mcp_server": "gnome-mcp-server"
+  }
+]

@@ -3,6 +3,38 @@
 > Stato: piano rivisto dopo verifica sul codice attuale (2026-09-12). Le correzioni
 > rispetto alla bozza originale sono segnalate con **[CORREZIONE]**.
 
+> **Nota di coordinamento (2026-09-12, seconda parte della sessione)**: una sessione
+> parallela (`bridge-cse-013ld9vxywygl3n7uay1dyht-59`) sta lavorando in contemporanea
+> sullo stesso repository, sul checkout `main` (non su questo branch). Aveva un enorme
+> set di modifiche non committate (168 file) che è stato committato su `main` in
+> `330107b` "refactor: externalize config/data to JSON and consolidate MCP native tools"
+> su richiesta esplicita dell'utente. Quel lavoro **si sovrappone parzialmente** a questo
+> piano:
+> - Ha già aggiunto le GSettings `fast-path-enabled` / `medium-path-enabled` (che
+>   [CORREZIONE 4] sotto dava per inesistenti — erano inesistenti nella versione di
+>   `main` disponibile quando è stata scritta quella correzione, ma non lo sono più) con
+>   una sottopagina UI dedicata (`data/ui/prefs/subpage_dispatch.blp` +
+>   `src/gui/components/settings/dispatch.py`) più completa di quella descritta nella
+>   sezione "Grafica" di questo documento.
+> - Ha esternalizzato `INTENT_PATTERNS` in `data/nlu/fast_path_patterns.json` (invece di
+>   hardcoded in `pipeline.py`), e i template di risposta/numeri in
+>   `data/locales/responses.json` / `data/locales/number_words.json` — risolvendo da sola
+>   [CORREZIONE 3].
+> - **Non ha ancora toccato** `VectorIntentMatcher` (il matcher bag-of-words) né aggiunto
+>   fuzzy matching per il lancio app: la parte di questo piano relativa a
+>   `SemanticIntentRouter` (embedding ONNX reali) e `AppSlotMatcher` (RapidFuzz sui file
+>   `.desktop`) resta quindi lavoro non duplicato.
+>
+> Il branch `feature/direct-action-engine` è stato implementato (commit `b37dda8`) contro
+> la versione **precedente** di `pipeline.py`/`settings_window.py`/schema (prima di
+> `330107b`). È in corso una richiesta di coordinamento con la sessione parallela prima di
+> fare rebase e riconciliare: le chiavi GSettings e il gruppo UI aggiunti da questo piano
+> (`direct-action-engine-enabled`, `semantic-router-confidence-threshold`, gruppo in
+> `mcp_page`) sono da considerarsi ridondanti e verosimilmente da rimuovere/reintegrare
+> nella sottopagina Dispatch già esistente, mentre `semantic_router.py` e
+> `app_slot_matcher.py` vanno ricollegati alla struttura dati esternalizzata
+> (`data/nlu/fast_path_patterns.json`) invece che al vecchio `INTENT_PATTERNS` hardcoded.
+
 ## Panoramica e Obiettivo
 
 Attualmente la pipeline di `PipelineController` presenta due stadi prima dello Smart-Path:
