@@ -1,3 +1,5 @@
+import os
+import shutil
 import json
 import logging
 import asyncio
@@ -7,22 +9,19 @@ from .config import MCPConfigLoader
 from .registry import MCPRegistryClient
 from .installer import MCPServerInstaller
 from .client import ExternalMCPClient
-from .tools import (
-    NativeTool,
-    SystemVolumeTool,
-    DarkModeTool,
-    AppLauncherTool,
-    DateTimeTool,
-    SystemMediaTool,
-    ScreenBrightnessTool,
-    SystemPowerTool,
-    ClipboardTool,
-)
+from core.data_loader import load_json_data
 
 logger = logging.getLogger("VoiceAssistant.MCPManager")
 
+
+def __getattr__(name: str) -> Any:
+    if name == "GNOME_MCP_TOOLS_DEFAULTS":
+        return load_json_data("mcp/tools_gnome_defaults.json", fallback_default={})
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 class MCPManager:
-    """Central MCP execution & aggregation engine for native GNOME tools & external MCP servers."""
+    """Central MCP execution engine integrated with gnome-mcp-server & external servers."""
 
     def __init__(self, config_loader: Optional[MCPConfigLoader] = None,
                  registry_url: Optional[str] = None):
@@ -32,7 +31,10 @@ class MCPManager:
             config_loader=self.config_loader,
         )
         self.installer = MCPServerInstaller(config_loader=self.config_loader)
-        self.native_tools: Dict[str, NativeTool] = {}
+        self.default_tools: Dict[str, Any] = load_json_data(
+            "mcp/tools_gnome_defaults.json", fallback_default={}
+        )
+        self.native_tools: Dict[str, Any] = {}
         self.external_clients: Dict[str, ExternalMCPClient] = {}
         self.external_tools_map: Dict[str, str] = {}  # tool_name -> server_name
         self.external_tools_schemas: Dict[str, Dict[str, Any]] = {}  # tool_name -> schema
@@ -47,18 +49,7 @@ class MCPManager:
         self._enabled = bool(value)
 
     async def initialize(self):
-        """Initializes native GNOME tools and loads configured external MCP servers."""
-        # 1. Register Built-in Native Tools
-        self.register_native_tool(SystemVolumeTool())
-        self.register_native_tool(DarkModeTool())
-        self.register_native_tool(AppLauncherTool())
-        self.register_native_tool(DateTimeTool())
-        self.register_native_tool(SystemMediaTool())
-        self.register_native_tool(ScreenBrightnessTool())
-        self.register_native_tool(SystemPowerTool())
-        self.register_native_tool(ClipboardTool())
-
-        # 2. Load Config & Connect to External Stdio/SSE Servers
+        """Connects to configured external MCP servers (default: gnome-mcp-server)."""
         config_data = self.config_loader.load()
         servers = config_data.get("mcpServers", {})
 
@@ -88,10 +79,88 @@ class MCPManager:
                             }
                         }
 
-        logger.info(f"MCPManager inizializzato. Tools nativi: {len(self.native_tools)}, Server esterni attivi: {len(self.external_clients)}.")
+        # If gnome-mcp-server is configured and enabled, ensure its tool schemas are exposed
+        if "gnome-mcp-server" in servers and servers["gnome-mcp-server"].get("enabled", True):
+            for t_name, schema in self.default_tools.items():
+                if t_name not in self.external_tools_schemas:
+                    self.external_tools_schemas[t_name] = schema
+                    self.external_tools_map[t_name] = "gnome-mcp-server"
 
-    def register_native_tool(self, tool: NativeTool):
-        """Registers a native GNOME tool instance."""
+        logger.info(f"MCPManager inizializzato. Server attivi: {len(self.external_clients)}, Tool registrati: {len(self.external_tools_schemas)}.")
+
+    def is_server_installed(self, name: str) -> bool:
+        """Verifica se l'eseguibile del server MCP è presente nel PATH o in ~/.cargo/bin."""
+        config_data = self.config_loader.load()
+        servers = config_data.get("mcpServers", {})
+        if name not in servers:
+            return False
+        cfg = servers[name]
+        cmd = cfg.get("command", "")
+        if cmd == "builtin":
+            return True
+        if cmd == "gnome-mcp-server":
+            cargo_candidate = os.path.expanduser("~/.cargo/bin/gnome-mcp-server")
+            if os.path.isfile(cargo_candidate) and os.access(cargo_candidate, os.X_OK):
+                return True
+            import shutil
+            return shutil.which("gnome-mcp-server") is not None
+        import shutil
+        return shutil.which(cmd) is not None
+
+    async def start_server(self, name: str) -> Tuple[bool, str]:
+        """Avvia un server MCP esterno configurato e ne registra i tool."""
+        if not self._enabled:
+            return False, "MCP disabilitato nelle impostazioni"
+
+        config_data = self.config_loader.load()
+        servers = config_data.get("mcpServers", {})
+        if name not in servers:
+            return False, f"Server '{name}' non presente nella configurazione"
+
+        cfg = servers[name]
+        cmd = cfg.get("command", "")
+        if cmd == "builtin":
+            return True, "Server built-in pronto all'uso"
+
+        if name in self.external_clients:
+            try:
+                await self.external_clients[name].stop()
+            except Exception:
+                pass
+            del self.external_clients[name]
+
+        args = cfg.get("args", [])
+        env = cfg.get("env", {})
+        client = ExternalMCPClient(name=name, command=cmd, args=args, env=env)
+        if await client.start():
+            self.external_clients[name] = client
+            tools = await client.list_tools()
+            for tool in tools:
+                t_name = tool.get("name")
+                if t_name:
+                    self.external_tools_map[t_name] = name
+                    self.external_tools_schemas[t_name] = {
+                        "type": "function",
+                        "function": {
+                            "name": t_name,
+                            "description": tool.get("description", ""),
+                            "parameters": tool.get("inputSchema", {"type": "object", "properties": {}})
+                        }
+                    }
+
+            if name == "gnome-mcp-server":
+                for t_name, schema in self.default_tools.items():
+                    if t_name not in self.external_tools_schemas:
+                        self.external_tools_schemas[t_name] = schema
+                        self.external_tools_map[t_name] = "gnome-mcp-server"
+
+            logger.info(f"Server MCP '{name}' avviato e registrato con {len(tools)} tool.")
+            return True, f"Server MCP '{name}' avviato con successo"
+        else:
+            return False, f"Impossibile avviare il processo del server MCP '{name}'"
+
+    def register_native_tool(self, tool: Any):
+        """Registers a tool instance for testing or local extension."""
         self.native_tools[tool.name] = tool
 
     def set_registry_url(self, registry_url: str):
@@ -104,11 +173,10 @@ class MCPManager:
             return []
 
         schemas = []
-        # Native tools
         for tool in self.native_tools.values():
-            schemas.append(tool.to_schema())
+            if hasattr(tool, "to_schema"):
+                schemas.append(tool.to_schema())
 
-        # External tools
         for schema in self.external_tools_schemas.values():
             schemas.append(schema)
 
@@ -121,7 +189,7 @@ class MCPManager:
             return ""
 
         lines = [
-            "### Strumenti e Tool Disponibili:",
+            "### Strumenti e Tool Disponibili (gnome-mcp-server):",
             "Se l'utente richiede un'azione o un comando del sistema, rispondi ESCLUSIVAMENTE con l'oggetto JSON del tool da eseguire, SENZA ALCUN TESTO INTRODUTTIVO O SPIEGAZIONE.",
             'Formato obbligatorio: {"tool": "nome_tool", "args": {"arg1": "valore1"}}',
             "",
@@ -135,38 +203,78 @@ class MCPManager:
         return "\n".join(lines)
 
     async def execute_tool(self, tool_name: str, args: Dict[str, Any]) -> str:
-        """Executes a tool by name (native or external)."""
+        """Executes a tool by name (gnome-mcp-server, external, or via compatibility adapter)."""
         if not self._enabled:
             return "Integrazione MCP disabilitata nelle impostazioni."
 
-        # 1. Native Tool Execution
-        if tool_name in self.native_tools:
-            try:
-                logger.info(f"Esecuzione tool nativo '{tool_name}' con args: {args}")
-                return await self.native_tools[tool_name].execute(args)
-            except Exception as e:
-                logger.error(f"Errore durante l'esecuzione del tool nativo '{tool_name}': {e}")
-                return f"Errore nell'esecuzione del tool '{tool_name}': {e}"
+        # 1. Backwards-compatibility adapter for legacy custom tool names
+        actual_tool = tool_name
+        actual_args = dict(args or {})
 
-        # 2. External MCP Server Execution
-        if tool_name in self.external_tools_map:
-            server_name = self.external_tools_map[tool_name]
+        if tool_name == "system_volume":
+            actual_tool = "set_volume"
+            action = str(actual_args.get("action", "")).lower()
+            if action == "set":
+                actual_args = {"volume": float(actual_args.get("level", 50))}
+            elif action == "increase":
+                actual_args = {"direction": "up", "relative": True, "volume": float(actual_args.get("level", 10))}
+            elif action == "decrease":
+                actual_args = {"direction": "down", "relative": True, "volume": -float(actual_args.get("level", 10))}
+            elif action == "mute":
+                actual_args = {"mute": True}
+            elif action == "unmute":
+                actual_args = {"mute": False}
+            elif action == "get":
+                actual_args = {"volume": 0.0, "relative": True}
+
+        elif tool_name == "dark_mode":
+            actual_tool = "quick_settings"
+            mode = str(actual_args.get("mode", "dark")).lower()
+            enabled = mode not in ("light", "default", "false", "0")
+            actual_args = {"setting": "dark_style", "enabled": enabled}
+
+        elif tool_name == "app_launcher":
+            actual_tool = "launch_application"
+            app_name = actual_args.get("app_name") or actual_args.get("app") or ""
+            actual_args = {"app_name": app_name}
+
+        elif tool_name == "system_media":
+            actual_tool = "media_control"
+            act = str(actual_args.get("action", "play")).lower().replace("-", "_")
+            actual_args = {"action": act}
+
+        # 2. Check explicitly registered native tools (tests/plugins)
+        if actual_tool in self.native_tools:
+            try:
+                logger.info(f"Esecuzione tool registrato '{actual_tool}' con args: {actual_args}")
+                return await self.native_tools[actual_tool].execute(actual_args)
+            except Exception as e:
+                logger.error(f"Errore durante l'esecuzione del tool '{actual_tool}': {e}")
+                return f"Errore nell'esecuzione del tool '{actual_tool}': {e}"
+
+        # 3. External MCP Server Execution (gnome-mcp-server or configured server)
+        if actual_tool in self.external_tools_map:
+            server_name = self.external_tools_map[actual_tool]
             client = self.external_clients.get(server_name)
             if client:
                 try:
-                    logger.info(f"Esecuzione tool esterno '{tool_name}' su server '{server_name}'")
-                    return await client.call_tool(tool_name, args)
+                    logger.info(f"Esecuzione tool '{actual_tool}' su server MCP '{server_name}'")
+                    return await client.call_tool(actual_tool, actual_args)
                 except Exception as e:
-                    logger.error(f"Errore durante l'esecuzione del tool esterno '{tool_name}' su '{server_name}': {e}")
-                    return f"Errore nell'esecuzione del tool '{tool_name}': {e}"
+                    logger.error(f"Errore esecuzione tool '{actual_tool}' su '{server_name}': {e}")
+                    return f"Errore nell'esecuzione del tool '{actual_tool}': {e}"
 
-        # 3. Fallback: If LLM outputs app name directly as tool name, route to app_launcher
-        if "app_launcher" in self.native_tools:
-            app_arg = args.get("app_name") or args.get("app") or tool_name
-            res = await self.native_tools["app_launcher"].execute({"app_name": app_arg})
-            if "Impossibile trovare" not in res:
-                logger.info(f"Tool '{tool_name}' non nativo, eseguito tramite 'app_launcher' per l'app '{app_arg}'")
-                return res
+        # 4. If gnome-mcp-server client is running, try calling it directly
+        gnome_client = self.external_clients.get("gnome-mcp-server")
+        if gnome_client and actual_tool in self.default_tools:
+            try:
+                return await gnome_client.call_tool(actual_tool, actual_args)
+            except Exception as e:
+                return f"Errore nell'esecuzione del tool '{actual_tool}': {e}"
+
+        # 5. Friendly fallback message if gnome-mcp-server is not running
+        if actual_tool in self.default_tools:
+            return f"gnome-mcp-server non è attualmente attivo. Installa o avvia gnome-mcp-server (cargo install --git https://github.com/bilelmoussaoui/gnome-mcp-server)."
 
         return f"Tool '{tool_name}' non trovato o non registrato."
 
@@ -231,7 +339,7 @@ class MCPManager:
         self, server_name: str, server_config: str, env_vars: str = ""
     ) -> Tuple[bool, str]:
         """
-        Installs an MCP server and adds it to config.
+        Installs an MCP server, enables it, and starts it.
 
         Returns:
             (success: bool, message: str)
@@ -242,6 +350,12 @@ class MCPManager:
             success, msg = await self.installer.install_server(
                 server_name, server_def, required_env
             )
+            if success:
+                self.config_loader.set_server_status(server_name, True)
+                start_ok, start_msg = await self.start_server(server_name)
+                if start_ok:
+                    return True, f"Server '{server_name}' installato e avviato con successo!"
+                return True, f"Server '{server_name}' installato, ma l'avvio non è riuscito: {start_msg}"
             return success, msg
         except Exception as e:
             logger.error(f"[MCPManager] Errore installazione server '{server_name}': {e}")

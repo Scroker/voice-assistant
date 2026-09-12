@@ -47,7 +47,11 @@ class BugReporter:
                     import gi
                     gi.require_version("Gio", "2.0")
                     from gi.repository import Gio
-                    cls._settings = Gio.Settings.new(_SCHEMA_ID)
+                    schema_source = Gio.SettingsSchemaSource.get_default()
+                    if schema_source and schema_source.lookup(_SCHEMA_ID, False) is not None:
+                        cls._settings = Gio.Settings.new(_SCHEMA_ID)
+                    else:
+                        return None
                 except Exception as e:
                     logger.debug("Impossibile caricare GSettings per BugReporter: %s", e)
             return cls._settings

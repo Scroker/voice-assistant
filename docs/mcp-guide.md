@@ -1,188 +1,167 @@
 # Guida Completa all'Integrazione Model Context Protocol (MCP)
 
-Questa guida documenta l'architettura **Model Context Protocol (MCP)** e i **Tool Nativi** integrati nel demone del Voice Assistant per GNOME Shell.
+Questa guida documenta l'architettura **Model Context Protocol (MCP)** basata su [gnome-mcp-server](https://github.com/bilelmoussaoui/gnome-mcp-server) e i server esterni integrati nel Voice Assistant per GNOME Shell.
 
 ---
 
 ## 💡 Cos'è il Model Context Protocol (MCP) nel Voice Assistant?
 
-MCP è uno standard aperto che consente al modello di linguaggio (LLM) e al motore della pipeline vocale di interagire direttamente con il sistema operativo GNOME e con servizi esterni.
+MCP è uno standard aperto che consente al modello di linguaggio (LLM) e al motore della pipeline vocale di interagire direttamente con il desktop GNOME e con servizi esterni.
 
-L'architettura MCP del Voice Assistant supporta:
-1. **Tool Nativi GNOME (In-Process)**: Funzioni Python ad alta velocità per il controllo hardware e di sistema.
-2. **Fast-Path Offline (<10ms)**: Esecuzione deterministica istantanea per i comandi vocali comuni senza passare dall'LLM.
-3. **Dynamic Prompt Injection**: Iniezione automatica degli schemi dei tool abilitati e del timestamp di sistema aggiornato nel `system_prompt` dell'LLM.
-4. **Server MCP Esterni (Stdio / SSE)**: Possibilità di collegare server MCP esterni definiti in `~/.config/voice-assistant/mcp_servers.json`.
-
-### Marketplace Smithery
-
-La discovery del marketplace usa l'API pubblica documentata di Smithery: `https://api.smithery.ai/servers`. Le ricerche usano il parametro semantico/full-text `q`; se il catalogo non è raggiungibile, l'interfaccia mantiene i preset locali. Un token opzionale può essere fornito al daemon tramite `SMITHERY_API_KEY`.
-
-I risultati Smithery possono descrivere connessioni HTTP gestite o bundle MCPB oltre ai server stdio locali. La UI li rende ricercabili, ma l'installazione one-click resta disponibile solo per definizioni con un comando stdio (`npx`, `uvx` o Python). Le connessioni gestite Smithery richiedono ancora un adapter HTTP/OAuth nel runtime MCP.
+L'architettura MCP del Voice Assistant comprende:
+1. **gnome-mcp-server (Stdio JSON-RPC 2.0)**: Server MCP nativo per GNOME scritto in Rust, sviluppato da Bilal Elmoussaoui, che espone il controllo del desktop GNOME direttamente tramite protocollo MCP standard.
+2. **Fast-Path Offline (<10ms)**: Esecuzione deterministica istantanea per i comandi vocali comuni (volume, tema, app, media) mappati direttamente sui tool di `gnome-mcp-server`.
+3. **Dynamic Prompt Injection**: Iniezione automatica degli schemi dei tool di `gnome-mcp-server` e degli eventuali server esterni nel `system_prompt` dell'LLM.
+4. **Adapter di Retrocompatibilità**: Livello di traduzione automatico in `MCPManager` che traduce chiamate legacy (es. `system_volume`, `dark_mode`, `app_launcher`, `system_media`) negli schemi ufficiali di `gnome-mcp-server`.
+5. **Installazione Automatica delle Dipendenze**: Rilevamento e installazione automatica di `cargo` tramite PackageKit D-Bus o gestore pacchetti di sistema (DNF5, APT, Pacman, Zypper), con compilazione automatica di `gnome-mcp-server`.
+6. **Marketplace Smithery & Server Esterni**: Supporto a server MCP di terze parti configurati in `~/.config/voice-assistant/mcp_servers.json`.
 
 ---
 
-## 🛠️ Elenco dei 8 Tool Nativi MCP Integrati
+## 🛠️ I 10 Tool di `gnome-mcp-server`
 
-Il demone include 8 tool nativi pronti all'uso situati in `src/daemon/mcp/tools/`:
+`gnome-mcp-server` espone 10 strumenti specializzati per l'ambiente desktop GNOME:
 
-### 1. `system_volume` (`SystemVolumeTool`)
-- **Descrizione**: Regola e legge il volume audio principale di sistema (PipeWire / WirePlumber / PulseAudio / ALSA).
+### 1. `set_volume`
+- **Descrizione**: Regola e muta il volume audio di sistema.
 - **Parametri**:
-  - `action` (string, obbligatorio): `["get", "set", "increase", "decrease", "mute", "unmute"]`
-  - `level` (integer, opzionale): Percentuale del volume `0-100` o incremento per `increase`/`decrease`.
+  - `volume` (number, opzionale): Livello del volume assoluto o relativo (`0-100`).
+  - `mute` (boolean, opzionale): `true` per silenziare, `false` per riattivare.
+  - `relative` (boolean, opzionale): Se `true`, il valore indica una variazione relativa.
+  - `direction` (string, opzionale): `"up"` o `"down"` per passo predefinito.
 - **Esempio JSON**:
   ```json
-  {"tool": "system_volume", "args": {"action": "set", "level": 50}}
+  {"tool": "set_volume", "args": {"volume": 70}}
   ```
 
-### 2. `dark_mode` (`DarkModeTool`)
-- **Descrizione**: Cambia il tema di GNOME Desktop tra modalità chiara e scura.
+### 2. `quick_settings`
+- **Descrizione**: Attiva o disattiva impostazioni booleane di GNOME (Wi-Fi, Bluetooth, Night Light, Dark Style, Do Not Disturb).
 - **Parametri**:
-  - `mode` (string, obbligatorio): `["dark", "light", "toggle", "get"]`
+  - `setting` (string, obbligatorio): `"wifi" | "bluetooth" | "night_light" | "do_not_disturb" | "dark_style"`
+  - `enabled` (boolean, obbligatorio): `true` per attivare, `false` per disattivare.
 - **Esempio JSON**:
   ```json
-  {"tool": "dark_mode", "args": {"mode": "dark"}}
+  {"tool": "quick_settings", "args": {"setting": "dark_style", "enabled": true}}
   ```
 
-### 3. `app_launcher` (`AppLauncherTool`)
-- **Descrizione**: Avvia un'applicazione Desktop o il browser predefinito (`gtk-launch` / comandi di sistema).
+### 3. `launch_application`
+- **Descrizione**: Avvia un'applicazione desktop per nome o eseguibile.
 - **Parametri**:
-  - `app_name` (string, obbligatorio): Nome dell'applicazione (es. `"firefox"`, `"nautilus"`, `"terminal"`, `"calculator"`).
+  - `app_name` (string, obbligatorio): Nome dell'applicazione (es. `"firefox"`, `"nautilus"`, `"terminal"`).
 - **Esempio JSON**:
   ```json
-  {"tool": "app_launcher", "args": {"app_name": "firefox"}}
+  {"tool": "launch_application", "args": {"app_name": "firefox"}}
   ```
 
-### 4. `date_time` (`DateTimeTool`)
-- **Descrizione**: Restituisce la data, l'orario locale ed il giorno della settimana corrente dal clock di sistema.
+### 4. `media_control`
+- **Descrizione**: Controlla la riproduzione multimediale (MPRIS).
 - **Parametri**:
-  - `format` (string, opzionale): `["time", "date", "full"]`
+  - `action` (string, obbligatorio): `"play" | "pause" | "play_pause" | "stop" | "next" | "previous"`
+  - `player` (string, opzionale): Nome specifico del player da controllare.
 - **Esempio JSON**:
   ```json
-  {"tool": "date_time", "args": {"format": "full"}}
+  {"tool": "media_control", "args": {"action": "play_pause"}}
   ```
 
-### 5. `system_media` (`SystemMediaTool`)
-- **Descrizione**: Controlla la riproduzione multimediale nei lettori compatibili MPRIS / `playerctl`.
+### 5. `send_notification`
+- **Descrizione**: Invia una notifica desktop visiva.
 - **Parametri**:
-  - `action` (string, obbligatorio): `["play", "pause", "play-pause", "next", "previous", "stop"]`
+  - `summary` (string, obbligatorio): Titolo della notifica.
+  - `body` (string, obbligatorio): Testo della notifica.
 - **Esempio JSON**:
   ```json
-  {"tool": "system_media", "args": {"action": "pause"}}
+  {"tool": "send_notification", "args": {"summary": "Promemoria", "body": "Riunione alle 15:00"}}
   ```
 
-### 6. `screen_brightness` (`ScreenBrightnessTool`)
-- **Descrizione**: Regola e legge la luminosità dello schermo per laptop e monitor (`brightnessctl` / D-Bus Power).
+### 6. `open_file`
+- **Descrizione**: Apre un file locale o un URL con l'applicazione predefinita del desktop.
 - **Parametri**:
-  - `action` (string, obbligatorio): `["get", "set", "increase", "decrease"]`
-  - `level` (integer, opzionale): Percentuale luminosità `0-100`.
+  - `path` (string, obbligatorio): Percorso del file o URL.
 - **Esempio JSON**:
   ```json
-  {"tool": "screen_brightness", "args": {"action": "set", "level": 70}}
+  {"tool": "open_file", "args": {"path": "/home/user/documento.pdf"}}
   ```
 
-### 7. `system_power` (`SystemPowerTool`)
-- **Descrizione**: Esegue azioni di gestione della sessione di sistema.
+### 7. `set_wallpaper`
+- **Descrizione**: Imposta lo sfondo del desktop a partire da un file immagine locale.
 - **Parametri**:
-  - `action` (string, obbligatorio): `["lock", "suspend", "logout", "restart", "shutdown"]`
+  - `image_path` (string, obbligatorio): Percorso assoluto dell'immagine.
 - **Esempio JSON**:
   ```json
-  {"tool": "system_power", "args": {"action": "lock"}}
+  {"tool": "set_wallpaper", "args": {"image_path": "/home/user/Pictures/wallpaper.jpg"}}
   ```
 
-### 8. `clipboard` (`ClipboardTool`)
-- **Descrizione**: Legge o copia testo dagli/agli appunti di sistema (Wayland `wl-copy`/`wl-paste` e X11 `xclip`).
+### 8. `take_screenshot`
+- **Descrizione**: Acquisisce una schermata del desktop.
 - **Parametri**:
-  - `action` (string, obbligatorio): `["get", "copy"]`
-  - `text` (string, opzionale): Testo da copiare quando `action` è `"copy"`.
+  - `interactive` (boolean, opzionale): Se `true`, mostra l'interfaccia interattiva di selezione area di GNOME.
 - **Esempio JSON**:
   ```json
-  {"tool": "clipboard", "args": {"action": "copy", "text": "Testo da copiare"}}
+  {"tool": "take_screenshot", "args": {"interactive": false}}
   ```
+
+### 9. `window_management`
+- **Descrizione**: Gestisce finestre e aree di lavoro (focus, minimizza, massimizza, snap, sposta su workspace).
+- **Parametri**:
+  - `action` (string, obbligatorio): `"list" | "focus" | "close" | "minimize" | "maximize" | "switch_workspace" | "move_to_workspace" | "snap"`
+  - `window_id` (string, opzionale): Identificatore della finestra.
+  - `workspace` (integer, opzionale): Indice del workspace (0-based).
+  - `position` (string, opzionale): `"left" | "right"` per azione snap.
+
+### 10. `keyring_management`
+- **Descrizione**: Gestisce credenziali e segreti nel GNOME Keyring in modo sicuro.
+- **Parametri**:
+  - `action` (string, obbligatorio): `"store" | "retrieve" | "delete"`
+  - `label` (string, opzionale): Etichetta del segreto.
+  - `secret` (string, opzionale): Valore del segreto.
+  - `attributes` (string, opzionale): Attributi JSON associati.
 
 ---
 
-## ⚡ Flusso di Esecuzione (Pipeline LLM & Fast-Path)
+## 🔄 Livello di Compatibilità e Retrocompatibilità
 
-```mermaid
-graph TD
-    A["Vocal Input (STT)"] --> B{"Fast-Path Match?"}
-    B -- "Sì (<10ms)" --> C["Esecuzione Immediata Tool MCP"]
-    C --> D["Sintesi Vocale Risposta (TTS)"]
-    B -- "No" --> E["Iniezione Prompt System (Ora + Schemi Tool)"]
-    E --> F["LLM Streaming Response"]
-    F --> G{"Output contiene Tool Call JSON?"}
-    G -- "Sì" --> H["LLMServiceManager intercetta JSON"]
-    H --> I["MCPManager.execute_tool()"]
-    I --> D
-    G -- "No" --> D
+Per garantire che le skill esistenti, i prompt salvati e le integrazioni storiche continuino a funzionare senza interruzioni:
+- `system_volume` viene automaticamente convertito in `set_volume`.
+- `dark_mode` viene convertito in `quick_settings` con `setting: "dark_style"`.
+- `app_launcher` viene convertito in `launch_application`.
+- `system_media` viene convertito in `media_control`.
+
+---
+
+## 📦 Installazione e Gestione Dipendenze (`cargo` e `gnome-mcp-server`)
+
+### Rilevamento e Installazione di `cargo`
+All'avvio, il demone verifica la presenza di `cargo` (o `gnome-mcp-server` già installato). Se non presente, notifica il sistema e la GUI presenta una finestra di dialogo di consenso all'utente:
+- Su Fedora/RHEL: `dnf5 install -y cargo` o via PackageKit D-Bus
+- Su Ubuntu/Debian: `apt install -y cargo` o via PackageKit D-Bus
+- Su Arch Linux: `pacman -S --noconfirm rust` o via PackageKit D-Bus
+- Su openSUSE: `zypper install -y cargo` o via PackageKit D-Bus
+
+### Compilazione di `gnome-mcp-server`
+Una volta disponibile `cargo`, `gnome-mcp-server` può essere installato con un solo comando o tramite il gestore interno:
+```bash
+cargo install --git https://github.com/bilelmoussaoui/gnome-mcp-server
 ```
-
-### Fast-Path Dispatcher
-Se l'utente esprime un comando diretto (es. *"alza il volume"*, *"modalità scura"*, *"imposta volume al 50"*), il `FastPathDispatcher` intercetta l'intenzione prima dell'invio all'LLM ed esegue il tool MCP nativo in **<10ms**.
-
-### LLM Tool Interception
-Se il comando richiede elaborazione da parte dell'LLM:
-1. Gli schemi JSON degli 8 tool vengono iniettati nel `system_prompt`.
-2. Il parser dell' `LLMServiceManager` decodifica la risposta JSON generata dal modello.
-3. Il metodo `_execute_tool_sync` gestisce l'esecuzione `asyncio` isolata nel thread dello streaming.
+L'eseguibile viene posizionato in `~/.cargo/bin/gnome-mcp-server`, directory che viene automaticamente inclusa nel `PATH` dal runtime MCP.
 
 ---
 
-## 🧩 Come Creare un Nuovo Tool Nativo MCP
+## 🌐 Configurazione Server MCP (`mcp_servers.json`)
 
-Per aggiungere un nuovo tool nativo al progetto:
-
-1. Crea un nuovo file in `src/daemon/mcp/tools/mio_tool.py`:
-   ```python
-   from typing import Dict, Any
-   from .base import NativeTool
-
-   class MioTool(NativeTool):
-       @property
-       def name(self) -> str:
-           return "mio_tool"
-
-       @property
-       def description(self) -> str:
-           return "Descrizione del mio nuovo tool nativo"
-
-       @property
-       def parameters(self) -> Dict[str, Any]:
-           return {
-               "type": "object",
-               "properties": {
-                   "param1": {"type": "string", "description": "Descrizione parametro"}
-               },
-               "required": ["param1"]
-           }
-
-       async def execute(self, args: Dict[str, Any]) -> str:
-           param1 = args.get("param1")
-           # Logica del tool...
-           return f"Eseguito con successo: {param1}"
-   ```
-
-2. Esporta il tool in `src/daemon/mcp/tools/__init__.py`.
-3. Registralo in `MCPManager.initialize()` (`src/daemon/mcp/manager.py`).
-
----
-
-## 🌐 Configurazione Server MCP Esterni (`mcp_servers.json`)
-
-È possibile collegare server MCP esterni (es. Stdio o SSE) modificando `~/.config/voice-assistant/mcp_servers.json`:
+La configurazione risiede in `~/.config/voice-assistant/mcp_servers.json`:
 
 ```json
 {
   "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/Documents"],
-      "enabled": true
+    "gnome-mcp-server": {
+      "command": "gnome-mcp-server",
+      "args": [],
+      "env": {},
+      "enabled": true,
+      "description": "Integrazione nativa GNOME Desktop via gnome-mcp-server"
     }
   }
 }
 ```
 
-I tool esposti dai server esterni verranno automaticamente unificati nell'elenco dei tool disponibili per l'LLM.
+È possibile aggiungere ulteriori server MCP (es. filesystem, GitHub, memorie RAG esterne) tramite il Marketplace Smithery integrato nella finestra delle impostazioni dell'assistente.

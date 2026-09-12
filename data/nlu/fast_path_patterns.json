@@ -1,0 +1,120 @@
+[
+  {
+    "pattern": "(?:attiva|metti|imposta)?\\s*(?:la\\s*)?(?:modalità|tema)\\s+scur[ao]",
+    "intent": "set_theme_dark",
+    "params": {
+      "dark": true
+    },
+    "response_key": "set_theme_dark"
+  },
+  {
+    "pattern": "(?:attiva|metti|imposta)?\\s*(?:la\\s*)?(?:modalità|tema)\\s+chiar[ao]",
+    "intent": "set_theme_light",
+    "params": {
+      "dark": false
+    },
+    "response_key": "set_theme_light"
+  },
+  {
+    "pattern": "(?:che\\s+ore?\\s+sono|che\\s+ora\\s+è|orario|dimmi\\s+l'ora)",
+    "intent": "get_time",
+    "params": {},
+    "response_key": "get_time"
+  },
+  {
+    "pattern": "(?:che\\s+giorno\\s+è|data\\s+di\\s+oggi|dimmi\\s+la\\s+data)",
+    "intent": "get_date",
+    "params": {},
+    "response_key": "get_date"
+  },
+  {
+    "pattern": "(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\\s+vedere|aprimi)?\\s*(?:il\\s+|la\\s+|le\\s+|l'|i\\s+)?(?:browser|firefox)",
+    "intent": "launch_app",
+    "params": {
+      "app": "firefox"
+    },
+    "response_key": "launch_app"
+  },
+  {
+    "pattern": "(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\\s+vedere|aprimi)?\\s*(?:il\\s+|la\\s+|le\\s+|l'|i\\s+)?terminale",
+    "intent": "launch_app",
+    "params": {
+      "app": "terminal"
+    },
+    "response_key": "launch_app"
+  },
+  {
+    "pattern": "(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\\s+vedere|aprimi)?\\s*(?:il\\s+|la\\s+|le\\s+|l'|i\\s+)?calcolatrice",
+    "intent": "launch_app",
+    "params": {
+      "app": "calculator"
+    },
+    "response_key": "launch_app"
+  },
+  {
+    "pattern": "(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\\s+vedere|aprimi)?\\s*(?:il\\s+|la\\s+|le\\s+|l'|i\\s+)?calendario",
+    "intent": "launch_app",
+    "params": {
+      "app": "calendario"
+    },
+    "response_key": "launch_app"
+  },
+  {
+    "pattern": "(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\\s+vedere|aprimi)?\\s*(?:le\\s+|i\\s+|l'|la\\s+)?impostazioni",
+    "intent": "launch_app",
+    "params": {
+      "app": "impostazioni"
+    },
+    "response_key": "launch_app"
+  },
+  {
+    "pattern": "(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\\s+vedere|aprimi)?\\s*(?:l'|il\\s+)?orologio",
+    "intent": "launch_app",
+    "params": {
+      "app": "orologio"
+    },
+    "response_key": "launch_app"
+  },
+  {
+    "pattern": "(?:apri|aprire|avrei|avvia|lancia|mostra|mostrami|fammi\\s+vedere|aprimi)?\\s*(?:i\\s+|la\\s+cartella\\s+)?file",
+    "intent": "launch_app",
+    "params": {
+      "app": "nautilus"
+    },
+    "response_key": "launch_app"
+  },
+  {
+    "pattern": "pausa|interrompi\\s+musica",
+    "intent": "media_pause",
+    "params": {},
+    "response_key": "media_pause"
+  },
+  {
+    "pattern": "riproduci|play",
+    "intent": "media_play",
+    "params": {},
+    "response_key": "media_play"
+  },
+  {
+    "pattern": "alza\\s+(?:il\\s+)?volume",
+    "intent": "volume_up",
+    "params": {
+      "delta": 10
+    },
+    "response_key": "volume_up"
+  },
+  {
+    "pattern": "abbassa\\s+(?:il\\s+)?volume",
+    "intent": "volume_down",
+    "params": {
+      "delta": -10
+    },
+    "response_key": "volume_down"
+  },
+  {
+    "pattern": "(?:silenzia|disattiva)\\s+(?:il\\s+)?audio",
+    "intent": "mute",
+    "params": {},
+    "response_key": "mute"
+  }
+]

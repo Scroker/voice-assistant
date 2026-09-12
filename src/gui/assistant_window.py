@@ -1,14 +1,16 @@
 """
-AssistantWindow — Standalone GTK4 / Libadwaita Chat Window for Voice Assistant.
+AssistantWindow — Finestra interattiva GTK4 / Libadwaita per l'Assistente Vocale.
 
-Comunicazione col demone interamente via D-Bus (org.local.VoiceAssistant).
-Segnali ricevuti: StateChanged, TranscriptReceived, ResponseTokenStreamed.
-Metodi chiamati: ProcessTextInput, TriggerListening, OpenSettings.
+Composta tramite componenti riutilizzabili:
+- components.resources: registrazione di GResource e temi icone
+- components.daemon_client: comunicazione asincrona D-Bus col demone
+- components.chat: ChatBubble e ChatView
 """
 
 import logging
 import os
 import threading
+import time
 
 import gi
 gi.require_version('Gtk', '4.0')
@@ -20,7 +22,7 @@ try:
 except Exception:
     pass
 
-_log = logging.getLogger("VoiceAssistant.GUI")
+_log = logging.getLogger("VoiceAssistant.GUI.AssistantWindow")
 
 try:
     import sys as _sys
@@ -28,65 +30,29 @@ try:
     _daemon_core = os.path.join(os.path.dirname(_gui_dir), "daemon", "core")
     if _daemon_core not in _sys.path:
         _sys.path.insert(0, _daemon_core)
+    if _gui_dir not in _sys.path:
+        _sys.path.insert(0, _gui_dir)
     from logger import glib_safe as _glib_safe
 except Exception:
     def _glib_safe(fn, component=None):  # type: ignore[misc]
-        return fn
+        import functools
+        @functools.wraps(fn)
+        def _fallback_wrapper(*a, **kw):
+            res = fn(*a, **kw)
+            return True if res is True else False
+        return _fallback_wrapper
 
-# Registra il gresource dell'estensione per template UI e icone
-_GRESOURCE_PATH = os.path.expanduser(
-    "~/.local/share/gnome-shell/extensions/"
-    "voice-assistant@scroker.github.io/"
-    "org.gnome.shell.extensions.voice-assistant.gresource"
-)
-if os.path.exists(_GRESOURCE_PATH):
-    try:
-        _resource = Gio.Resource.load(_GRESOURCE_PATH)
-        Gio.resources_register(_resource)
-    except Exception as _e:
-        _log.warning("Impossibile caricare gresource: %s", _e)
+try:
+    from components.resources import register_resources, register_icons
+    from components.daemon_client import DaemonClient
+    from components.chat import ChatBubble, ChatView
+except ImportError:
+    from gui.components.resources import register_resources, register_icons
+    from gui.components.daemon_client import DaemonClient
+    from gui.components.chat import ChatBubble, ChatView
 
-_DBUS_NAME = "org.local.VoiceAssistant"
-_DBUS_PATH = "/org/local/VoiceAssistant"
-_DBUS_IFACE = "org.local.VoiceAssistant"
-
-
-class ChatBubble(Gtk.Box):
-    """Bolla di chat stile Libadwaita."""
-
-    def __init__(self, text: str, is_user: bool = False):
-        super().__init__(orientation=Gtk.Orientation.HORIZONTAL)
-        self.set_margin_top(6)
-        self.set_margin_bottom(6)
-        self.set_margin_start(16)
-        self.set_margin_end(16)
-
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.label = Gtk.Label(label=text)
-        self.label.set_wrap(True)
-        self.label.set_selectable(True)
-        self.label.set_xalign(0.0)
-        self.label.set_margin_top(12)
-        self.label.set_margin_bottom(12)
-        self.label.set_margin_start(16)
-        self.label.set_margin_end(16)
-        card.append(self.label)
-
-        if is_user:
-            self.set_halign(Gtk.Align.END)
-            card.add_css_class("card")
-            card.add_css_class("accent")
-            self.set_margin_start(48)
-        else:
-            self.set_halign(Gtk.Align.START)
-            card.add_css_class("card")
-            self.set_margin_end(48)
-
-        self.append(card)
-
-    def append_text(self, text: str) -> None:
-        current = self.label.get_text()
-        self.label.set_text(current + text)
+# Assicura registrazione gresource al caricamento del modulo
+register_resources()
 
 
 @Gtk.Template(resource_path="/org/gnome/shell/extensions/voice-assistant/ui/assistant_window.ui")
@@ -101,35 +67,29 @@ class AssistantWindow(Adw.ApplicationWindow):
     send_btn = Gtk.Template.Child()
     mic_btn = Gtk.Template.Child()
     settings_btn = Gtk.Template.Child()
+    info_btn = Gtk.Template.Child()
+    user_avatar = Gtk.Template.Child()
+    user_title = Gtk.Template.Child()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.current_assistant_bubble: ChatBubble | None = None
-        self._streaming_active = False
-        self._proxy: Gio.DBusProxy | None = None
+
+        register_icons(Gdk.Display.get_default())
+        self.set_icon_name("vocal-assistant-icon")
+
+        # Inizializza il profilo utente di sistema e avatar
+        self._setup_user_profile()
+
+        # Inizializza il componente ChatView
+        self.chat_view = ChatView(chat_box=self.chat_box, scrolled=self.scrolled)
+
         self._pending_deps: list = []
         self._dep_debounce_id: int | None = None
-
-        # Icone dall'estensione
-        display = Gdk.Display.get_default()
-        if display:
-            try:
-                icon_theme = Gtk.IconTheme.get_for_display(display)
-                icon_theme.add_resource_path(
-                    "/org/gnome/shell/extensions/voice-assistant/icons"
-                )
-                icon_theme.add_resource_path(
-                    "/org/gnome/shell/extensions/voice-assistant/icons/hicolor"
-                )
-                icons_dir = os.path.expanduser(
-                    "~/.local/share/gnome-shell/extensions/"
-                    "voice-assistant@scroker.github.io/icons"
-                )
-                if os.path.exists(icons_dir):
-                    icon_theme.add_search_path(icons_dir)
-                    icon_theme.add_search_path(os.path.join(icons_dir, "hicolor"))
-            except Exception as e:
-                _log.warning("Impossibile aggiungere path icone: %s", e)
+        self._pending_install_deps: bool = False
+        self._pending_auto_install: bool = False
+        self._deps_dialog_showing: bool = False
+        self._last_sent_text: str | None = None
+        self._last_sent_time: float = 0.0
 
         self.connect("close-request", self._on_close_request)
 
@@ -141,157 +101,172 @@ class AssistantWindow(Adw.ApplicationWindow):
         self.send_btn.connect("clicked", self._on_send_text)
         self.mic_btn.connect("clicked", self._on_toggle_mic)
         self.settings_btn.connect("clicked", self._on_open_settings)
+        if self.info_btn:
+            self.info_btn.connect("clicked", self._on_open_about)
 
-        # Connessione D-Bus asincrona per non bloccare la UI al lancio
-        Gio.DBusProxy.new_for_bus(
-            Gio.BusType.SESSION,
-            Gio.DBusProxyFlags.NONE,
-            None,
-            _DBUS_NAME,
-            _DBUS_PATH,
-            _DBUS_IFACE,
-            None,
-            self._on_proxy_ready,
+        # Inizializza il client D-Bus
+        self.daemon_client = DaemonClient(
+            on_transcript=self._on_transcript_received,
+            on_token=self._on_response_token_streamed,
+            on_state_changed=self._on_state_changed,
+            on_dependency_required=self._on_dependency_required_signal,
+            on_ready=self._on_daemon_ready,
         )
 
         self.add_assistant_message("Ciao! Come posso aiutarti?")
 
     # ------------------------------------------------------------------
-    # D-Bus
+    # Proprietà e metodi delegati a ChatView (per compatibilità)
     # ------------------------------------------------------------------
 
-    def _on_proxy_ready(self, source: GLib.Object, result: Gio.AsyncResult) -> None:
-        try:
-            self._proxy = Gio.DBusProxy.new_for_bus_finish(result)
-            self._proxy.connect("g-signal", self._on_dbus_signal)
-            threading.Thread(target=self._poll_missing_deps, daemon=True).start()
-            _log.debug("D-Bus proxy ready")
-        except Exception as e:
-            _log.error("Connessione D-Bus fallita: %s", e)
+    @property
+    def current_assistant_bubble(self) -> ChatBubble | None:
+        return self.chat_view.current_assistant_bubble
 
-    def _on_dbus_signal(
-        self,
-        proxy: Gio.DBusProxy,
-        sender: str,
-        signal_name: str,
-        params: GLib.Variant,
-    ) -> None:
-        """Gestisce i segnali D-Bus emessi dal demone."""
-        if signal_name == "TranscriptReceived":
-            text, is_final = params.unpack()
-            if is_final:
-                self._streaming_active = False
-                GLib.idle_add(_glib_safe(self.add_user_message, "add_user_message"), text)
+    @current_assistant_bubble.setter
+    def current_assistant_bubble(self, bubble: ChatBubble | None) -> None:
+        self.chat_view.current_assistant_bubble = bubble
 
-        elif signal_name == "ResponseTokenStreamed":
-            token, is_complete = params.unpack()
-            if is_complete:
-                if not self._streaming_active and token:
-                    # Risposta fast-path: nessun token precedente, mostra tutto
-                    GLib.idle_add(_glib_safe(self.add_assistant_message, "add_assistant_message"), token)
-                else:
-                    # Fine sessione streaming: chiudi la bolla corrente
-                    self._streaming_active = False
-                    GLib.idle_add(_glib_safe(self._close_current_bubble, "close_bubble"))
-            else:
-                self._streaming_active = True
-                GLib.idle_add(_glib_safe(self.append_assistant_token, "append_token"), token)
+    @property
+    def _streaming_active(self) -> bool:
+        return self.chat_view.streaming_active
 
-        elif signal_name == "StateChanged":
-            state = params.unpack()[0]
-            _log.debug("Stato demone: %s", state)
-            self._on_state_changed(state)
+    @_streaming_active.setter
+    def _streaming_active(self, val: bool) -> None:
+        self.chat_view.streaming_active = val
 
-        elif signal_name == "DependencyRequired":
-            package, description, is_critical = params.unpack()
-            self._pending_deps.append({
-                "package": package,
-                "description": description,
-                "is_critical": is_critical,
-            })
-            if self._dep_debounce_id:
-                GLib.source_remove(self._dep_debounce_id)
-            self._dep_debounce_id = GLib.timeout_add(500, self._flush_pending_deps)
-
-    def _poll_missing_deps(self) -> None:
-        """Chiama GetMissingDependencies() al proxy ready per recuperare dep mancanti rilevate prima dell'apertura della GUI."""
-        try:
-            import json
-            result = self._proxy.call_sync(
-                "GetMissingDependencies", None, Gio.DBusCallFlags.NONE, 3000, None
-            )
-            deps = json.loads(result.unpack()[0])
-            if deps:
-                GLib.idle_add(_glib_safe(self._show_deps_dialog, "show_deps_dialog"), deps)
-        except Exception as e:
-            _log.error("Impossibile recuperare dipendenze mancanti: %s", e)
-
-    def _flush_pending_deps(self) -> bool:
-        deps, self._pending_deps = self._pending_deps, []
-        self._dep_debounce_id = None
-        if deps:
-            self._show_deps_dialog(deps)
-        return GLib.SOURCE_REMOVE
-
-    def _show_deps_dialog(self, deps: list) -> None:
-        from dependency_installer import show_missing_deps_dialog
-        show_missing_deps_dialog(self, deps)
-
-    def _call_daemon(self, method: str, params: GLib.Variant | None = None) -> None:
-        """Chiama un metodo D-Bus sul demone in un thread separato."""
-        if not self._proxy:
-            _log.warning("Proxy non disponibile, metodo '%s' ignorato.", method)
-            return
-
-        def _do_call() -> None:
-            try:
-                self._proxy.call_sync(
-                    method,
-                    params,
-                    Gio.DBusCallFlags.NONE,
-                    5000,
-                    None,
-                )
-            except Exception as e:
-                _log.error("Errore D-Bus %s: %s", method, e)
-
-        threading.Thread(target=_do_call, daemon=True).start()
-
-    # ------------------------------------------------------------------
-    # UI helpers
-    # ------------------------------------------------------------------
+    @property
+    def _proxy(self) -> Gio.DBusProxy | None:
+        return self.daemon_client._proxy
 
     def scroll_to_bottom(self) -> None:
-        def _scroll() -> bool:
-            adj = self.scrolled.get_vadjustment()
-            adj.set_value(adj.get_upper() - adj.get_page_size())
-            return False
-        GLib.idle_add(_scroll)
+        self.chat_view.scroll_to_bottom()
 
-    def add_user_message(self, text: str) -> None:
-        bubble = ChatBubble(text, is_user=True)
-        self.chat_box.append(bubble)
-        self.current_assistant_bubble = None
-        self._streaming_active = False
-        self.scroll_to_bottom()
+    def add_user_message(self, text: str) -> ChatBubble:
+        return self.chat_view.add_user_message(text)
 
-    def add_assistant_message(self, text: str) -> None:
-        bubble = ChatBubble(text, is_user=False)
-        self.chat_box.append(bubble)
-        self.current_assistant_bubble = bubble
-        self.scroll_to_bottom()
+    def add_assistant_message(self, text: str) -> ChatBubble:
+        return self.chat_view.add_assistant_message(text)
 
     def append_assistant_token(self, token: str) -> None:
-        if self.current_assistant_bubble is None:
-            self.add_assistant_message("")
-        self.current_assistant_bubble.append_text(token)
-        self.scroll_to_bottom()
+        self.chat_view.append_assistant_token(token)
 
     def _close_current_bubble(self) -> None:
-        self.current_assistant_bubble = None
+        self.chat_view.close_current_bubble()
+
+    # ------------------------------------------------------------------
+    # D-Bus Handlers & Client Integration
+    # ------------------------------------------------------------------
+
+    def _on_daemon_ready(self, client: DaemonClient) -> None:
+        _log.debug("DaemonClient pronto")
+        if self._pending_install_deps:
+            auto_start = self._pending_auto_install
+            self._pending_install_deps = False
+            threading.Thread(
+                target=self._poll_missing_deps,
+                kwargs={"auto_start": auto_start, "force": True},
+                daemon=True,
+            ).start()
+        else:
+            threading.Thread(target=self._poll_missing_deps, daemon=True).start()
+
+    def _on_transcript_received(self, text: str, is_final: bool) -> None:
+        if is_final:
+            self._streaming_active = False
+            # Evita duplicati se il messaggio è un'eco di quello appena inviato via GUI
+            if (
+                getattr(self, "_last_sent_text", None) == text
+                and (time.time() - getattr(self, "_last_sent_time", 0.0)) < 3.0
+            ):
+                self._last_sent_text = None
+                return
+
+            def _idle_add_user(t: str) -> bool:
+                self.add_user_message(t)
+                return False
+
+            GLib.idle_add(_glib_safe(_idle_add_user, "add_user_message"), text)
+
+    def _on_response_token_streamed(self, token: str, is_complete: bool) -> None:
+        if is_complete:
+            if not self._streaming_active and token:
+                # Risposta fast-path: nessun token precedente, mostra tutto
+                def _idle_add_assistant(t: str) -> bool:
+                    self.add_assistant_message(t)
+                    return False
+
+                GLib.idle_add(_glib_safe(_idle_add_assistant, "add_assistant_message"), token)
+            else:
+                self._streaming_active = False
+
+                def _idle_close() -> bool:
+                    self._close_current_bubble()
+                    return False
+
+                GLib.idle_add(_glib_safe(_idle_close, "close_bubble"))
+        else:
+            self._streaming_active = True
+
+            def _idle_append(t: str) -> bool:
+                self.append_assistant_token(t)
+                return False
+
+            GLib.idle_add(_glib_safe(_idle_append, "append_token"), token)
+
+    def _on_dependency_required_signal(self) -> None:
+        if self._dep_debounce_id:
+            GLib.source_remove(self._dep_debounce_id)
+        self._dep_debounce_id = GLib.timeout_add(500, self._trigger_poll_from_signal)
+
+    def _trigger_poll_from_signal(self) -> bool:
+        self._dep_debounce_id = None
+        threading.Thread(target=self._poll_missing_deps, daemon=True).start()
+        return GLib.SOURCE_REMOVE
+
+    def trigger_dependency_installer(self, auto_start: bool = False) -> None:
+        """Richiede esplicitamente l'apertura del dialog/installatore di dipendenze."""
+        if self.daemon_client.is_ready:
+            threading.Thread(
+                target=self._poll_missing_deps,
+                kwargs={"auto_start": auto_start, "force": True},
+                daemon=True,
+            ).start()
+        else:
+            self._pending_install_deps = True
+            self._pending_auto_install = auto_start
+
+    def _poll_missing_deps(self, auto_start: bool = False, force: bool = False) -> None:
+        """Recupera le dipendenze mancanti dal demone."""
+        if not self.daemon_client.is_ready:
+            return
+        if self._deps_dialog_showing and not force:
+            return
+        deps = self.daemon_client.get_missing_dependencies_sync()
+        if deps:
+            GLib.idle_add(
+                _glib_safe(self._show_deps_dialog, "show_deps_dialog"),
+                deps,
+                auto_start,
+            )
+
+    def _show_deps_dialog(self, deps: list, auto_start: bool = False) -> None:
+        if self._deps_dialog_showing:
+            return
+        self._deps_dialog_showing = True
+        from dependency_installer import show_missing_deps_dialog
+
+        def _on_done(success: bool):
+            self._deps_dialog_showing = False
+            if success:
+                self._pending_deps = []
+
+        show_missing_deps_dialog(self, deps, on_done=_on_done, auto_start=auto_start)
+
+    def _call_daemon(self, method: str, params: GLib.Variant | None = None) -> None:
+        self.daemon_client.call_async(method, params)
 
     def _on_state_changed(self, state: str) -> None:
-        # Aggiorna visivamente il bottone microfono in base allo stato del demone
         is_listening = state == "listening"
         if is_listening:
             self.mic_btn.add_css_class("suggested-action")
@@ -299,7 +274,7 @@ class AssistantWindow(Adw.ApplicationWindow):
             self.mic_btn.remove_css_class("suggested-action")
 
     # ------------------------------------------------------------------
-    # Event handlers
+    # Event Handlers
     # ------------------------------------------------------------------
 
     def _on_send_text(self, widget: Gtk.Widget) -> None:
@@ -307,20 +282,98 @@ class AssistantWindow(Adw.ApplicationWindow):
         if not text:
             return
         self.entry.set_text("")
+        self._last_sent_text = text
+        self._last_sent_time = time.time()
         self.add_user_message(text)
-        self._call_daemon("ProcessTextInput", GLib.Variant("(s)", (text,)))
+        self.daemon_client.send_text(text)
 
     def _on_toggle_mic(self, widget: Gtk.Widget) -> None:
-        self._call_daemon("TriggerListening")
+        self.daemon_client.trigger_listening()
+
+    def _setup_user_profile(self) -> None:
+        """Rileva dinamicamente il nome e l'avatar dell'utente di sistema."""
+        try:
+            real_name = GLib.get_real_name()
+            user_name = GLib.get_user_name()
+            display_name = real_name if (real_name and real_name.strip() and real_name != "Unknown") else user_name
+            if not display_name or not display_name.strip():
+                display_name = "User"
+
+            if hasattr(self, "user_title") and self.user_title:
+                self.user_title.set_title(display_name)
+
+            if hasattr(self, "user_avatar") and self.user_avatar:
+                self.user_avatar.set_text(display_name)
+                self.user_avatar.set_show_initials(True)
+
+                face_candidates = [
+                    os.path.expanduser("~/.face"),
+                    os.path.expanduser("~/.face.icon"),
+                    f"/var/lib/AccountsService/icons/{user_name}",
+                ]
+                for candidate in face_candidates:
+                    if os.path.isfile(candidate):
+                        try:
+                            texture = Gdk.Texture.new_from_filename(candidate)
+                            self.user_avatar.set_custom_image(texture)
+                            break
+                        except Exception:
+                            pass
+        except Exception as e:
+            _log.debug(f"Errore configurazione profilo utente: {e}")
+
+    def _on_open_about(self, widget: Gtk.Widget) -> None:
+        """Apre la finestra di dialogo About con Adw.AboutDialog / Adw.AboutWindow."""
+        try:
+            app_name = "Assistente Vocale"
+            version = "1.0.0"
+            developer = "Giorgio Dramis"
+            comments = "AI Locale &amp; Offline per GNOME Shell"
+            website = "https://github.com/Scroker/voice-assistant"
+            issues = "https://github.com/Scroker/voice-assistant/issues"
+            copyright_str = "© 2026 Giorgio Dramis"
+            icon_name = "vocal-assistant-icon"
+
+            if hasattr(Adw, "AboutDialog"):
+                about = Adw.AboutDialog()
+                about.set_application_name(app_name)
+                about.set_version(version)
+                about.set_developer_name(developer)
+                about.set_application_icon(icon_name)
+                about.set_comments(comments)
+                about.set_website(website)
+                about.set_issue_url(issues)
+                about.set_copyright(copyright_str)
+                about.set_license_type(Gtk.License.GPL_3_0)
+                about.present(self)
+            elif hasattr(Adw, "AboutWindow"):
+                about = Adw.AboutWindow(transient_for=self)
+                about.set_application_name(app_name)
+                about.set_version(version)
+                about.set_developer_name(developer)
+                about.set_application_icon(icon_name)
+                about.set_comments(comments)
+                about.set_website(website)
+                about.set_issue_url(issues)
+                about.set_copyright(copyright_str)
+                about.set_license_type(Gtk.License.GPL_3_0)
+                about.present()
+        except Exception as e:
+            _log.error(f"Impossibile aprire AboutDialog: {e}")
 
     def _on_open_settings(self, widget: Gtk.Widget) -> None:
         from settings_window import open_settings_window
-        open_settings_window(self)
+        open_settings_window(parent=self, application=self.get_application())
 
     def _on_close_request(self, window: Adw.ApplicationWindow) -> bool:
-        """Nasconde la finestra invece di distruggerla (riapertura veloce)."""
-        self.set_visible(False)
-        return True
+        if hasattr(self, "daemon_client") and self.daemon_client:
+            self.daemon_client.close()
+        app = self.get_application()
+        if app:
+            if getattr(app, "_assistant_win", None) is self:
+                app._assistant_win = None
+            GLib.idle_add(lambda: app.quit() if len(app.get_windows()) <= 1 else None)
+        return False
 
     def _on_key_pressed(
         self,
@@ -330,6 +383,6 @@ class AssistantWindow(Adw.ApplicationWindow):
         state: Gdk.ModifierType,
     ) -> bool:
         if keyval == Gdk.KEY_Escape:
-            self.set_visible(False)
+            self.close()
             return True
         return False

@@ -29,6 +29,11 @@
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
     </method>
+    <method name="DeleteModel">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="in" name="model"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
     <method name="GetErrorReports">
       <arg type="s" direction="out" name="reports_json"/>
     </method>
@@ -59,6 +64,11 @@
       <arg type="s" direction="in" name="server_name"/>
       <arg type="s" direction="in" name="server_config_json"/>
       <arg type="s" direction="in" name="env_vars_json"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="StartMCPServer">
+      <arg type="s" direction="in" name="server_name"/>
       <arg type="b" direction="out" name="success"/>
       <arg type="s" direction="out" name="message"/>
     </method>

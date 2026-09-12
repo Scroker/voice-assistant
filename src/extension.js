@@ -92,6 +92,8 @@ function setupDaemonServices(extensionDir) {
         let desktopContent = loadTemplate('/org/gnome/shell/extensions/voice-assistant/services/org.local.VoiceAssistant.desktop.in', 'org.local.VoiceAssistant.desktop.in');
         let desktopFile = appsDir.get_child('org.local.VoiceAssistant.desktop');
         desktopFile.replace_contents(encoder.encode(desktopContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+        let desktopGuiFile = appsDir.get_child('org.local.VoiceAssistant.GUI.desktop');
+        desktopGuiFile.replace_contents(encoder.encode(desktopContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
     } catch (e) {
         console.error(`[VoiceAssistant] Errore installazione file .desktop: ${e.message}`);
     }
@@ -144,7 +146,7 @@ function setupDaemonServices(extensionDir) {
     }
 }
 
-// Definizione dell'interfaccia D-Bus (Caricata da GResource o fallback)
+// Definizione dell'interfaccia D-Bus (Caricata da GResource o fallback completo)
 let VoiceAssistantIface;
 try {
     let bytes = Gio.resources_lookup_data('/org/gnome/shell/extensions/voice-assistant/dbus/org.local.VoiceAssistant.xml', Gio.ResourceLookupFlags.NONE);
@@ -154,6 +156,9 @@ try {
 <node>
   <interface name="org.local.VoiceAssistant">
     <method name="ToggleListening">
+      <arg type="b" direction="out" name="is_listening"/>
+    </method>
+    <method name="TriggerListening">
       <arg type="b" direction="out" name="is_listening"/>
     </method>
     <method name="GetState">
@@ -166,6 +171,9 @@ try {
     <method name="GetDownloadingModels">
       <arg type="s" direction="out" name="models_json"/>
     </method>
+    <method name="GetResourceMetrics">
+      <arg type="s" direction="out" name="metrics_json"/>
+    </method>
     <method name="DownloadModel">
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
@@ -174,13 +182,94 @@ try {
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
     </method>
+    <method name="GetErrorReports">
+      <arg type="s" direction="out" name="reports_json"/>
+    </method>
+    <method name="ClearErrorReports">
+    </method>
+    <method name="GenerateDiagnosticBundle">
+      <arg type="s" direction="out" name="bundle_path"/>
+    </method>
+    <method name="GetMarketplaceFeatured">
+      <arg type="s" direction="out" name="servers_json"/>
+    </method>
+    <method name="SearchMarketplace">
+      <arg type="s" direction="in" name="query"/>
+      <arg type="s" direction="out" name="results_json"/>
+    </method>
+    <method name="GetServerDetails">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="s" direction="out" name="details_json"/>
+    </method>
+    <method name="GetMarketplaceCategories">
+      <arg type="s" direction="out" name="categories_json"/>
+    </method>
+    <method name="FilterMarketplaceByCategory">
+      <arg type="s" direction="in" name="category"/>
+      <arg type="s" direction="out" name="results_json"/>
+    </method>
+    <method name="InstallMCPServer">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="s" direction="in" name="server_config_json"/>
+      <arg type="s" direction="in" name="env_vars_json"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="StartMCPServer">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="UninstallMCPServer">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="TestMCPServer">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="UpdateServerConfig">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="s" direction="in" name="env_vars_json"/>
+      <arg type="b" direction="in" name="enabled"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="GetInstalledServers">
+      <arg type="s" direction="out" name="servers_json"/>
+    </method>
+    <method name="ShowWindow">
+    </method>
+    <method name="OpenSettings">
+    </method>
+    <method name="ProcessTextInput">
+      <arg type="s" direction="in" name="text"/>
+    </method>
+    <method name="GetMissingDependencies">
+      <arg type="s" direction="out" name="deps_json"/>
+    </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
+    </signal>
+    <signal name="TranscriptReceived">
+      <arg type="s" name="text"/>
+      <arg type="b" name="is_final"/>
+    </signal>
+    <signal name="ResponseTokenStreamed">
+      <arg type="s" name="token"/>
+      <arg type="b" name="is_complete"/>
     </signal>
     <signal name="DownloadProgress">
       <arg type="s" name="provider"/>
       <arg type="s" name="model"/>
       <arg type="i" name="percent"/>
+    </signal>
+    <signal name="DependencyRequired">
+      <arg type="s" name="package"/>
+      <arg type="s" name="description"/>
+      <arg type="b" name="is_critical"/>
     </signal>
   </interface>
 </node>`;
@@ -236,7 +325,9 @@ const VoiceAssistantQuickToggle = GObject.registerClass(
             // Voce per avviare l'ascolto vocale immediato
             this._listenItem = new PopupMenu.PopupMenuItem(_('Avvia Ascolto Vocale'));
             this._listenItem.connect('activate', () => {
-                if (Main.panel.closeQuickSettings) {
+                if (Main.panel.statusArea?.quickSettings?.menu) {
+                    Main.panel.statusArea.quickSettings.menu.close();
+                } else if (Main.panel.closeQuickSettings) {
                     Main.panel.closeQuickSettings();
                 }
                 this._extension._toggleRecording();
@@ -246,7 +337,9 @@ const VoiceAssistantQuickToggle = GObject.registerClass(
             // Voce per aprire la finestra interattiva dell'Assistente
             this._windowItem = new PopupMenu.PopupMenuItem(_('Apri Finestra Assistente'));
             this._windowItem.connect('activate', () => {
-                if (Main.panel.closeQuickSettings) {
+                if (Main.panel.statusArea?.quickSettings?.menu) {
+                    Main.panel.statusArea.quickSettings.menu.close();
+                } else if (Main.panel.closeQuickSettings) {
                     Main.panel.closeQuickSettings();
                 }
                 this._extension._openAssistantWindow();
@@ -259,7 +352,9 @@ const VoiceAssistantQuickToggle = GObject.registerClass(
             // Voce per le preferenze / impostazioni
             let settingsItem = new PopupMenu.PopupMenuItem(_('Preferenze'));
             settingsItem.connect('activate', () => {
-                if (Main.panel.closeQuickSettings) {
+                if (Main.panel.statusArea?.quickSettings?.menu) {
+                    Main.panel.statusArea.quickSettings.menu.close();
+                } else if (Main.panel.closeQuickSettings) {
                     Main.panel.closeQuickSettings();
                 }
                 this._extension.openPreferences();
@@ -583,14 +678,38 @@ export default class VoiceAssistantExtension extends Extension {
         }
     }
 
-    _openAssistantWindow() {
-        if (this._dbusProxy) {
-            this._dbusProxy.ShowWindowRemote((result, error) => {
-                if (error) {
-                    console.error('[VoiceAssistant] Errore apertura finestra D-Bus:', error.message);
+    _launchGuiDirect(args = []) {
+        try {
+            let startScript = null;
+            if (this.path) {
+                let candidate = GLib.build_filenamev([this.path, 'gui', 'start.sh']);
+                if (GLib.file_test(candidate, GLib.FileTest.EXISTS)) {
+                    startScript = candidate;
                 }
-            });
+            }
+            if (!startScript && this.dir) {
+                let file = this.dir.get_child('gui').get_child('start.sh');
+                if (file.query_exists(null)) {
+                    startScript = file.get_path();
+                }
+            }
+
+            if (startScript) {
+                Gio.Subprocess.new(
+                    ['bash', startScript, ...args],
+                    Gio.SubprocessFlags.NONE
+                );
+                console.log('[VoiceAssistant] Finestra GUI avviata direttamente tramite start.sh');
+            } else {
+                console.warn('[VoiceAssistant] Script GUI start.sh non trovato');
+            }
+        } catch (e) {
+            console.error('[VoiceAssistant] Errore avvio GUI diretto:', e.message);
         }
+    }
+
+    _openAssistantWindow() {
+        this._launchGuiDirect();
     }
 
     disable() {

@@ -64,21 +64,21 @@ class TestAssistantRuntime(unittest.TestCase):
 
         self.assertTrue(matched)
         self.assertEqual(result, "ok")
-        owner.mcp_manager.execute_tool.assert_called_once_with("system_volume", {"action": "increase", "level": 10})
+        owner.mcp_manager.execute_tool.assert_called_once_with("set_volume", {"direction": "up"})
 
     def test_fast_path_intent_resolves_async_mcp_tool(self):
         owner = DummyOwner()
 
         async def execute_tool(tool_name, args):
-            return f"{tool_name}:{args['format']}"
+            return f"{tool_name}:{args.get('direction', '')}"
 
         owner.mcp_manager.execute_tool.side_effect = execute_tool
         controller = AssistantRuntimeController(owner)
 
-        matched, result = controller._handle_fast_path_intent("get_time", {})
+        matched, result = controller._handle_fast_path_intent("volume_up", {})
 
         self.assertTrue(matched)
-        self.assertEqual(result, "date_time:time")
+        self.assertEqual(result, "set_volume:up")
 
     def test_mcp_enabled_setting_updates_manager(self):
         owner = DummyOwner()
@@ -133,6 +133,56 @@ class TestAssistantRuntime(unittest.TestCase):
         self.assertEqual(owner._state, "listening")
         owner.audio_player.play_wakeword_chime.assert_called_once()
         schedule_mock.assert_not_called()
+
+
+    def test_process_text_fast_path_emits_complete_token(self):
+        owner = DummyOwner()
+        owner.pipeline_controller.process_text_input.return_value = {
+            "fast_path": True,
+            "response": "Apro il calendario."
+        }
+        controller = AssistantRuntimeController(owner)
+
+        controller._process_text("apri il calendario", is_voice=False)
+
+        owner.ResponseTokenStreamed.assert_called_once_with("Apro il calendario.", True)
+
+    def test_process_text_medium_path_emits_complete_token(self):
+        owner = DummyOwner()
+        owner.pipeline_controller.process_text_input.return_value = {
+            "fast_path": False,
+            "medium_path": True,
+            "response": "Volume impostato."
+        }
+        controller = AssistantRuntimeController(owner)
+
+        controller._process_text("imposta volume a 50", is_voice=False)
+
+        owner.ResponseTokenStreamed.assert_called_once_with("Volume impostato.", True)
+
+    def test_process_text_smart_path_emits_complete_token(self):
+        owner = DummyOwner()
+        owner.pipeline_controller.process_text_input.return_value = {
+            "fast_path": False,
+            "smart_path": True,
+            "response": "Risposta generata."
+        }
+        controller = AssistantRuntimeController(owner)
+
+        controller._process_text("Raccontami una storia", is_voice=False)
+
+        owner.ResponseTokenStreamed.assert_called_once_with("", True)
+
+    def test_launch_app_fallback_native_when_mcp_fails(self):
+        owner = DummyOwner()
+        owner.mcp_manager.execute_tool.return_value = "Errore nell'esecuzione del tool 'launch_application'"
+        controller = AssistantRuntimeController(owner)
+
+        with patch.object(controller, '_launch_desktop_app_native', return_value=True) as mock_native:
+            matched, resp = controller._handle_fast_path_intent("launch_app", {"app": "calendario"})
+            self.assertTrue(matched)
+            self.assertEqual(resp, "Apro calendario.")
+            mock_native.assert_called_once_with("calendario")
 
 
 if __name__ == '__main__':

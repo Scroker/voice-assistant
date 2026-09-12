@@ -1,8 +1,8 @@
 ---
 name: "Volume Control"
 intent: volume_up
-tool: system_volume
-args: {"action": "increase", "level": 10}
+tool: set_volume
+args: {"direction": "up", "relative": true}
 triggers:
   - "alza il volume"
   - "aumenta il volume"

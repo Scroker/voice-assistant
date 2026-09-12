@@ -3,8 +3,9 @@ using Adw 1;
 
 template $AssistantWindow : Adw.ApplicationWindow {
   title: _("Assistente Vocale");
-  default-width: 640;
-  default-height: 480;
+  icon-name: "vocal-assistant-icon";
+  default-width: 840;
+  default-height: 680;
 
   Adw.Breakpoint {
     condition ("max-width: 400sp")
@@ -28,23 +29,29 @@ template $AssistantWindow : Adw.ApplicationWindow {
       
       [bottom]
       Gtk.Box {
-        Gtk.Button  {
+        Gtk.Button user_btn {
           tooltip-text: _("User");
           styles ["flat"]
           hexpand: true;
           child: Gtk.Box {
-            Adw.Avatar {
+            Adw.Avatar user_avatar {
               size: 30;
             }
-            Adw.WindowTitle {
-              title: _('Giorgio Dramis');
+            Adw.WindowTitle user_title {
+              title: _("User");
             }
           };
+        }
+        Gtk.Button info_btn {
+          styles ["flat"]
+          width-request: 40;
+          icon-name: "help-about-symbolic";
+          tooltip-text: _("Informazioni su Assistente Vocale");
         }
         Gtk.Button settings_btn {
           styles ["flat"]
           width-request: 40;
-          icon-name: "preferences-system-symbolic";
+          icon-name: "settings-symbolic";
           tooltip-text: _("Impostazioni assistente");
         }
       }

@@ -87,7 +87,7 @@ class DaemonLifecycle:
                             self.owner.q.get_nowait()
                         except Exception:
                             break
-                    if getattr(self.owner, 'ww_model', None):
+                    if hasattr(self.owner, 'reset_wakeword_recognizer'):
                         self.owner.reset_wakeword_recognizer()
             return False
 

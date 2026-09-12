@@ -1,8 +1,8 @@
 ---
 name: "Light Theme"
 intent: set_theme_light
-tool: dark_mode
-args: {"mode": "light"}
+tool: quick_settings
+args: {"setting": "dark_style", "enabled": false}
 triggers:
   - "tema chiaro"
   - "modalità chiara"

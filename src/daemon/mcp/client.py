@@ -1,4 +1,6 @@
 import sys
+import os
+import shutil
 import json
 import asyncio
 import logging
@@ -28,19 +30,40 @@ class ExternalMCPClient:
         """Starts the external MCP server process via stdio transport."""
         try:
             full_env = {
-                **sys.modules["os"].environ,
+                **os.environ,
                 **self.credential_store.resolve_environment(self.env),
             }
+            cargo_bin = os.path.expanduser("~/.cargo/bin")
+            current_path = full_env.get("PATH", "")
+            if cargo_bin not in current_path.split(os.pathsep):
+                full_env["PATH"] = f"{cargo_bin}:{current_path}"
+
+            exec_cmd = self.command
+            if not shutil.which(exec_cmd, path=full_env["PATH"]):
+                candidate = os.path.join(cargo_bin, exec_cmd)
+                if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                    exec_cmd = candidate
+
             self.process = await asyncio.create_subprocess_exec(
-                self.command,
+                exec_cmd,
                 *self.args,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=full_env
             )
-            logger.info(f"Processo MCP '{self.name}' avviato (PID {self.process.pid}).")
-            
+            async def _drain_stderr(proc, name):
+                try:
+                    while True:
+                        err_line = await proc.stderr.readline()
+                        if not err_line:
+                            break
+                        logger.debug(f"[{name} stderr]: {err_line.decode('utf-8', errors='replace').strip()}")
+                except Exception:
+                    pass
+
+            asyncio.create_task(_drain_stderr(self.process, self.name))
+
             # Send initialization handshake
             init_res = await self.request("initialize", {
                 "protocolVersion": "2024-11-05",
@@ -73,15 +96,36 @@ class ExternalMCPClient:
             self.process.stdin.write(data_bytes)
             await self.process.stdin.drain()
 
-            # Read single line JSON-RPC response
-            line = await self.process.stdout.readline()
-            if not line:
-                return None
-            res = json.loads(line.decode("utf-8").strip())
-            if "error" in res:
-                logger.error(f"Errore JSON-RPC da '{self.name}': {res['error']}")
-                return None
-            return res.get("result")
+            while True:
+                line = await asyncio.wait_for(self.process.stdout.readline(), timeout=15.0)
+                if not line:
+                    logger.warning(f"EOF raggiunto su stdout per '{self.name}' prima della risposta a '{method}'.")
+                    return None
+                decoded = line.decode("utf-8", errors="replace").strip()
+                if not decoded:
+                    continue
+                # Salta output estraneo (es. banner, warning o log tracing) che non iniziano con '{'
+                if not decoded.startswith("{"):
+                    logger.debug(f"[{self.name} output non-JSON su stdout]: {decoded}")
+                    continue
+                try:
+                    res = json.loads(decoded)
+                except json.JSONDecodeError:
+                    logger.debug(f"[{self.name} riga JSON non valida ignorata]: {decoded}")
+                    continue
+
+                if isinstance(res, dict):
+                    if res.get("id") == req_id:
+                        if "error" in res:
+                            logger.error(f"Errore JSON-RPC da '{self.name}': {res['error']}")
+                            return None
+                        return res.get("result")
+                    elif "id" not in res and "method" in res:
+                        logger.debug(f"[{self.name} notifica JSON-RPC]: {res.get('method')}")
+                        continue
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout in attesa di risposta da '{self.name}' per il metodo '{method}'.")
+            return None
         except Exception as e:
             logger.error(f"Errore comunicazione request MCP '{self.name}': {e}")
             return None
@@ -128,6 +172,10 @@ class ExternalMCPClient:
                 text_parts.append(item)
 
         return "\n".join(text_parts) if text_parts else json.dumps(res)
+
+    def is_running(self) -> bool:
+        """Returns True if the external MCP server process is currently running."""
+        return self.process is not None and self.process.returncode is None
 
     async def stop(self):
         """Terminates external MCP server process gracefully."""

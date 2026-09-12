@@ -26,6 +26,16 @@
       <summary>Directory modello Sherpa-ONNX</summary>
       <description>Cartella contenente encoder.onnx, decoder.onnx, joiner.onnx e tokens.txt per il keyword spotter Sherpa-ONNX. Se vuota, viene scaricato automaticamente il modello predefinito.</description>
     </key>
+    <key name="vosk-ww-model" type="s">
+      <default>'vosk-model-small-it-0.22'</default>
+      <summary>Modello Vosk per Wakeword</summary>
+      <description>Nome del modello Vosk utilizzato esclusivamente per il rilevamento della wakeword.</description>
+    </key>
+    <key name="sherpa-model" type="s">
+      <default>'sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01'</default>
+      <summary>Modello Sherpa-ONNX per Wakeword</summary>
+      <description>Nome del modello Sherpa-ONNX per il keyword spotting.</description>
+    </key>
     <key name="stt-provider" type="s">
       <default>'vosk'</default>
       <summary>Provider STT</summary>
@@ -45,6 +55,61 @@
       <default>'{}'</default>
       <summary>Configurazioni Extra</summary>
       <description>Configurazioni addizionali codificate in formato JSON.</description>
+    </key>
+    <key name="audio-aec-enabled" type="b">
+      <default>true</default>
+      <summary>Cancellazione dell'eco (AEC)</summary>
+      <description>Attiva il modulo PipeWire module-echo-cancel con algoritmo WebRTC e imposta echo-cancel-source come sorgente predefinita. Applicato all'apertura dello stream audio.</description>
+    </key>
+    <key name="audio-highpass-enabled" type="b">
+      <default>true</default>
+      <summary>Filtro passa-alto</summary>
+      <description>Attiva il filtro biquad passa-alto IIR che rimuove ronzii, vibrazioni e rumore delle ventole dal segnale del microfono.</description>
+    </key>
+    <key name="audio-highpass-cutoff" type="d">
+      <default>80.0</default>
+      <summary>Frequenza di taglio del passa-alto</summary>
+      <description>Frequenza di taglio in Hz del filtro passa-alto. Valori più alti rimuovono più rumore a bassa frequenza ma assottigliano la voce. Limitata tra 20 e 500 Hz.</description>
+    </key>
+    <key name="audio-agc-enabled" type="b">
+      <default>true</default>
+      <summary>Controllo automatico del guadagno (AGC)</summary>
+      <description>Normalizza automaticamente il volume del parlato per compensare microfoni con guadagno di sistema troppo basso o troppo alto.</description>
+    </key>
+    <key name="audio-agc-target-rms" type="d">
+      <default>1200.0</default>
+      <summary>Volume RMS obiettivo dell'AGC</summary>
+      <description>Livello RMS a cui l'AGC tenta di portare il parlato. Limitato tra 200 e 8000.</description>
+    </key>
+    <key name="audio-agc-max-gain" type="d">
+      <default>2.0</default>
+      <summary>Guadagno massimo dell'AGC</summary>
+      <description>Amplificazione massima applicabile dall'AGC. Valori alti rendono udibili anche voci lontane ma amplificano il rumore di fondo. Limitato tra 1.0 e 8.0.</description>
+    </key>
+    <key name="audio-noise-gate-enabled" type="b">
+      <default>true</default>
+      <summary>Noise gate adattivo</summary>
+      <description>Attenua i segnali sotto la soglia calcolata dinamicamente sul rumore di fondo della stanza, evitando di inviare rumore ambientale al riconoscimento vocale.</description>
+    </key>
+    <key name="audio-noise-gate-threshold" type="d">
+      <default>2.0</default>
+      <summary>Sensibilità del noise gate</summary>
+      <description>Moltiplicatore applicato al rumore di fondo rilevato per ottenere la soglia del gate. Valori più alti richiedono una voce più forte per aprire il gate. Limitato tra 1.0 e 10.0.</description>
+    </key>
+    <key name="audio-noise-gate-attenuation" type="d">
+      <default>0.3</default>
+      <summary>Attenuazione del noise gate</summary>
+      <description>Fattore di volume applicato ai segnali sotto soglia: 0.0 silenzia completamente, 1.0 non attenua. Limitato tra 0.0 e 1.0.</description>
+    </key>
+    <key name="fast-path-enabled" type="b">
+      <default>false</default>
+      <summary>Fast-Path (dispatch deterministico)</summary>
+      <description>Esegue i comandi riconosciuti da pattern regex e da similarità semantica senza interpellare l'LLM, con latenza inferiore a 10 ms. Se disattivato, ogni comando prosegue verso Medium-Path e Smart-Path.</description>
+    </key>
+    <key name="medium-path-enabled" type="b">
+      <default>true</default>
+      <summary>Medium-Path (selezione tool via LLM)</summary>
+      <description>Chiede all'LLM di scegliere un singolo tool MCP da eseguire, senza generare testo libero. Più lento del Fast-Path ma più flessibile; se disattivato i comandi non risolti passano direttamente allo Smart-Path.</description>
     </key>
     <key name="enabled" type="b">
       <default>true</default>
@@ -94,7 +159,7 @@
     <key name="llm-mode" type="s">
       <default>'local'</default>
       <summary>Modalità esecuzione LLM</summary>
-      <description>Modalità di esecuzione LLM ('local', 'ollama', 'openai', 'anthropic', 'http').</description>
+      <description>Modalità di esecuzione LLM ('local', 'ollama', 'openai', 'anthropic', 'deepseek', 'ollama_cloud', 'custom').</description>
     </key>
     <key name="llm-api-key" type="s">
       <default>''</default>
@@ -114,8 +179,9 @@
     <key name="tts-voice" type="s">
       <default>'it_IT-paola-medium'</default>
       <summary>Voce TTS</summary>
-      <description>La voce selezionata per la sintesi vocale.</description>
+      <description>La voce selezionata per la sintesi vocale locale (es. Piper).</description>
     </key>
+
     <key name="tts-speed" type="d">
       <default>1.0</default>
       <summary>Velocità parlato TTS</summary>
@@ -157,7 +223,7 @@
       <description>Endpoint API del marketplace MCP usato per discovery e ricerca server.</description>
     </key>
     <key name="mcp-servers" type="s">
-      <default>'[{"id":"gnome-system","name":"Controllo Sistema GNOME","command":"internal","enabled":true}]'</default>
+      <default>'[{"id":"gnome-mcp-server","name":"GNOME MCP Server","command":"gnome-mcp-server","enabled":true}]'</default>
       <summary>Server MCP configurati</summary>
       <description>Lista in formato JSON dei server e degli strumenti MCP abilitati.</description>
     </key>

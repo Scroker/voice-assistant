@@ -1,8 +1,8 @@
 ---
 name: "Volume Down"
 intent: volume_down
-tool: system_volume
-args: {"action": "decrease", "level": 10}
+tool: set_volume
+args: {"direction": "down", "relative": true}
 triggers:
   - "abbassa il volume"
   - "più basso il volume"

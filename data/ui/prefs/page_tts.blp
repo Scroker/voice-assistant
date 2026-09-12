@@ -1,0 +1,157 @@
+// TTS PAGE
+Adw.PreferencesPage tts_page {
+  title: _("Text-to-Speech (TTS)");
+  icon-name: "audio-volume-high-symbolic";
+  name: "tts";
+
+  Adw.PreferencesGroup {
+    title: _("Speech Synthesis (Text-To-Speech)");
+    description: _("Configure the voice engine for audio playback of assistant responses.");
+
+    Adw.SwitchRow tts_enable_row {
+      title: _("Enable Speech Synthesis");
+      subtitle: _("Play assistant response through speakers");
+    }
+  }
+
+  Adw.PreferencesGroup tts_mode_group {
+    title: _("Speech Synthesis Mode");
+    description: _("Select whether to synthesize speech locally on device or via a cloud service.");
+
+    Adw.ActionRow tts_mode_local_row {
+      title: _("Local");
+      subtitle: _("Offline neural and lightweight synthesis on this computer (Piper / eSpeak / System)");
+      activatable: true;
+      activatable-widget: tts_mode_local_radio;
+
+      [prefix]
+      Gtk.CheckButton tts_mode_local_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow tts_mode_cloud_row {
+      title: _("Cloud");
+      subtitle: _("High-quality natural voice synthesis via cloud API (OpenAI)");
+      activatable: true;
+      activatable-widget: tts_mode_cloud_radio;
+
+      [prefix]
+      Gtk.CheckButton tts_mode_cloud_radio {
+        group: tts_mode_local_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup tts_local_engine_group {
+    title: _("Local Engine");
+    description: _("Select speech synthesis provider.");
+
+    Adw.ActionRow tts_engine_piper_row {
+      title: _("Piper (Local ONNX)");
+      subtitle: _("Fast local neural speech synthesis");
+      activatable: true;
+      activatable-widget: tts_engine_piper_radio;
+
+      [prefix]
+      Gtk.CheckButton tts_engine_piper_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow tts_engine_espeak_row {
+      title: _("eSpeak NG");
+      subtitle: _("Lightweight local formant synthesizer");
+      activatable: true;
+      activatable-widget: tts_engine_espeak_radio;
+
+      [prefix]
+      Gtk.CheckButton tts_engine_espeak_radio {
+        group: tts_engine_piper_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow tts_engine_system_row {
+      title: _("System Speech Dispatcher");
+      subtitle: _("Default OS speech synthesis engine");
+      activatable: true;
+      activatable-widget: tts_engine_system_radio;
+
+      [prefix]
+      Gtk.CheckButton tts_engine_system_radio {
+        group: tts_engine_piper_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup tts_local_group {
+    title: _("Local Voice Configuration");
+    description: _("Configure offline Piper neural voice.");
+
+    Adw.ActionRow current_tts_model_row {
+      title: _("Active Voice Model (Piper)");
+      subtitle: _("Loading information...");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "audio-volume-high-symbolic";
+        margin-end: 12;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup tts_cloud_engine_group {
+    title: _("Cloud TTS Provider");
+    description: _("Select cloud speech synthesis service.");
+    visible: false;
+
+    Adw.ActionRow tts_engine_openai_row {
+      title: _("OpenAI Cloud TTS");
+      subtitle: _("High quality cloud speech synthesis");
+      activatable: true;
+      activatable-widget: tts_engine_openai_radio;
+
+      [prefix]
+      Gtk.CheckButton tts_engine_openai_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup tts_cloud_config_group {
+    title: _("Cloud Configuration");
+    visible: false;
+
+    Adw.EntryRow tts_cloud_api_key_row {
+      title: _("API Key");
+    }
+
+    Adw.EntryRow tts_cloud_endpoint_row {
+      title: _("Endpoint URL");
+    }
+
+    Adw.EntryRow tts_cloud_model_row {
+      title: _("Cloud Model Name");
+    }
+
+    Adw.EntryRow tts_cloud_voice_row {
+      title: _("Cloud Voice Name");
+    }
+  }
+}

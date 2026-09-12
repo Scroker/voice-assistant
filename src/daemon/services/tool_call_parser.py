@@ -32,6 +32,31 @@ class ToolCall:
         return f"ToolCall({self.tool_name}, {self.args}, {self.confidence:.2f})"
 
 
+def load_known_tools() -> List[str]:
+    """Carica i tool disponibili da data/mcp/known_tools.json."""
+    try:
+        from core.data_loader import load_json_data
+        data = load_json_data("mcp/known_tools.json", fallback_default={}) or {}
+        active = data.get("active_tools")
+        if active:
+            return list(active)
+    except Exception as e:
+        logger.debug(f"Errore caricamento known_tools.json: {e}")
+
+    return [
+        "set_volume",
+        "quick_settings",
+        "launch_application",
+        "media_control",
+        "send_notification",
+        "open_file",
+        "set_wallpaper",
+        "take_screenshot",
+        "window_management",
+        "keyring_management",
+    ]
+
+
 class ToolCallParser:
     """Parses tool calls from LLM responses and validates them."""
 
@@ -48,16 +73,7 @@ class ToolCallParser:
         Args:
             available_tools: List of valid tool names for validation
         """
-        self.available_tools = available_tools or [
-            "system_volume",
-            "dark_mode",
-            "app_launcher",
-            "date_time",
-            "screen_brightness",
-            "system_media",
-            "system_power",
-            "clipboard",
-        ]
+        self.available_tools = list(available_tools) if available_tools is not None else load_known_tools()
 
     def parse(self, text: str) -> Tuple[Optional[ToolCall], str]:
         """Parse tool call from text.
@@ -139,7 +155,40 @@ class ToolCallParser:
 
     def validate_args(self, tool_name: str, args: Dict[str, Any]) -> bool:
         """Basic validation of tool arguments."""
-        if tool_name == "system_volume":
+        if tool_name == "set_volume":
+            if "volume" in args and not (0 <= float(args["volume"]) <= 100):
+                return False
+            if "direction" in args and args["direction"] not in ("up", "down"):
+                return False
+            return True
+
+        elif tool_name == "quick_settings":
+            if "setting" not in args or "enabled" not in args:
+                return False
+            return args["setting"] in ("wifi", "bluetooth", "night_light", "do_not_disturb", "dark_style")
+
+        elif tool_name == "launch_application":
+            return "app_name" in args
+
+        elif tool_name == "media_control":
+            return "action" in args and args["action"].lower() in {
+                "play", "pause", "play_pause", "stop", "next", "previous"
+            }
+
+        elif tool_name == "send_notification":
+            return "summary" in args and "body" in args
+
+        elif tool_name == "open_file":
+            return "path" in args
+
+        elif tool_name == "set_wallpaper":
+            return "image_path" in args
+
+        elif tool_name == "window_management":
+            return "action" in args
+
+        # Legacy tool support
+        elif tool_name == "system_volume":
             if "action" not in args:
                 return False
             action = args["action"].lower()

@@ -1,0 +1,164 @@
+{
+  "set_volume": {
+    "type": "function",
+    "function": {
+      "name": "set_volume",
+      "description": "Control system volume and mute/unmute",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "volume": {"type": "number", "description": "Volume level (0-100, where 100 is maximum)"},
+          "mute": {"type": "boolean", "description": "Mute (true) or unmute (false) the system"},
+          "relative": {"type": "boolean", "description": "If true, volume is relative change (+10, -5)"},
+          "direction": {"type": "string", "enum": ["up", "down"], "description": "Direction for default step: 'up' or 'down'"}
+        }
+      }
+    }
+  },
+  "quick_settings": {
+    "type": "function",
+    "function": {
+      "name": "quick_settings",
+      "description": "Toggle boolean system settings (WiFi, Bluetooth, Night Light, Dark Style, Do Not Disturb)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "setting": {
+            "type": "string",
+            "enum": ["wifi", "bluetooth", "night_light", "do_not_disturb", "dark_style"],
+            "description": "Which boolean setting to toggle"
+          },
+          "enabled": {"type": "boolean", "description": "true to enable, false to disable the setting"}
+        },
+        "required": ["setting", "enabled"]
+      }
+    }
+  },
+  "launch_application": {
+    "type": "function",
+    "function": {
+      "name": "launch_application",
+      "description": "Launch an application by name or executable",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "app_name": {"type": "string", "description": "Application name (e.g., 'Firefox', 'Terminal')"}
+        },
+        "required": ["app_name"]
+      }
+    }
+  },
+  "media_control": {
+    "type": "function",
+    "function": {
+      "name": "media_control",
+      "description": "Control media playback (play, pause, skip, etc.) via MPRIS",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["play", "pause", "play_pause", "stop", "next", "previous"],
+            "description": "Media control action to perform"
+          },
+          "player": {"type": "string", "description": "Specific player to control (optional)"}
+        },
+        "required": ["action"]
+      }
+    }
+  },
+  "send_notification": {
+    "type": "function",
+    "function": {
+      "name": "send_notification",
+      "description": "Send a desktop notification",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "summary": {"type": "string", "description": "Notification summary"},
+          "body": {"type": "string", "description": "Notification body"}
+        },
+        "required": ["summary", "body"]
+      }
+    }
+  },
+  "open_file": {
+    "type": "function",
+    "function": {
+      "name": "open_file",
+      "description": "Open a file or URL with default application",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string", "description": "File path or URL to open"}
+        },
+        "required": ["path"]
+      }
+    }
+  },
+  "set_wallpaper": {
+    "type": "function",
+    "function": {
+      "name": "set_wallpaper",
+      "description": "Set desktop wallpaper from a local image file",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "image_path": {"type": "string", "description": "Full path to the image file"}
+        },
+        "required": ["image_path"]
+      }
+    }
+  },
+  "take_screenshot": {
+    "type": "function",
+    "function": {
+      "name": "take_screenshot",
+      "description": "Take a desktop screenshot",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "interactive": {"type": "boolean", "description": "Show interactive screenshot dialog"}
+        }
+      }
+    }
+  },
+  "window_management": {
+    "type": "function",
+    "function": {
+      "name": "window_management",
+      "description": "Manage GNOME windows and workspaces",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["list", "focus", "close", "minimize", "maximize", "switch_workspace", "move_to_workspace", "snap"],
+            "description": "Action to perform"
+          },
+          "window_id": {"type": "string", "description": "Window ID"},
+          "workspace": {"type": "integer", "description": "Workspace number (0-based)"},
+          "position": {"type": "string", "enum": ["left", "right"], "description": "Position for snap action"}
+        },
+        "required": ["action"]
+      }
+    }
+  },
+  "keyring_management": {
+    "type": "function",
+    "function": {
+      "name": "keyring_management",
+      "description": "Manage secrets in GNOME Keyring",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {"type": "string", "enum": ["store", "retrieve", "delete"], "description": "Action to perform"},
+          "label": {"type": "string", "description": "Label for secret"},
+          "secret": {"type": "string", "description": "Secret value to store"},
+          "attributes": {"type": "string", "description": "JSON attributes"}
+        },
+        "required": ["action"]
+      }
+    }
+  }
+}

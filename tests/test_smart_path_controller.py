@@ -47,20 +47,20 @@ class TestSmartPathController(unittest.TestCase):
         controller = SmartPathController()
         response = (
             "Aumento il volume ora. "
-            '{"tool": "system_volume", "args": {"action": "increase", "level": 10}}'
+            '{"tool": "set_volume", "args": {"direction": "up", "volume": 10.0}}'
         )
 
         tool_calls, text = controller.parse_llm_response(response)
 
         self.assertEqual(len(tool_calls), 1)
-        self.assertEqual(tool_calls[0].tool_name, "system_volume")
+        self.assertEqual(tool_calls[0].tool_name, "set_volume")
         self.assertIn("Aumento", text)
         self.assertNotIn("tool", text.lower())
 
     def test_parse_llm_response_validates_args(self):
         controller = SmartPathController()
         response = (
-            '{"tool": "system_volume", "args": {"action": "set", "level": 150}}'
+            '{"tool": "set_volume", "args": {"volume": 150}}'
         )
 
         tool_calls, _ = controller.parse_llm_response(response)
@@ -74,7 +74,7 @@ class TestSmartPathController(unittest.TestCase):
         mock_llm = MagicMock(
             return_value=[
                 "Aumento il volume. ",
-                '{"tool": "system_volume", "args": {"action": "increase", "level": 10}}',
+                '{"tool": "set_volume", "args": {"direction": "up", "volume": 10.0}}',
             ]
         )
         mock_mcp = MagicMock()
@@ -98,7 +98,7 @@ class TestSmartPathController(unittest.TestCase):
         mock_llm = MagicMock(
             return_value=[
                 "Aumento il volume. ",
-                '{"tool": "system_volume", "args": {"action": "increase", "level": 10}}',
+                '{"tool": "set_volume", "args": {"direction": "up", "volume": 10.0}}',
             ]
         )
         mock_mcp = MagicMock()
@@ -121,17 +121,17 @@ class TestSmartPathController(unittest.TestCase):
         self.assertIn("Aumento il volume.", spoken_sentences)
         self.assertIn("Volume alzato.", spoken_sentences)
         mock_mcp.execute_tool.assert_called_once_with(
-            "system_volume", {"action": "increase", "level": 10}
+            "set_volume", {"direction": "up", "volume": 10.0}
         )
 
-    def test_parse_llm_response_accepts_actual_date_time_schema(self):
+    def test_parse_llm_response_accepts_actual_quick_settings_schema(self):
         controller = SmartPathController()
-        response = '{"tool": "date_time", "args": {"format": "time"}}'
+        response = '{"tool": "quick_settings", "args": {"setting": "dark_style", "enabled": true}}'
 
         tool_calls, _ = controller.parse_llm_response(response)
 
         self.assertEqual(len(tool_calls), 1)
-        self.assertEqual(tool_calls[0].tool_name, "date_time")
+        self.assertEqual(tool_calls[0].tool_name, "quick_settings")
 
     def test_execute_smart_path_without_llm_fails(self):
         controller = SmartPathController()

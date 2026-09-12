@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "gnome-mcp-server": {
+      "command": "gnome-mcp-server",
+      "args": [],
+      "env": {},
+      "enabled": true,
+      "description": "GNOME desktop MCP server by Bilal Elmoussaoui (audio, apps, quick settings, notifications, windows)",
+      "repo_url": "https://github.com/bilelmoussaoui/gnome-mcp-server",
+      "builder": "cargo",
+      "prerequisite_package": "cargo"
+    }
+  }
+}

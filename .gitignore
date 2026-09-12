@@ -8,8 +8,6 @@
 gschemas.compiled
 data/schemas/gschemas.compiled
 *.gresource
-data/ui/prefs.ui
-prefs.ui
 
 # Python Caches & Virtual Environments
 __pycache__/

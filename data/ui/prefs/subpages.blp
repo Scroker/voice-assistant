@@ -1,0 +1,163 @@
+// MODEL SELECTOR AND LANGUAGE SUB-PAGES
+Adw.NavigationPage model_selector_page {
+  tag: "model_selector_page";
+  title: _("Select Model");
+
+  child: Adw.BreakpointBin selector_breakpoint_bin {
+    Adw.Breakpoint selector_breakpoint {
+      condition ("max-width: 550sp")
+      setters {
+        selector_header_bar.title-widget: null;
+        selector_view_switcher_bar.reveal: true;
+      }
+    }
+
+    child: Adw.ToolbarView selector_toolbar_view {
+      [top]
+      Adw.HeaderBar selector_header_bar {
+        title-widget: Adw.ViewSwitcher selector_view_switcher {
+          stack: selector_view_stack;
+          policy: wide;
+        };
+
+        [end]
+        Gtk.Button hf_download_dialog_btn {
+          icon-name: "list-add-symbolic";
+          tooltip-text: _("Download from Hugging Face");
+          valign: center;
+          visible: false;
+        }
+      }
+
+    content: Gtk.ScrolledWindow selector_scrolled_window {
+      hscrollbar-policy: never;
+      vexpand: true;
+
+      child: Gtk.Box selector_content_box {
+        orientation: vertical;
+        spacing: 12;
+        margin-top: 12;
+        margin-bottom: 12;
+        margin-start: 12;
+        margin-end: 12;
+
+        Adw.Clamp {
+          maximum-size: 600;
+
+          Gtk.SearchEntry search_entry {
+            placeholder-text: _("Search by name, language (it, en), size or provider...");
+            hexpand: true;
+          }
+        }
+
+        Adw.Clamp {
+          maximum-size: 800;
+
+          Adw.PreferencesGroup llm_hf_custom_group {
+            visible: false;
+
+            Adw.ActionRow hf_download_dialog_row {
+              title: _("Hugging Face Repository Download");
+              subtitle: _("Download custom GGUF models directly from Hugging Face");
+              activatable: true;
+
+              [prefix]
+              Gtk.Image {
+                icon-name: "folder-download-symbolic";
+                valign: center;
+              }
+
+              [suffix]
+              Gtk.Image {
+                icon-name: "go-next-symbolic";
+                valign: center;
+              }
+            }
+          }
+        }
+
+        Adw.Clamp {
+          maximum-size: 800;
+
+          Adw.ViewStack selector_view_stack {
+            vhomogeneous: false;
+            hhomogeneous: false;
+
+            Adw.ViewStackPage page_all {
+              name: "all";
+              title: _("All");
+              icon-name: "brain-augmented-symbolic";
+
+              child: Adw.PreferencesGroup models_group_all {
+                title: _("Available Models");
+              };
+            }
+
+            Adw.ViewStackPage page_installed {
+              name: "installed";
+              title: _("Installed");
+              icon-name: "folder-download-symbolic";
+
+              child: Adw.PreferencesGroup models_group_installed {
+                title: _("Installed Models");
+              };
+            }
+
+            Adw.ViewStackPage page_downloading {
+              name: "downloading";
+              title: _("Downloading");
+              icon-name: "system-run-symbolic";
+
+              child: Adw.PreferencesGroup models_group_downloading {
+                title: _("Downloading Models");
+              };
+            }
+          }
+        }
+      };
+    };
+
+    [bottom]
+    Adw.ViewSwitcherBar selector_view_switcher_bar {
+      stack: selector_view_stack;
+    }
+  };
+};
+}
+
+Adw.NavigationPage lang_nav_page {
+  tag: "lang_page";
+  title: _("Select Language");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Select Language");
+      };
+    }
+
+    content: Gtk.Box {
+      orientation: vertical;
+      spacing: 12;
+      margin-top: 12;
+      margin-bottom: 12;
+      margin-start: 16;
+      margin-end: 16;
+
+      Gtk.SearchEntry lang_search_entry {
+        placeholder-text: _("Search language or code...");
+      }
+
+      Gtk.ScrolledWindow {
+        hscrollbar-policy: never;
+        vexpand: true;
+
+        child: Gtk.ListBox lang_list_box {
+          selection-mode: none;
+          styles ["boxed-list"]
+        };
+      }
+    };
+  };
+}

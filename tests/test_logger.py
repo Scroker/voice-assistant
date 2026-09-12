@@ -14,17 +14,32 @@ try:
     from daemon.core.logger import (
         ErrorCollector, EnvironmentSnapshot, DiagnosticBundler, setup_logger,
         ERROR_REPORTS_DIR, glib_safe, make_asyncio_exception_handler,
-        install_global_exception_hooks,
+        install_global_exception_hooks, MAIN_LOG_FILE,
     )
 except ImportError:
     from core.logger import (
         ErrorCollector, EnvironmentSnapshot, DiagnosticBundler, setup_logger,
         ERROR_REPORTS_DIR, glib_safe, make_asyncio_exception_handler,
-        install_global_exception_hooks,
+        install_global_exception_hooks, MAIN_LOG_FILE,
     )
 
 
+def _cleanup_reports():
+    if os.path.exists(ERROR_REPORTS_DIR):
+        for f in os.listdir(ERROR_REPORTS_DIR):
+            try:
+                os.remove(os.path.join(ERROR_REPORTS_DIR, f))
+            except Exception:
+                pass
+
+
 class TestLogger(unittest.TestCase):
+    def setUp(self):
+        _cleanup_reports()
+
+    def tearDown(self):
+        _cleanup_reports()
+
     def test_setup_logger(self):
         logger = setup_logger("TestLogger")
         self.assertIsNotNone(logger)
@@ -47,6 +62,12 @@ class TestLogger(unittest.TestCase):
         self.assertIn("ram_total_mb", env)
 
     def test_diagnostic_bundler(self):
+        # Assicura che il file di log esista per il bundle
+        if not os.path.exists(MAIN_LOG_FILE):
+            os.makedirs(os.path.dirname(MAIN_LOG_FILE), exist_ok=True)
+            with open(MAIN_LOG_FILE, "w", encoding="utf-8") as f:
+                f.write("Log line for test\n")
+
         # Genera report per assicurarsi che ci sia qualcosa da inserire nel bundle
         try:
             raise RuntimeError("Bundle test exception")
@@ -65,6 +86,12 @@ class TestLogger(unittest.TestCase):
 
 
 class TestGlibSafe(unittest.TestCase):
+    def setUp(self):
+        _cleanup_reports()
+
+    def tearDown(self):
+        _cleanup_reports()
+
     def test_normal_call_passes_through(self):
         results = []
         wrapped = glib_safe(lambda x: results.append(x), "test")
@@ -96,8 +123,29 @@ class TestGlibSafe(unittest.TestCase):
         after = len(ErrorCollector.list_reports())
         self.assertGreater(after, before)
 
+    def test_truthy_object_returns_false(self):
+        class DummyWidget:
+            pass
+
+        wrapped = glib_safe(lambda: DummyWidget(), "test_widget")
+        self.assertIs(wrapped(), False)
+
+    def test_explicit_true_returns_true(self):
+        wrapped = glib_safe(lambda: True, "test_true")
+        self.assertIs(wrapped(), True)
+
+    def test_explicit_false_returns_false(self):
+        wrapped = glib_safe(lambda: False, "test_false")
+        self.assertIs(wrapped(), False)
+
 
 class TestAsyncioExceptionHandler(unittest.TestCase):
+    def setUp(self):
+        _cleanup_reports()
+
+    def tearDown(self):
+        _cleanup_reports()
+
     def test_returns_callable(self):
         handler = make_asyncio_exception_handler("test_component")
         self.assertTrue(callable(handler))

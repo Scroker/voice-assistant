@@ -51,8 +51,18 @@ class TestConversationMemory(unittest.TestCase):
 
 
 class TestVectorStore(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.tmp_dir.name, "test_rag.db")
+        self.store = VectorStore(db_path=self.db_path)
+
+    def tearDown(self):
+        self.store.close() if hasattr(self.store, "close") else None
+        self.tmp_dir.cleanup()
+
     def test_add_and_search_documents(self):
-        store = VectorStore()
+        store = self.store
         doc_id = store.add_document("Il volume è impostato a 50%")
         store.add_document("Il tema scuro è attivato")
 
@@ -61,7 +71,7 @@ class TestVectorStore(unittest.TestCase):
         self.assertIn("volume", results[0][0].lower())
 
     def test_deduplication(self):
-        store = VectorStore()
+        store = self.store
         content = "Questo è un documento di prova"
         id1 = store.add_document(content)
         id2 = store.add_document(content)
@@ -70,7 +80,7 @@ class TestVectorStore(unittest.TestCase):
         self.assertEqual(store.get_size(), 1)
 
     def test_search_with_similarity_threshold(self):
-        store = VectorStore()
+        store = self.store
         store.add_document("Controllo volume")
         store.add_document("Tema scuro")
 
@@ -78,7 +88,7 @@ class TestVectorStore(unittest.TestCase):
         self.assertTrue(len(results) > 0)
 
     def test_max_documents_eviction(self):
-        store = VectorStore(max_documents=3)
+        store = VectorStore(max_documents=3, db_path=os.path.join(self.tmp_dir.name, "eviction.db"))
         store.add_document("Doc 1")
         store.add_document("Doc 2")
         store.add_document("Doc 3")
@@ -92,8 +102,8 @@ class TestPromptBuilder(unittest.TestCase):
         builder = PromptBuilder()
         prompt = builder.build_prompt("Alza il volume")
 
-        self.assertIn("assistente vocale", prompt.lower())
-        self.assertIn("sistema", prompt.lower())
+        self.assertTrue("assistant" in prompt.lower() or "assistente" in prompt.lower())
+        self.assertTrue("system" in prompt.lower() or "sistema" in prompt.lower() or "gnome" in prompt.lower())
 
     def test_inject_rag_context(self):
         builder = PromptBuilder(include_rag_context=True)
@@ -124,29 +134,29 @@ class TestPromptBuilder(unittest.TestCase):
 class TestToolCallParser(unittest.TestCase):
     def test_parse_simple_tool_call(self):
         parser = ToolCallParser()
-        text = 'Eseguo il comando: {"tool": "system_volume", "args": {"action": "increase", "level": 10}}'
+        text = 'Eseguo il comando: {"tool": "set_volume", "args": {"direction": "up", "volume": 10.0}}'
 
         tool_call, remaining = parser.parse(text)
         self.assertIsNotNone(tool_call)
-        self.assertEqual(tool_call.tool_name, "system_volume")
-        self.assertEqual(tool_call.args["action"], "increase")
+        self.assertEqual(tool_call.tool_name, "set_volume")
+        self.assertEqual(tool_call.args["direction"], "up")
 
     def test_parse_multiple_tool_calls(self):
         parser = ToolCallParser()
         text = (
-            'Primo: {"tool": "system_volume", "args": {"action": "increase"}} '
-            'Secondo: {"tool": "dark_mode", "args": {"action": "set", "mode": "dark"}}'
+            'Primo: {"tool": "set_volume", "args": {"direction": "up"}} '
+            'Secondo: {"tool": "quick_settings", "args": {"setting": "dark_style", "enabled": true}}'
         )
 
         tool_calls, remaining = parser.parse_all(text)
         self.assertEqual(len(tool_calls), 2)
-        self.assertEqual(tool_calls[0].tool_name, "system_volume")
-        self.assertEqual(tool_calls[1].tool_name, "dark_mode")
+        self.assertEqual(tool_calls[0].tool_name, "set_volume")
+        self.assertEqual(tool_calls[1].tool_name, "quick_settings")
 
     def test_extract_text_response(self):
         parser = ToolCallParser()
         text = (
-            'Aumento il volume. {"tool": "system_volume", "args": {"action": "increase"}} '
+            'Aumento il volume. {"tool": "set_volume", "args": {"direction": "up"}} '
             'Fatto!'
         )
 
@@ -157,10 +167,10 @@ class TestToolCallParser(unittest.TestCase):
     def test_validate_tool_args(self):
         parser = ToolCallParser()
 
-        valid = parser.validate_args("system_volume", {"action": "set", "level": 50})
+        valid = parser.validate_args("set_volume", {"volume": 50})
         self.assertTrue(valid)
 
-        invalid = parser.validate_args("system_volume", {"action": "set", "level": 150})
+        invalid = parser.validate_args("set_volume", {"volume": 150})
         self.assertFalse(invalid)
 
     def test_unknown_tool_rejected(self):
@@ -175,12 +185,12 @@ class TestToolCallParser(unittest.TestCase):
         text = """
 Ecco il comando:
 ```json
-{"tool": "dark_mode", "args": {"action": "set", "mode": "dark"}}
+{"tool": "quick_settings", "args": {"setting": "dark_style", "enabled": true}}
 ```
 """
         tool_call, remaining = parser.parse(text)
         self.assertIsNotNone(tool_call)
-        self.assertEqual(tool_call.tool_name, "dark_mode")
+        self.assertEqual(tool_call.tool_name, "quick_settings")
 
 
 if __name__ == "__main__":

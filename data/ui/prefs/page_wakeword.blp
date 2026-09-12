@@ -1,0 +1,151 @@
+// WAKEWORD PAGE
+Adw.PreferencesPage wakeword_page {
+  title: _("Wake Word");
+  icon-name: "cafe-symbolic";
+  name: "wakeword";
+
+  Adw.PreferencesGroup wakeword_engine_group {
+    title: _("Wakeword Engine");
+    description: _("Vosk: any word — OpenWakeWord: fixed keywords — Sherpa-ONNX: custom ONNX keyword spotter");
+
+    Adw.ActionRow ww_engine_vosk_row {
+      title: _("Vosk (custom word)");
+      activatable: true;
+      activatable-widget: ww_engine_vosk_radio;
+
+      [prefix]
+      Gtk.CheckButton ww_engine_vosk_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow ww_engine_oww_row {
+      title: _("OpenWakeWord (fixed keywords)");
+      activatable: true;
+      activatable-widget: ww_engine_oww_radio;
+
+      [prefix]
+      Gtk.CheckButton ww_engine_oww_radio {
+        group: ww_engine_vosk_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow ww_engine_sherpa_row {
+      title: _("Sherpa-ONNX (keyword spotting)");
+      activatable: true;
+      activatable-widget: ww_engine_sherpa_radio;
+
+      [prefix]
+      Gtk.CheckButton ww_engine_sherpa_radio {
+        group: ww_engine_vosk_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+
+  Adw.PreferencesGroup wakeword_config_group {
+    title: _("Configuration");
+
+    Adw.ActionRow current_vosk_ww_model_row {
+      title: _("Vosk Wake Word Model");
+      subtitle: _("Loading information...");
+      activatable: true;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "audio-input-microphone-symbolic";
+        margin-end: 12;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+
+    Adw.ActionRow current_sherpa_model_row {
+      title: _("Sherpa-ONNX Model");
+      subtitle: _("Loading information...");
+      activatable: true;
+      visible: false;
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "audio-input-microphone-symbolic";
+        margin-end: 12;
+      }
+
+      [suffix]
+      Gtk.Image {
+        icon-name: "go-next-symbolic";
+        valign: center;
+      }
+    }
+
+    Adw.EntryRow wakeword_row {
+      title: _("Wakeword Keyword");
+    }
+  }
+
+  Adw.PreferencesGroup oww_keyword_group {
+    title: _("OpenWakeWord Keyword");
+    description: _("Pre-trained keyword model to detect");
+    visible: false;
+
+    Adw.ActionRow oww_alexa_row {
+      title: _("alexa");
+      activatable: true;
+      activatable-widget: oww_alexa_radio;
+
+      [prefix]
+      Gtk.CheckButton oww_alexa_radio {
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow oww_hey_jarvis_row {
+      title: _("hey_jarvis");
+      activatable: true;
+      activatable-widget: oww_hey_jarvis_radio;
+
+      [prefix]
+      Gtk.CheckButton oww_hey_jarvis_radio {
+        group: oww_alexa_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow oww_hey_mycroft_row {
+      title: _("hey_mycroft");
+      activatable: true;
+      activatable-widget: oww_hey_mycroft_radio;
+
+      [prefix]
+      Gtk.CheckButton oww_hey_mycroft_radio {
+        group: oww_alexa_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+
+    Adw.ActionRow oww_hey_rhasspy_row {
+      title: _("hey_rhasspy");
+      activatable: true;
+      activatable-widget: oww_hey_rhasspy_radio;
+
+      [prefix]
+      Gtk.CheckButton oww_hey_rhasspy_radio {
+        group: oww_alexa_radio;
+        valign: center;
+        margin-end: 12;
+      }
+    }
+  }
+}

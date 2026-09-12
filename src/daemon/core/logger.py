@@ -24,7 +24,12 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import List, Dict, Any, Optional
 
-LOG_DIR = os.path.expanduser("~/.local/share/voice-assistant/logs")
+try:
+    from core.path_utils import get_logs_dir, get_models_dir
+    LOG_DIR = str(get_logs_dir())
+except Exception:
+    LOG_DIR = os.path.expanduser("~/.local/share/voice-assistant/logs")
+
 ERROR_REPORTS_DIR = os.path.join(LOG_DIR, "error_reports")
 MAIN_LOG_FILE = os.path.join(LOG_DIR, "voice-assistant.log")
 BUNDLE_DIR = os.path.join(LOG_DIR, "bundles")
@@ -281,7 +286,11 @@ class EnvironmentSnapshot:
 
     @staticmethod
     def _get_installed_models() -> Dict[str, List[str]]:
-        base_dir = os.path.expanduser("~/.local/share/voice-assistant/models")
+        try:
+            from core.path_utils import get_models_dir
+            base_dir = str(get_models_dir())
+        except Exception:
+            base_dir = os.path.expanduser("~/.local/share/voice-assistant/models")
         result = {"stt": [], "llm": [], "tts": []}
         try:
             if os.path.isdir(base_dir):
@@ -581,7 +590,13 @@ def glib_safe(fn, component: str | None = None):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         try:
-            return fn(*args, **kwargs)
+            res = fn(*args, **kwargs)
+            # In GLib idle/timeout callbacks, returning a truthy non-boolean object
+            # (such as a GtkWidget, ChatBubble, int, dict, etc.) causes PyGObject to treat
+            # it as G_SOURCE_CONTINUE (True) and repeat the callback forever.
+            if res is True:
+                return True
+            return False
         except Exception as exc:
             _log.exception("[glib_safe/%s] unhandled exception", comp)
             ErrorCollector.record_error(

@@ -92,19 +92,30 @@ graph LR
 ```
 voice-assistant@scroker.github.io/
 ├── meson.build              # Build system root
-├── stylesheet.css           # Stili CSS per l'indicatore GNOME Shell
 ├── src/
 │   ├── extension.js         # Estensione GNOME Shell (QuickSettings integration)
 │   ├── prefs.js             # Logic & Binding preferenze Libadwaita
 │   ├── daemon/              # Daemon Python background (zero GTK)
 │   └── gui/                 # Applicazione GTK4 standalone per la chat
 ├── data/
-│   ├── ui/prefs.blp         # Layout dell'interfaccia preferenze in Blueprint
+│   ├── stylesheet.css       # Stili CSS per l'indicatore GNOME Shell
+│   ├── catalog/             # Cataloghi modelli STT e voci TTS
+│   ├── config/defaults.json # Valori di default (sample rates, timeout, URL)
+│   ├── dependencies/        # Mappature dipendenze sistema e pip
 │   ├── dbus/                # XML Introspezione D-Bus
-│   ├── services/            # Template unit Systemd & D-Bus
+│   ├── icons/
+│   │   └── hicolor/         # Icone organizzate secondo lo standard GNOME Icon Theme Spec
+│   ├── llm/                 # Template provider LLM
+│   ├── locales/             # Formati data/ora, risposte localizzate, lingue supportate
+│   ├── mcp/                 # Configurazione MCP e schemi tool
+│   ├── nlu/                 # Pattern regex per Fast-Path
+│   ├── prompts/             # System prompt template
 │   ├── schemas/             # GSettings schema + GResource
-│   └── icons/
-│       └── hicolor/         # Icone organizzate secondo lo standard GNOME Icon Theme Spec
+│   ├── services/            # Template unit Systemd & D-Bus
+│   └── ui/
+│       ├── assistant_window.blp  # Layout Blueprint della finestra chat
+│       ├── prefs.blp        # Layout dell'interfaccia preferenze (generato)
+│       └── prefs/           # Pagine modulari Blueprint delle preferenze
 ├── po/                      # Traduzioni (Gettext)
 └── docs/                    # Documentazione tecnica
     ├── architecture.md      # Architettura di sistema

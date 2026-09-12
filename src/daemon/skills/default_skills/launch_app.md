@@ -1,7 +1,7 @@
 ---
 name: "Launch App"
 intent: launch_app
-tool: app_launcher
+tool: launch_application
 args: {}
 pattern: "(?:apri|avvia|lancia)\\s+(?:il\\s+|la\\s+|le\\s+|l'|i\\s+)?((?:file\\s+manager|text\\s+editor|\\w+)(?:\\s+\\w+)?)"
 param_extract: "(?:apri|avvia|lancia)\\s+(?:il\\s+|la\\s+|le\\s+|l'|i\\s+)?((?:file\\s+manager|text\\s+editor|\\w+)(?:\\s+\\w+)?)"

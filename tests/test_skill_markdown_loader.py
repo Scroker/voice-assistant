@@ -25,8 +25,8 @@ triggers:
   - \"alza il volume\"
   - \"metti il tema scuro\"
 tools_allowed:
-  - \"system_volume\"
-  - \"dark_mode\"
+  - "set_volume"
+  - "quick_settings"
 ---
 
 # System Control
@@ -39,7 +39,7 @@ Use volume and theme tools.
             self.assertEqual(len(registry.skills), 1)
             self.assertEqual(registry.skills[0]["name"], "System Control")
             self.assertIn("alza il volume", registry.skills[0]["triggers"])
-            self.assertIn("system_volume", registry.skills[0]["tools_allowed"])
+            self.assertIn("set_volume", registry.skills[0]["tools_allowed"])
 
     def test_default_directory_supports_json_and_markdown(self):
         registry = SkillRegistry.from_default_directory()
@@ -83,8 +83,8 @@ triggers:
         ok, result = runtime._handle_fast_path_intent("system_control", {"action": "volume_up"})
 
         self.assertTrue(ok)
-        self.assertEqual(calls[0][0], "system_volume")
-        self.assertEqual(calls[0][1]["action"], "increase")
+        self.assertEqual(calls[0][0], "set_volume")
+        self.assertEqual(calls[0][1]["direction"], "up")
         self.assertTrue(result["ok"])
 
     def test_runtime_executes_theme_markdown_skill(self):
@@ -101,8 +101,9 @@ triggers:
         ok, result = runtime._handle_fast_path_intent("theme_control", {"mode": "dark"})
 
         self.assertTrue(ok)
-        self.assertEqual(calls[0][0], "dark_mode")
-        self.assertEqual(calls[0][1]["mode"], "dark")
+        self.assertEqual(calls[0][0], "quick_settings")
+        self.assertEqual(calls[0][1]["setting"], "dark_style")
+        self.assertTrue(calls[0][1]["enabled"])
         self.assertTrue(result["ok"])
 
 

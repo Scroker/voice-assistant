@@ -1,0 +1,128 @@
+{
+  "it": {
+    "set_volume": {
+      "set": "Volume impostato a {level}%.",
+      "increase": "Volume alzato.",
+      "decrease": "Volume abbassato.",
+      "mute": "Audio silenziato.",
+      "unmute": "Audio riattivato."
+    },
+    "quick_settings": {
+      "dark": "Tema scuro attivato.",
+      "light": "Tema chiaro attivato.",
+      "wifi_on": "Wi-Fi attivato.",
+      "wifi_off": "Wi-Fi disattivato.",
+      "bluetooth_on": "Bluetooth attivato.",
+      "bluetooth_off": "Bluetooth disattivato.",
+      "night_light_on": "Luce notturna attivata.",
+      "night_light_off": "Luce notturna disattivata.",
+      "dnd_on": "Non disturbare attivato.",
+      "dnd_off": "Non disturbare disattivato."
+    },
+    "launch_application": {
+      "launch": "Lancio {app_name}."
+    },
+    "media_control": {
+      "play": "Riproduzione avviata.",
+      "pause": "Riproduzione in pausa.",
+      "play_pause": "Riproduzione commutata.",
+      "stop": "Riproduzione interrotta.",
+      "next": "Brano successivo.",
+      "previous": "Brano precedente."
+    },
+    "send_notification": {
+      "send": "Notifica inviata."
+    },
+    "take_screenshot": {
+      "take": "Schermata acquisita."
+    },
+    "open_file": {
+      "open": "File aperto."
+    },
+    "set_wallpaper": {
+      "set": "Sfondo impostato."
+    },
+    "window_management": {
+      "action": "Azione finestra completata."
+    },
+    "keyring_management": {
+      "action": "Azione portachiavi completata."
+    },
+    "fast_path": {
+      "set_theme_dark": "Modalità scura attivata",
+      "set_theme_light": "Modalità chiara attivata",
+      "get_time": "Orario richiesto",
+      "get_date": "Data richiesta",
+      "launch_app": "Apro {app}",
+      "media_pause": "Musica in pausa",
+      "media_play": "Riproduzione avviata",
+      "volume_up": "Volume alzato",
+      "volume_down": "Volume abbassato",
+      "mute": "Audio silenziato",
+      "volume_set": "Volume del sistema impostato al {volume}%."
+    }
+  },
+  "en": {
+    "set_volume": {
+      "set": "Volume set to {level}%.",
+      "increase": "Volume increased.",
+      "decrease": "Volume decreased.",
+      "mute": "Audio muted.",
+      "unmute": "Audio unmuted."
+    },
+    "quick_settings": {
+      "dark": "Dark theme activated.",
+      "light": "Light theme activated.",
+      "wifi_on": "Wi-Fi enabled.",
+      "wifi_off": "Wi-Fi disabled.",
+      "bluetooth_on": "Bluetooth enabled.",
+      "bluetooth_off": "Bluetooth disabled.",
+      "night_light_on": "Night light enabled.",
+      "night_light_off": "Night light disabled.",
+      "dnd_on": "Do not disturb enabled.",
+      "dnd_off": "Do not disturb disabled."
+    },
+    "launch_application": {
+      "launch": "Launching {app_name}."
+    },
+    "media_control": {
+      "play": "Playback started.",
+      "pause": "Playback paused.",
+      "play_pause": "Playback toggled.",
+      "stop": "Playback stopped.",
+      "next": "Next track.",
+      "previous": "Previous track."
+    },
+    "send_notification": {
+      "send": "Notification sent."
+    },
+    "take_screenshot": {
+      "take": "Screenshot captured."
+    },
+    "open_file": {
+      "open": "File opened."
+    },
+    "set_wallpaper": {
+      "set": "Wallpaper set."
+    },
+    "window_management": {
+      "action": "Window action completed."
+    },
+    "keyring_management": {
+      "action": "Keyring action completed."
+    },
+    "fast_path": {
+      "set_theme_dark": "Dark mode activated",
+      "set_theme_light": "Light mode activated",
+      "get_time": "Time requested",
+      "get_date": "Date requested",
+      "launch_app": "Opening {app}",
+      "media_pause": "Music paused",
+      "media_play": "Playback started",
+      "volume_up": "Volume increased",
+      "volume_down": "Volume decreased",
+      "mute": "Audio muted",
+      "volume_set": "System volume set to {volume}%."
+    }
+  }
+}

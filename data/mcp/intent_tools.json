@@ -1,0 +1,78 @@
+{
+  "volume_up": {
+    "tool": "set_volume",
+    "args": {
+      "direction": "up"
+    }
+  },
+  "volume_down": {
+    "tool": "set_volume",
+    "args": {
+      "direction": "down"
+    }
+  },
+  "mute": {
+    "tool": "set_volume",
+    "args": {
+      "mute": true
+    }
+  },
+  "unmute": {
+    "tool": "set_volume",
+    "args": {
+      "mute": false
+    }
+  },
+  "set_theme_dark": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "dark_style",
+      "enabled": true
+    }
+  },
+  "set_theme_light": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "dark_style",
+      "enabled": false
+    }
+  },
+  "theme_dark": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "dark_style",
+      "enabled": true
+    }
+  },
+  "theme_light": {
+    "tool": "quick_settings",
+    "args": {
+      "setting": "dark_style",
+      "enabled": false
+    }
+  },
+  "media_play": {
+    "tool": "media_control",
+    "args": {
+      "action": "play"
+    }
+  },
+  "media_pause": {
+    "tool": "media_control",
+    "args": {
+      "action": "pause"
+    }
+  },
+  "media_next": {
+    "tool": "media_control",
+    "args": {
+      "action": "next"
+    }
+  },
+  "media_prev": {
+    "tool": "media_control",
+    "args": {
+      "action": "previous"
+    }
+  }
+}

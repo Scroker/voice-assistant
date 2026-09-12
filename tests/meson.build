@@ -87,7 +87,9 @@ test('test_mcp_llm_integration', python3,
 
 test('test_gui', python3,
   args: [files('test_gui.py')],
-  workdir: meson.project_source_root()
+  env: ['GSETTINGS_BACKEND=memory'],
+  workdir: meson.project_source_root(),
+  timeout: 120
 )
 
 test('test_e2e_pipeline_integration', python3,
@@ -99,3 +101,66 @@ test('test_performance_metrics', python3,
   args: [files('test_performance_metrics.py')],
   workdir: meson.project_source_root()
 )
+
+test('test_dependency_installer', python3,
+  args: [files('test_dependency_installer.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_data_loader', python3,
+  args: [files('test_data_loader.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_locale_utils', python3,
+  args: [files('test_locale_utils.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_skill_executor', python3,
+  args: [files('test_skill_executor.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_skill_markdown_loader', python3,
+  args: [files('test_skill_markdown_loader.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_semantic_dispatch', python3,
+  args: [files('test_semantic_dispatch.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_smart_path_components', python3,
+  args: [files('test_smart_path_components.py')],
+  workdir: meson.project_source_root(),
+  timeout: 45
+)
+
+test('test_smart_path_controller', python3,
+  args: [files('test_smart_path_controller.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_model_catalog', python3,
+  args: [files('test_model_catalog.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_wakeword', python3,
+  args: [files('test_wakeword.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_defaults_and_locales', python3,
+  args: [files('test_defaults_and_locales.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_model_registry', python3,
+  args: [files('test_model_registry.py')],
+  workdir: meson.project_source_root()
+)
+
+

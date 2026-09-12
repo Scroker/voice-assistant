@@ -1,5 +1,8 @@
 # 🏗️ Progetto: Sistema di Logging e Bug Report per Voice Assistant
 
+> [!IMPORTANT]
+> **Questo documento descrive un piano/design ormai implementato, non un lavoro futuro.** Verificato contro il codice attuale: `ErrorCollector`, `EnvironmentSnapshot`, `DiagnosticBundler` e `ContextTraceFilter` esistono tutti in `src/daemon/core/logger.py`; i metodi D-Bus `GetErrorReports`, `ClearErrorReports`, `GenerateDiagnosticBundle` esistono in `main.py`; e non esiste più alcuna chiamata `print()` nel backend (`grep -c "print(" src/daemon/**/*.py` → 0 ovunque). La mappa degli error path con numeri di riga sotto è quindi **storica**: `main.py` è oggi lungo 579 righe (contro riferimenti a righe come 740-741) e non contiene alcun `except:` bare — molta della logica citata (es. l'audio loop) è stata da allora spostata in `core/assistant_runtime.py`. Le sezioni "Design Dettagliato" e "Piano di Implementazione" restano utili come registro delle decisioni prese, ma alcuni dettagli (esempi JSON, firme di funzione) non corrispondono più all'implementazione reale — vedi le note inline più sotto.
+
 ## Obiettivo
 Creare un sistema strutturato per cui **ogni errore possibile** nel demone e nell'estensione venga catturato, registrato e reso disponibile come bundle allegabile a una Issue GitHub dall'utente finale.
 
@@ -167,11 +170,14 @@ Ogni report JSON deve includere **contesto ricco** per la riproduzione del bug:
 }
 ```
 
-**Strategia di arricchimento**: Il `VoiceAssistant.__init__` registra un context updater che mantiene aggiornato lo snapshot dei settings e dello stato corrente in `ErrorCollector._context`. Ogni `set_state()` aggiorna `state_at_crash`. Ogni `_process_text()` aggiorna `last_transcription`.
+**Strategia di arricchimento (implementazione reale)**: l'aggiornamento del contesto avviene in `core/state.py` (`ErrorCollector.update_context("state", new_state)` ad ogni transizione) e in `core/runtime_manager.py` (`ErrorCollector.set_context_dict({...})`), non inline in `main.py` come suggerito dalla bozza originale.
 
 #### c) `EnvironmentSnapshot` — Informazioni Sistema
 
 Classe che raccoglie e scrive un file `environment.json` contenente:
+
+> [!NOTE]
+> L'esempio sotto è la bozza originale. L'implementazione reale (`EnvironmentSnapshot.collect()` in `core/logger.py`) produce: `timestamp, os, kernel, arch, desktop, session_type, cpu, ram_total_mb, python_version, venv_packages, pipewire_version, audio_devices, installed_models`, più `gsettings_dump` e `daemon_uptime_seconds` **solo se passati come argomenti opzionali**. I campi `gpu`, `ram_available_mb`, `extension_uuid`, `extension_version` mostrati sotto **non vengono prodotti** dall'implementazione attuale.
 
 ```json
 {
@@ -181,9 +187,7 @@ Classe che raccoglie e scrive un file `environment.json` contenente:
   "desktop": "GNOME 48.1",
   "session_type": "wayland",
   "cpu": "12th Gen Intel(R) Core(TM) i7-1260P (16 cores)",
-  "gpu": "Intel Iris Xe / NVIDIA RTX 3050",
   "ram_total_mb": 32768,
-  "ram_available_mb": 24500,
   "python_version": "3.14.0",
   "venv_packages": {
     "vosk": "0.3.50",
@@ -206,8 +210,6 @@ Classe che raccoglie e scrive un file `environment.json` contenente:
     "llm": ["Llama-3.2-1B-Instruct-Q4_K_M.gguf"],
     "tts": ["it_IT-paola-medium.onnx"]
   },
-  "extension_uuid": "voice-assistant@scroker.github.io",
-  "extension_version": "1.0.0",
   "daemon_uptime_seconds": 3456
 }
 ```
@@ -227,15 +229,16 @@ Classe che crea un archivio `.tar.gz` contenente tutto il necessario:
 
 ```
 voice-assistant-diagnostic-20260901_015426.tar.gz
-├── environment.json          # Snapshot ambiente (sanitizzato)
+├── environment.json          # Snapshot ambiente (sanitizzato; include gsettings_dump al suo interno)
 ├── voice-assistant.log       # Ultimi 500KB del log rotante
 ├── error_reports/            # Tutti i report JSON degli errori
 │   ├── report_20260901_014835_123456.json
 │   └── report_20260901_015012_789012.json
 ├── journalctl.log            # Output di journalctl --user -u voice-assistant (ultime 200 righe)
-├── gnome-shell-errors.log    # Estratto da journalctl -b /usr/bin/gnome-shell con filtro [VoiceAssistant]
-└── gsettings.json            # Dump completo dei settings (con valori sensibili mascherati)
+└── gnome-shell-errors.log    # Estratto da journalctl -b /usr/bin/gnome-shell con filtro [VoiceAssistant]
 ```
+
+> Nell'implementazione reale (`DiagnosticBundler.generate` in `core/logger.py`) `gsettings_dump` è annidato dentro `environment.json` (passato a `EnvironmentSnapshot.collect(settings=...)`), non un file `gsettings.json` separato nell'archivio come indicato nella bozza originale.
 
 **Sanitizzazione**: Prima di scrivere i file, rimuovere:
 - Path assoluti dell'utente (`/home/username/` → `~`)
@@ -255,17 +258,14 @@ Aggiungere al file `org.local.VoiceAssistant.xml`:
 </method>
 ```
 
-Implementazione in `main.py`:
+Implementazione reale in `main.py` (a differenza della bozza originale, `DiagnosticBundler.generate` è uno `@staticmethod` invocato direttamente, non un'istanza; non accetta `log_file`/`error_reports_dir` come parametri — sono costanti di modulo usate internamente da `core/logger.py`):
 ```python
 def GenerateDiagnosticBundle(self) -> str:
-    bundler = DiagnosticBundler()
-    path = bundler.generate(
-        log_file=MAIN_LOG_FILE,
-        error_reports_dir=ERROR_REPORTS_DIR,
+    return DiagnosticBundler.generate(
         settings=self.settings,
-        state=self._state
+        state=self._state,
+        daemon_start_time=self._daemon_start_time,
     )
-    return path
 ```
 
 ---
@@ -334,7 +334,7 @@ Allega qui il file .tar.gz generato.
 ### 4. Migrazione dei `print()` esistenti
 
 > [!IMPORTANT]
-> Questo è il lavoro quantitativamente più grande: **tutti i 25+ `print()` nel backend** devono essere sostituiti con chiamate `logger` appropriate.
+> **Completato.** Era il lavoro quantitativamente più grande della bozza originale (tutti i `print()` nel backend da sostituire con `logger`); oggi `grep -rc "print(" src/daemon` non trova alcuna occorrenza rimasta nel codice del daemon.
 
 Strategia per file:
 

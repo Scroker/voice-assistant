@@ -3,7 +3,7 @@ from .client import ExternalMCPClient
 from .registry import MCPRegistryClient
 from .manager import MCPManager
 from .credentials import MCPCredentialStore
-from .tools import NativeTool, SystemVolumeTool, DarkModeTool, AppLauncherTool
+from .tools import NativeTool
 
 __all__ = [
     "MCPConfigLoader",
@@ -12,7 +12,4 @@ __all__ = [
     "MCPManager",
     "MCPCredentialStore",
     "NativeTool",
-    "SystemVolumeTool",
-    "DarkModeTool",
-    "AppLauncherTool",
 ]

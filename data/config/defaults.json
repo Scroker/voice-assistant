@@ -1,0 +1,28 @@
+{
+  "paths": {
+    "data_dir": "~/.local/share/voice-assistant",
+    "models_dir": "~/.local/share/voice-assistant/models",
+    "models_stt_dir": "~/.local/share/voice-assistant/models/stt",
+    "models_tts_dir": "~/.local/share/voice-assistant/models/tts",
+    "models_llm_dir": "~/.local/share/voice-assistant/models/llm",
+    "models_wakeword_dir": "~/.local/share/voice-assistant/models/wakeword",
+    "logs_dir": "~/.local/share/voice-assistant/logs",
+    "cache_dir": "~/.cache/voice-assistant"
+  },
+  "logging": {
+    "max_bytes": 5242880,
+    "backup_count": 5,
+    "log_filename": "voice-assistant.log",
+    "error_reports_dir": "error_reports",
+    "bundles_dir": "bundles"
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "chunk_size": 1024
+  },
+  "network": {
+    "http_timeout": 10.0,
+    "catalog_cache_ttl_hours": 24
+  }
+}

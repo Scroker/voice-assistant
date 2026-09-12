@@ -1,0 +1,50 @@
+[
+  {
+    "import_name": "vosk",
+    "package_name": "vosk",
+    "description": "Riconoscimento vocale Vosk (Wake Word / STT)",
+    "is_critical": false
+  },
+  {
+    "import_name": "sherpa_onnx",
+    "package_name": "sherpa-onnx",
+    "description": "Motore Wake Word Sherpa-ONNX",
+    "is_critical": false
+  },
+  {
+    "import_name": "faster_whisper",
+    "package_name": "faster-whisper",
+    "description": "Trascrizione vocale Whisper",
+    "is_critical": false
+  },
+  {
+    "import_name": "onnxruntime",
+    "package_name": "onnxruntime",
+    "description": "Runtime ONNX per modelli ML",
+    "is_critical": false
+  },
+  {
+    "import_name": "llama_cpp",
+    "package_name": "llama-cpp-python",
+    "description": "LLM locale (GGUF)",
+    "is_critical": false
+  },
+  {
+    "import_name": "piper",
+    "package_name": "piper-tts",
+    "description": "Sintesi vocale Piper TTS",
+    "is_critical": false
+  },
+  {
+    "import_name": "keyring",
+    "package_name": "keyring",
+    "description": "Gestione credenziali MCP",
+    "is_critical": false
+  },
+  {
+    "import_name": "openwakeword",
+    "package_name": "openwakeword",
+    "description": "Motore Wake Word OpenWakeWord",
+    "is_critical": false
+  }
+]

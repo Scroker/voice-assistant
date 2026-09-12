@@ -10,8 +10,9 @@ def get_provider(provider_name: str, model: str, hardware: str, extra: dict, pro
     elif p == "whisper":
         return WhisperProvider(model, hardware, extra, progress_callback, models_dir=models_dir, download_only=download_only)
     elif p in ("openai_cloud", "groq_cloud", "cloud_stt"):
+        extra = dict(extra or {})
+        extra.setdefault("provider", p)
         if p == "groq_cloud" and "endpoint" not in extra:
-            extra = dict(extra or {})
             extra["endpoint"] = "https://api.groq.com/openai/v1/audio/transcriptions"
         return OpenAICloudSTTProvider(model, hardware, extra, progress_callback, models_dir=models_dir, download_only=download_only)
     else:

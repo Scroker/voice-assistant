@@ -85,3 +85,53 @@ def _clean_lang_code(val: str) -> Optional[str]:
     if len(clean) in (2, 3) and clean.isalpha():
         return clean
     return None
+
+
+_FALLBACK_SUPPORTED_LANGUAGES = [
+    {"code": "it", "name": "Italiano", "english_name": "Italian"},
+    {"code": "en", "name": "English", "english_name": "English"},
+    {"code": "de", "name": "Deutsch", "english_name": "German"},
+    {"code": "fr", "name": "Français", "english_name": "French"},
+    {"code": "es", "name": "Español", "english_name": "Spanish"},
+    {"code": "pt", "name": "Português", "english_name": "Portuguese"},
+    {"code": "nl", "name": "Nederlands", "english_name": "Dutch"},
+    {"code": "ru", "name": "Русский", "english_name": "Russian"},
+    {"code": "zh", "name": "中文", "english_name": "Chinese"},
+    {"code": "ja", "name": "日本語", "english_name": "Japanese"},
+    {"code": "ko", "name": "한국어", "english_name": "Korean"},
+    {"code": "pl", "name": "Polski", "english_name": "Polish"},
+    {"code": "uk", "name": "Українська", "english_name": "Ukrainian"},
+    {"code": "tr", "name": "Türkçe", "english_name": "Turkish"},
+    {"code": "sv", "name": "Svenska", "english_name": "Swedish"},
+]
+
+_SUPPORTED_LANGUAGES_CACHE = None
+
+
+def get_supported_languages() -> list[dict[str, str]]:
+    """Carica l'elenco delle lingue supportate da data/locales/supported_languages.json con fallback."""
+    global _SUPPORTED_LANGUAGES_CACHE
+    if _SUPPORTED_LANGUAGES_CACHE is not None:
+        return _SUPPORTED_LANGUAGES_CACHE
+
+    try:
+        from core.data_loader import load_json_data
+        data = load_json_data("locales/supported_languages.json", fallback_default=_FALLBACK_SUPPORTED_LANGUAGES)
+        if isinstance(data, list) and len(data) > 0:
+            _SUPPORTED_LANGUAGES_CACHE = data
+            return _SUPPORTED_LANGUAGES_CACHE
+    except Exception:
+        pass
+
+    _SUPPORTED_LANGUAGES_CACHE = _FALLBACK_SUPPORTED_LANGUAGES
+    return _SUPPORTED_LANGUAGES_CACHE
+
+
+def get_language_label(code: str) -> str:
+    """Restituisce l'etichetta formattata per il codice lingua (es. 'Italiano (it)')."""
+    langs = get_supported_languages()
+    for item in langs:
+        if item.get("code") == code:
+            return f"{item.get('name', code)} ({code})"
+    return f"{code.upper()} ({code})"
+

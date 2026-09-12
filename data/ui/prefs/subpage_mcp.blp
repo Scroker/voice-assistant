@@ -1,0 +1,49 @@
+// MCP SUBPAGE
+Adw.NavigationPage mcp_subpage {
+  tag: "mcp_subpage";
+  title: _("Tools (MCP)");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Tools (MCP)");
+      };
+    }
+
+    content: Adw.PreferencesPage mcp_page {
+      title: _("Tools (MCP)");
+      icon-name: "system-run-symbolic";
+      name: "mcp";
+
+      Adw.PreferencesGroup mcp_enable_group {
+        title: _("Model Context Protocol (MCP)");
+        description: _("Integration with system tools and external capabilities.");
+
+        Adw.SwitchRow mcp_enable_row {
+          title: _("Enable Model Context Protocol");
+          subtitle: _("Allow assistant to execute actions via MCP tools");
+        }
+      }
+
+      Adw.PreferencesGroup mcp_config_group {
+        title: _("MCP Configuration");
+        description: _("Settings for tool registries and servers.");
+
+        Adw.EntryRow mcp_registry_url_row {
+          title: _("Registry URL");
+        }
+      }
+
+      Adw.PreferencesGroup mcp_servers_group {
+        title: _("Configured Servers");
+        description: _("Active MCP server connections.");
+
+        Adw.ActionRow mcp_server_gnome_row {
+          title: _("GNOME MCP Server");
+          subtitle: _("System integration tools (desktop, notifications, apps)");
+        }
+      }
+    };
+  };
+}

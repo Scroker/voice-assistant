@@ -1,0 +1,49 @@
+// COMMAND DISPATCH SUBPAGE
+Adw.NavigationPage dispatch_subpage {
+  tag: "dispatch_subpage";
+  title: _("Command Dispatch");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Command Dispatch");
+      };
+    }
+
+    content: Adw.PreferencesPage dispatch_page {
+      title: _("Command Dispatch");
+      icon-name: "media-playlist-consecutive-symbolic";
+      name: "dispatch";
+
+      Adw.PreferencesGroup {
+        description: _("A recognized command goes through up to three stages, stopping at the first one that resolves it: Fast-Path, Medium-Path, then Smart-Path. Disabling a stage makes commands fall through to the next one.");
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Fast-Path");
+        description: _("Runs frequent commands (volume, theme, media, clock, launching apps) straight from regex patterns and semantic matching, without asking the language model. Responds in under 10 ms but only recognizes known phrasings.");
+
+        Adw.SwitchRow dispatch_fast_path_row {
+          title: _("Enable Fast-Path");
+          subtitle: _("Fastest, deterministic — no model involved");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Medium-Path");
+        description: _("Asks the language model to pick a single tool to run, without generating free text. Slower than Fast-Path but understands phrasings it has never seen. Requires MCP tools and a configured model.");
+
+        Adw.SwitchRow dispatch_medium_path_row {
+          title: _("Enable Medium-Path");
+          subtitle: _("Model-assisted tool selection");
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Smart-Path");
+        description: _("Always active as the final stage: full conversation with memory, document retrieval and tool calling. Handles everything the previous stages leave unresolved.");
+      }
+    };
+  };
+}

@@ -8,6 +8,9 @@
 
 La classe `PipelineController` (`src/daemon/core/pipeline.py`) implementa un **dual-path dispatch architecture** per l'elaborazione dei testi provenienti dal riconoscimento vocale (STT) o dall'input diretto della finestra interattiva (GUI).
 
+> [!WARNING]
+> `PipelineController` è **l'implementazione attiva** nel daemon reale (importata da `core/runtime_manager.py` e `main.py`) — a differenza di `core/streaming_pipeline.py`/`core/pipeline_integration.py`, che pur documentati in [`docs/streaming-pipeline-guide.md`](streaming-pipeline-guide.md) non sono collegati al daemon in esecuzione. Fast-Path e Medium-Path sono **configurabili dall'utente** tramite le chiavi GSettings `fast-path-enabled` (default `false`) e `medium-path-enabled` (default `true`), esposte in **Generali → Dispatch dei Comandi**; le modifiche sono applicate a caldo. Esiste inoltre uno stadio "Medium Path" non mostrato nel diagramma sottostante — vedi sezione 2.5.
+
 ### Flusso Complessivo
 
 ```mermaid
@@ -51,15 +54,16 @@ graph TD
 
 | Stage | Latenza | Descrizione | Quando Attivato |
 |-------|---------|-------------|-----------------|
-| **FAST PATH** | <10ms | Regex pattern matching + sparse vector semantic similarity | Sempre (primo check) |
-| **SMART PATH** | 100-500ms | RAG retrieval + conversation memory + LLM tool calling | Se FAST PATH non matcha E `mcp_manager` disponibile |
-| **LLM Streaming** | Streaming | Token-by-token LLM response con aggregazione frasi | Se FAST PATH e SMART PATH faliscono |
+| **FAST PATH** | <10ms | Regex pattern matching + sparse vector semantic similarity | Solo se `fast-path-enabled` è attivo — **disattivo di default** |
+| **MEDIUM PATH** | ~stesso ordine dell'LLM | Selezione tool via un'unica chiamata LLM (`_try_llm_tool_select`) | Se `medium-path-enabled` è attivo (default), FAST PATH non matcha, E `mcp_manager` e `llm_streamer` sono entrambi disponibili |
+| **SMART PATH** | 100-500ms | RAG retrieval + conversation memory + LLM tool calling | Se FAST PATH e MEDIUM PATH non risolvono E `mcp_manager` disponibile |
+| **LLM Streaming** | Streaming | Token-by-token LLM response con aggregazione frasi | Se nessuno degli stage precedenti risolve la richiesta |
 
 ---
 
 ## 2. Fast-Path Dispatcher (`FastPathDispatcher`)
 
-Per evitare le latenze dei modelli LLM nel caso di comandi semplici e deterministici, il sistema utilizza un sistema di **Fast-Path Intent Dispatcher** con tempo di risposta inferiore a **10ms**.
+Per evitare le latenze dei modelli LLM nel caso di comandi semplici e deterministici, il sistema utilizza un sistema di **Fast-Path Intent Dispatcher** con tempo di risposta inferiore a **10ms**. Il dispatcher è implementato interamente dentro `src/daemon/core/pipeline.py` (classe `FastPathDispatcher`, righe ~140-297) — non è un modulo separato. **È disattivo di default**, attivabile dall'utente con `fast-path-enabled` (vedi warning in cima alla pagina): il codice sotto descrive il comportamento del dispatcher quando attivo.
 
 ### Intenti Supportati
 
@@ -74,6 +78,14 @@ Per evitare le latenze dei modelli LLM nel caso di comandi semplici e determinis
 | `get_time` | `che ore sono`, `orario` | Recupera ora locale | "Oggi è ... e sono le ore HH:MM" |
 | `get_date` | `che giorno è`, `data di oggi` | Recupera data locale | "Oggi è [Giorno] [Data]" |
 | `launch_app` | `apri firefox / terminale / calcolatrice` | Avvio applicazione Desktop | "Apro [Applicazione]" |
+
+---
+
+## 2.5 Medium Path (`_try_llm_tool_select`)
+
+Tra il Fast-Path e lo SMART PATH, `PipelineController.process_text_input()` esegue uno stadio intermedio: se `medium_path_enabled` è attivo (chiave `medium-path-enabled`, default `true`) e `mcp_manager` e `llm_streamer` sono entrambi disponibili, `_try_llm_tool_select()` chiede all'LLM di selezionare direttamente un tool da eseguire, senza passare per il ciclo completo di memoria conversazionale + RAG dello SMART PATH. Il risultato di questo stadio è esposto come chiave `medium_path` nel dizionario ritornato da `process_text_input()`, verificata anche da `assistant_runtime.py` (`res.get("medium_path")`).
+
+Disattivarlo è utile quando si vuole che ogni comando non deterministico riceva il trattamento completo dello SMART PATH (memoria + RAG), oppure per risparmiare una chiamata LLM aggiuntiva su richieste che finirebbero comunque nello SMART PATH.
 
 ---
 
@@ -119,7 +131,7 @@ rag_store.add_document(user_input, response, metadata={...})
 | Componente | Descrizione | Latenza |
 |---|---|---|
 | **ConversationMemory** | Sliding window (20 messaggi max, TTL 1h) | <1ms |
-| **VectorStore (RAG)** | In-memory sparse vector database | 10-50ms |
+| **VectorStore (RAG)** | Vector store ibrido in-memory + persistenza SQLite | 10-50ms |
 | **PromptBuilder** | Context-aware prompt construction | <5ms |
 | **LLMStreamer** | Token streaming from external LLM | 500ms-5s |
 | **ToolCallParser** | JSON extraction from LLM response | 10-20ms |
@@ -140,19 +152,29 @@ Il ToolCallParser estrae il JSON e l'MCPManager esegue ciascun tool in sequenza.
 
 ### Configurazione Memory
 
+Non esistono costanti a livello di modulo: sono default del costruttore `ConversationMemory.__init__` in `src/daemon/services/memory_manager.py`:
+
 ```python
-# src/daemon/services/memory_manager.py
-SLIDING_WINDOW_SIZE = 20  # messaggi massimi in memoria
-MESSAGE_TTL_SECONDS = 3600  # 1 ora
+class ConversationMemory:
+    def __init__(self, max_messages: int = 20, max_age_seconds: int = 3600):
+        ...
 ```
+
+`SmartPathController()` viene istanziato senza argomenti in `pipeline.py:323`, quindi in pratica usa sempre questi default.
 
 ### Configurazione RAG
 
+Anche qui sono default del costruttore `VectorStore.__init__` in `src/daemon/services/rag_store.py` (persistenza SQLite in `~/.local/share/voice-assistant/rag_store.db`, sincronizzazione periodica ogni 30s), non costanti globali:
+
 ```python
-# src/daemon/services/rag_store.py
-MAX_DOCUMENTS = 1000
-MIN_RELEVANCE_SCORE = 0.3  # threshold per match
+class VectorStore:
+    def __init__(self, max_documents: int = 1000, ttl_seconds: int = ..., ...):
+        ...
+    def search(self, query, top_k: int = 3, min_score: float = 0.1):
+        ...
 ```
+
+`smart_path_controller.py` invoca la ricerca con `search(query, top_k=3, min_score=0.15)`. Il vettore sparso usato per la similarità è puro **term-frequency** (conteggio normalizzato), non TF-IDF: non c'è alcuna componente di inverse-document-frequency nel codice. La deduplicazione avviene per hash del contenuto; l'eviction quando si supera `max_documents` rimuove il documento con il `timestamp` di creazione più vecchio (FIFO), non il meno usato di recente (non è vera LRU, perché il timestamp non si aggiorna agli accessi).
 
 ---
 

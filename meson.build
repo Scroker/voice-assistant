@@ -39,6 +39,8 @@ if gnome_extensions.found()
       'cp -r "@0@"/data/icons "$TMPDIR/" && '.format(src_root) +
       'cp -r "@0@"/data/services "$TMPDIR/" && '.format(src_root) +
       'cp -r "@0@"/data/dbus "$TMPDIR/" && '.format(src_root) +
+      'cp -r "@0@"/data/mcp "$TMPDIR/" && '.format(src_root) +
+      'cp -r "@0@"/data/dependencies "$TMPDIR/" && '.format(src_root) +
       'cp "@0@"/data/stylesheet.css "$TMPDIR/" && '.format(src_root) +
       'cp "@0@"/data/metadata.json "$TMPDIR/" && '.format(build_root) +
       'cp "@0@"/data/org.gnome.shell.extensions.voice-assistant.gresource "$TMPDIR/" && '.format(build_root) +
@@ -49,6 +51,8 @@ if gnome_extensions.found()
       '--extra-source=icons ' +
       '--extra-source=services ' +
       '--extra-source=dbus ' +
+      '--extra-source=mcp ' +
+      '--extra-source=dependencies ' +
       '--extra-source=org.gnome.shell.extensions.voice-assistant.gresource ' +
       '--out-dir="@0@" "$TMPDIR" && '.format(build_root) +
       'rm -rf "$TMPDIR"'

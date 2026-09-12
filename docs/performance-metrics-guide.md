@@ -8,6 +8,9 @@ The Voice Assistant daemon now includes a built-in **Structured Logging System**
 - ✅ Comprehensive performance reports (min/max/avg/p95 latency)
 - ✅ JSON export for monitoring dashboards
 
+> [!NOTE]
+> This guide covers per-operation **latency** metrics only. Process-level **memory/VRAM** tracking is a separate mechanism, not covered here: `ModelManager.get_resource_metrics()` (`src/daemon/core/model_manager.py`) reads `rss_bytes`/`vms_bytes` from `/proc/self/status` and queries `torch.cuda`/`torch.xpu` for `gpu_allocated_bytes`/`gpu_reserved_bytes` when available, exposed over D-Bus as `GetResourceMetrics` (`main.py`) — see [`docs/dbus.md`](dbus.md).
+
 ---
 
 ## Quick Start
