@@ -253,7 +253,9 @@ class TestServicesLLM(unittest.TestCase):
         mock_urlopen.return_value = mock_response
 
         models = fetch_huggingface_models("Llama-2")
-        self.assertTrue(any(m["name"] == "TheBloke/Llama-2-7B-GGUF" for m in models))
+        self.assertTrue(any(m["repo"] == "TheBloke/Llama-2-7B-GGUF" for m in models))
+        self.assertTrue(any(m["name"] == "Llama 2 7B (GGUF)" for m in models))
+        self.assertTrue(any(m["size_text"] != "GGUF" and ("GB" in m["size_text"] or "MB" in m["size_text"]) for m in models))
 
     @patch('urllib.request.urlopen')
     @patch('os.makedirs')

@@ -1,0 +1,21 @@
+[
+  {
+    "lang": "it",
+    "patterns": [
+      "\\bapprofondisci\\b",
+      "\\bspiegami\\s+(?:meglio|nel\\s+dettaglio)\\b",
+      "\\bdimmi\\s+di\\s+più\\b",
+      "\\bin\\s+dettaglio\\b",
+      "\\bnel\\s+dettaglio\\b"
+    ]
+  },
+  {
+    "lang": "en",
+    "patterns": [
+      "\\btell\\s+me\\s+more\\b",
+      "\\bexplain\\s+in\\s+detail\\b",
+      "\\bgo\\s+deeper\\b",
+      "\\bin\\s+detail\\b"
+    ]
+  }
+]

@@ -25,6 +25,22 @@ from core.data_loader import load_json_data
 logger = logging.getLogger("VoiceAssistant.RuntimeManager")
 
 
+def _has_setting_key(settings: Gio.Settings | None, key: str) -> bool:
+    """Verifica in sicurezza se una chiave esiste nello schema GSettings."""
+    if not settings:
+        return False
+    try:
+        schema = getattr(settings.props, "settings_schema", None)
+    except Exception:
+        schema = getattr(settings, "settings_schema", None)
+    if schema is None or not hasattr(schema, "has_key"):
+        return True
+    try:
+        return schema.has_key(key)
+    except Exception:
+        return False
+
+
 def _check_portaudio() -> bool:
     try:
         import sounddevice
@@ -163,7 +179,7 @@ class DaemonRuntimeManager:
         try:
             apps_dir = os.path.join(GLib.get_user_data_dir(), "applications")
             os.makedirs(apps_dir, exist_ok=True)
-            desktop_path = os.path.join(apps_dir, "org.local.VoiceAssistant.desktop")
+            desktop_path = os.path.join(apps_dir, "org.local.VoiceAssistant.GUI.desktop")
             if not os.path.exists(desktop_path):
                 content = None
                 try:
@@ -206,10 +222,32 @@ class DaemonRuntimeManager:
 
                 with open(desktop_path, "w", encoding="utf-8") as f:
                     f.write(content)
-                gui_desktop_path = os.path.join(apps_dir, "org.local.VoiceAssistant.GUI.desktop")
-                with open(gui_desktop_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-                logger.info(f"Creato file .desktop in {desktop_path} e {gui_desktop_path}.")
+                logger.info(f"Creato file .desktop in {desktop_path}.")
+
+            # Ensure org.local.VoiceAssistant.desktop exists with NoDisplay=true
+            # for backwards compatibility and notification routing
+            compat_desktop_path = os.path.join(apps_dir, "org.local.VoiceAssistant.desktop")
+            if not os.path.exists(compat_desktop_path):
+                compat_content = (
+                    "[Desktop Entry]\n"
+                    "Name=Voice Assistant\n"
+                    "Name[it]=Assistente Vocale\n"
+                    "Comment=Local & Offline Voice Assistant for GNOME\n"
+                    "Comment[it]=Assistente vocale locale ed offline per GNOME\n"
+                    "Exec=gdbus call --session --dest org.local.VoiceAssistant --object-path /org/local/VoiceAssistant --method org.local.VoiceAssistant.ShowWindow\n"
+                    "Icon=vocal-assistant-icon\n"
+                    "Terminal=false\n"
+                    "Type=Application\n"
+                    "NoDisplay=true\n"
+                    "Categories=Utility;AudioVideo;Audio;\n"
+                    "Keywords=Voice;Assistant;Speech;Offline;Vosk;Whisper;\n"
+                    "StartupNotify=true\n"
+                    "StartupWMClass=org.local.VoiceAssistant.GUI\n"
+                    "X-GNOME-UsesNotifications=true\n"
+                )
+                with open(compat_desktop_path, "w", encoding="utf-8") as f:
+                    f.write(compat_content)
+                logger.info(f"Creato file .desktop compatibile in {compat_desktop_path}.")
         except Exception as e:
             logger.warning(f"Impossibile assicurare file .desktop in applications: {e}")
 
@@ -342,6 +380,9 @@ class DaemonRuntimeManager:
         self.owner.settings.connect("changed::llm-api-key", self.owner.on_settings_changed)
         self.owner.settings.connect("changed::llm-system-prompt", self.owner.on_settings_changed)
         self.owner.settings.connect("changed::llm-temperature", self.owner.on_settings_changed)
+        self.owner.settings.connect("changed::memory-enabled", self.owner.on_settings_changed)
+        self.owner.settings.connect("changed::speaker-id-mode", self.owner.on_settings_changed)
+        self.owner.settings.connect("changed::speaker-id-threshold", self.owner.on_settings_changed)
 
     def initialize_notifications(self):
         self._gdbus_sub_id = 0
@@ -415,12 +456,12 @@ class DaemonRuntimeManager:
         else:
             GLib.idle_add(self.owner.ShowWindow)
 
-    def notify_user(self, title: str, message: str, icon: str = "dialog-warning"):
+    def notify_user(self, title: str, message: str, icon: str = "vocal-assistant-icon"):
         """Invia una notifica desktop all'utente via notify2 o GDBus diretto."""
         try:
             notif = notify2.Notification(title, message, icon)
             try:
-                notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant")
+                notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant.GUI")
             except Exception:
                 pass
             notif.show()
@@ -439,7 +480,7 @@ class DaemonRuntimeManager:
                     title,
                     message,
                     [],
-                    {"desktop-entry": GLib.Variant("s", "org.local.VoiceAssistant")},
+                    {"desktop-entry": GLib.Variant("s", "org.local.VoiceAssistant.GUI")},
                     -1,
                 ),
             )
@@ -1125,6 +1166,67 @@ class DaemonRuntimeManager:
             llm_kwargs["model_manager"] = model_manager
         self.owner.llm_service = LLMServiceManager(**llm_kwargs)
 
+        try:
+            from core.speaker_runtime import SpeakerIdController
+            from core.settings import get_string_setting, get_double_setting
+            speaker_mode = get_string_setting(self.owner.settings, "speaker-id-mode", "disabled")
+            speaker_th = get_double_setting(self.owner.settings, "speaker-id-threshold", 0.75)
+
+            def _on_enroll_progress(prog, lvl):
+                try:
+                    if hasattr(self.owner, "SpeakerEnrollmentProgress"):
+                        self.owner.SpeakerEnrollmentProgress(float(prog), float(lvl))
+                except Exception:
+                    pass
+
+            def _on_enroll_finished(succ, pid, msg):
+                try:
+                    if hasattr(self.owner, "SpeakerEnrollmentFinished"):
+                        self.owner.SpeakerEnrollmentFinished(bool(succ), str(pid), str(msg))
+                except Exception:
+                    pass
+
+            downloader = getattr(getattr(self.owner, "provider_manager", None), "downloader", None)
+
+            def _check_speaker_downloading() -> bool:
+                if downloader:
+                    return downloader.is_downloading("speaker", "resemblyzer")
+                return False
+
+            def _get_speaker_download_percent() -> int:
+                if downloader:
+                    key = "speaker:resemblyzer"
+                    with downloader._lock:
+                        return int(downloader._downloading_models.get(key, 0))
+                return 0
+
+            def _notify_desktop(title: str, message: str) -> None:
+                try:
+                    notif = notify2.Notification(title, message, "vocal-assistant-icon")
+                    notif.show()
+                except Exception as ex:
+                    logger.debug("Desktop notification error: %s", ex)
+
+            self.owner.speaker_id_controller = SpeakerIdController(
+                mode=speaker_mode,
+                threshold=speaker_th,
+                on_enrollment_progress=_on_enroll_progress,
+                on_enrollment_finished=_on_enroll_finished,
+                is_downloading_fn=_check_speaker_downloading,
+                download_progress_fn=_get_speaker_download_percent,
+                on_notify_fn=_notify_desktop,
+            )
+            if model_manager:
+                model_manager.register_instance(
+                    "speaker",
+                    self.owner.speaker_id_controller.backend,
+                    unload_callback=self.owner.speaker_id_controller.unload_backend,
+                )
+            logger.info("SpeakerIdController inizializzato con successo nel demone.")
+        except Exception as e:
+            logger.error("Inizializzazione SpeakerIdController in runtime_manager fallita: %s", e, exc_info=True)
+            self.owner.speaker_id_controller = None
+
     def initialize_pipeline(self):
         self.owner.state_machine = StateMachine()
         self.owner.state_machine.add_callback(self.owner.set_state)
@@ -1136,16 +1238,27 @@ class DaemonRuntimeManager:
                 pass
             if self.owner.tts_manager.speak(text):
                 self.owner.set_state("speaking")
+                
+        # Initialize Context Manager for multi-chat
+        if not hasattr(self.owner, 'context_manager') or not self.owner.context_manager:
+            from services.conversation_contexts import ConversationContextManager
+            self.owner.context_manager = ConversationContextManager()
 
         self.owner.pipeline_controller = PipelineController(
             state_machine=self.owner.state_machine,
             audio_player=self.owner.audio_player,
-            llm_streamer=lambda prompt: self.owner.llm_service.stream_tokens(prompt),
+            llm_streamer=lambda prompt, **kw: self.owner.llm_service.stream_tokens(prompt, **kw),
             tts_engine=_on_tts_engine,
             mcp_manager=self.owner.mcp_manager,
+            context_manager=self.owner.context_manager,
             fast_path_enabled=get_boolean_setting(self.owner.settings, "fast-path-enabled", False),
+            memory_enabled=get_boolean_setting(self.owner.settings, "memory-enabled", True),
+            owner=self.owner,
+            settings=self.owner.settings,
         )
-        self.owner.pipeline_controller.on_token_callback = self.owner._on_llm_token
+        self.owner.pipeline_controller.on_token_callback = lambda tok, cid=None: self.owner._on_llm_token(
+            tok, cid or getattr(self.owner.pipeline_controller, '_current_context_id', 'voice')
+        )
         self.owner.pipeline_controller.fast_path.intent_handler = self.owner._handle_fast_path_intent
         self.owner.pipeline_controller.fast_path.semantic_min_score = self.owner.settings.get_double("semantic-router-confidence-threshold")
 
@@ -1372,10 +1485,10 @@ class DaemonRuntimeManager:
             notif = notify2.Notification(
                 "Dipendenze mancanti",
                 f"Pacchetti non disponibili: {names}.\nApri l'assistente vocale per installarli.",
-                "dialog-warning",
+                "vocal-assistant-icon",
             )
             try:
-                notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant")
+                notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant.GUI")
             except Exception:
                 pass
             if last_id > 0:
@@ -1400,11 +1513,11 @@ class DaemonRuntimeManager:
                 (
                     "Voice Assistant",
                     last_id,
-                    "dialog-warning",
+                    "vocal-assistant-icon",
                     "Dipendenze mancanti",
                     f"Pacchetti non disponibili: {names}.\nApri l'assistente vocale per installarli.",
                     ["default", "Apri", "install", "Installa"],
-                    {"desktop-entry": GLib.Variant("s", "org.local.VoiceAssistant")},
+                    {"desktop-entry": GLib.Variant("s", "org.local.VoiceAssistant.GUI")},
                     -1,
                 ),
             )

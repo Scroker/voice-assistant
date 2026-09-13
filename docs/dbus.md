@@ -53,6 +53,14 @@ sequenceDiagram
     <method name="TriggerListening">
       <arg type="b" direction="out" name="is_listening"/>
     </method>
+    <method name="ToggleListeningInContext">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="b" direction="out" name="is_listening"/>
+    </method>
+    <method name="TriggerListeningInContext">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="b" direction="out" name="is_listening"/>
+    </method>
     <method name="GetState">
       <arg type="s" direction="out" name="state"/>
     </method>
@@ -60,11 +68,11 @@ sequenceDiagram
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="out" name="models_json"/>
     </method>
-    <method name="GetDownloadingModels">
-      <arg type="s" direction="out" name="models_json"/>
-    </method>
     <method name="GetInstalledModels">
       <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="out" name="models_json"/>
+    </method>
+    <method name="GetDownloadingModels">
       <arg type="s" direction="out" name="models_json"/>
     </method>
     <method name="GetResourceMetrics">
@@ -73,12 +81,10 @@ sequenceDiagram
     <method name="DownloadModel">
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
-      <arg type="b" direction="out" name="started"/>
     </method>
     <method name="CancelDownload">
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
-      <arg type="b" direction="out" name="cancelled"/>
     </method>
     <method name="DeleteModel">
       <arg type="s" direction="in" name="provider"/>
@@ -89,40 +95,119 @@ sequenceDiagram
       <arg type="s" direction="out" name="reports_json"/>
     </method>
     <method name="ClearErrorReports">
-      <arg type="b" direction="out" name="success"/>
     </method>
     <method name="GenerateDiagnosticBundle">
       <arg type="s" direction="out" name="bundle_path"/>
     </method>
+    <method name="GetMarketplaceFeatured">
+      <arg type="s" direction="out" name="servers_json"/>
+    </method>
+    <method name="SearchMarketplace">
+      <arg type="s" direction="in" name="query"/>
+      <arg type="s" direction="out" name="results_json"/>
+    </method>
+    <method name="GetServerDetails">
+      <arg type="s" direction="in" name="server_name"/>
+      <arg type="s" direction="out" name="details_json"/>
+    </method>
+    <method name="GetMarketplaceCategories">
+      <arg type="s" direction="out" name="categories_json"/>
+    </method>
+    <method name="FilterMarketplaceByCategory">
+      <arg type="s" direction="in" name="category"/>
+      <arg type="s" direction="out" name="results_json"/>
+    </method>
     <method name="InstallMCPServer">
       <arg type="s" direction="in" name="server_name"/>
-      <arg type="s" direction="in" name="server_config"/>
-      <arg type="s" direction="in" name="env_vars"/>
+      <arg type="s" direction="in" name="server_config_json"/>
+      <arg type="s" direction="in" name="env_vars_json"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
     </method>
     <method name="StartMCPServer">
       <arg type="s" direction="in" name="server_name"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
     </method>
     <method name="UninstallMCPServer">
       <arg type="s" direction="in" name="server_name"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
     </method>
     <method name="TestMCPServer">
       <arg type="s" direction="in" name="server_name"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
     </method>
     <method name="UpdateServerConfig">
       <arg type="s" direction="in" name="server_name"/>
-      <arg type="s" direction="in" name="env_vars"/>
+      <arg type="s" direction="in" name="env_vars_json"/>
       <arg type="b" direction="in" name="enabled"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
     </method>
     <method name="GetInstalledServers">
       <arg type="s" direction="out" name="servers_json"/>
     </method>
-    <method name="ShowWindow"/>
-    <method name="OpenSettings"/>
+    <method name="GetSkills">
+      <arg type="s" direction="out" name="skills_json"/>
+    </method>
+    <method name="SaveSkill">
+      <arg type="s" direction="in" name="skill_json"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="DeleteSkill">
+      <arg type="s" direction="in" name="intent"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="ShowWindow">
+    </method>
+    <method name="OpenSettings">
+    </method>
+    <method name="CreateConversation">
+      <arg type="s" direction="in" name="title"/>
+      <arg type="s" direction="out" name="context_id"/>
+    </method>
+    <method name="ListConversations">
+      <arg type="s" direction="out" name="conversations_json"/>
+    </method>
+    <method name="DeleteConversation">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="GetConversationMessages">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="s" direction="out" name="messages_json"/>
+    </method>
+    <method name="ProcessTextInContext">
+      <arg type="s" direction="in" name="text"/>
+      <arg type="s" direction="in" name="context_id"/>
+    </method>
     <method name="ProcessTextInput">
       <arg type="s" direction="in" name="text"/>
     </method>
     <method name="GetMissingDependencies">
       <arg type="s" direction="out" name="deps_json"/>
+    </method>
+    <method name="GetSpeakerStatus">
+      <arg type="s" direction="out" name="status_json"/>
+    </method>
+    <method name="GetSpeakerProfiles">
+      <arg type="s" direction="out" name="profiles_json"/>
+    </method>
+    <method name="StartSpeakerEnrollment">
+      <arg type="s" direction="in" name="display_name"/>
+      <arg type="d" direction="in" name="duration_s"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="CancelSpeakerEnrollment">
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="DeleteSpeakerProfile">
+      <arg type="s" direction="in" name="profile_id"/>
+      <arg type="b" direction="out" name="success"/>
     </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
@@ -145,12 +230,42 @@ sequenceDiagram
       <arg type="s" name="description"/>
       <arg type="b" name="is_critical"/>
     </signal>
+    <signal name="SpeakerEnrollmentProgress">
+      <arg type="d" name="progress"/>
+      <arg type="d" name="level"/>
+    </signal>
+    <signal name="SpeakerEnrollmentFinished">
+      <arg type="b" name="success"/>
+      <arg type="s" name="profile_id"/>
+      <arg type="s" name="message"/>
+    </signal>
+    <signal name="SpeakerIdentified">
+      <arg type="s" name="profile_name"/>
+      <arg type="d" name="score"/>
+      <arg type="s" name="status"/>
+      <arg type="b" name="overlap_detected"/>
+    </signal>
+    <signal name="SpeakerRejected">
+      <arg type="s" name="reason"/>
+      <arg type="s" name="message"/>
+    </signal>
+    <signal name="ConversationCreated">
+      <arg type="s" name="context_id"/>
+      <arg type="s" name="reason"/>
+    </signal>
+    <signal name="ConversationToken">
+      <arg type="s" name="context_id"/>
+      <arg type="s" name="token"/>
+      <arg type="b" name="is_complete"/>
+    </signal>
+    <signal name="ConversationTranscript">
+      <arg type="s" name="context_id"/>
+      <arg type="s" name="text"/>
+      <arg type="b" name="is_final"/>
+    </signal>
   </interface>
 </node>
 ```
-
-> [!NOTE]
-> Il backend del marketplace MCP (Smithery) esiste (`src/daemon/mcp/registry.py`) ed è richiamato internamente da metodi Python `get_marketplace_featured`, `search_marketplace`, `get_server_details`, `get_marketplace_categories`, `filter_marketplace_by_category` in `main.py`. Essendo però nominati in **snake_case**, dasbus non li espone come metodi D-Bus (richiede CamelCase): non fanno quindi parte dell'interfaccia reale e sono stati rimossi da questa pagina. Nessun componente (GUI o extension.js) li invoca oggi via D-Bus. Vedi [`docs/mcp-marketplace-implementation.md`](mcp-marketplace-implementation.md) per lo stato completo di questa funzionalità (backend presente, UI dedicata assente).
 
 ---
 
@@ -160,6 +275,11 @@ sequenceDiagram
 Alterna lo stato dell'assistente tra `disabled` e `idle`.
 - **Ritorno**: `true` se attivo/in ascolto, `false` se disattivato.
 - **Side effects**: Avvia o arresta lo stream del microfono ed aggiorna la chiave GSettings `enabled`.
+
+### `ToggleListeningInContext(context_id: string) → boolean`
+Alterna lo stato dell'assistente associando la sessione di ascolto vocale e il successivo riconoscimento/risposta alla conversazione specificata da `context_id`. Se `context_id` è vuoto o `"voice"`, opera nel contesto vocale predefinito.
+- **Input**: `context_id: string` (es. UUID della chat attiva nella GUI).
+- **Ritorno**: `true` se l'assistente è passato in ascolto / attivo, `false` se disattivato.
 
 ### `GetAvailableModels(provider: string) → string (JSON)`
 Ritorna la lista dei modelli supportati (scaricabili e già installati) per il provider specificato (`vosk`, `whisper`, `openai_cloud`, `groq_cloud`, `cloud_stt`).
@@ -220,6 +340,11 @@ Elabora il testo inviato dalla GUI in modalità silenziosa (`speak=False`): la p
 Simile a `ToggleListening()`, ma forza la transizione allo stato `listening` senza toggle. Utile per attivazioni programmatiche (es. da keybinding).
 - **Ritorno**: `true` se l'assistente è passato in ascolto.
 
+### `TriggerListeningInContext(context_id: string) → boolean`
+Forza la transizione allo stato `listening` associando la trascrizione e l'elaborazione del comando vocale al `context_id` indicato.
+- **Input**: `context_id: string` (es. UUID della chat attiva).
+- **Ritorno**: `true` se l'assistente è passato in ascolto.
+
 ### `GetState() → string`
 Ritorna lo stato corrente del daemon come stringa.
 - **Valori possibili**: `"disabled"`, `"idle"`, `"listening"`, `"processing"`, `"speaking"`, `"downloading"`, `"unavailable"`.
@@ -271,6 +396,18 @@ Apre la finestra delle impostazioni dell'assistente.
 ### `GetMissingDependencies() → string (JSON)`
 Ritorna la lista delle dipendenze mancanti (pacchetti di sistema, pip e MCP) in formato JSON, usata dalla GUI per mostrare il dialogo di installazione.
 
+### `GetSpeakerProfiles() → string (JSON)`
+Ritorna in formato JSON la lista dei profili vocali registrati (`[{"id": "...", "display_name": "...", "created_at": "...", "updated_at": "...", "needs_reenroll": false}]`).
+
+### `StartSpeakerEnrollment(display_name: string, duration_s: double) → boolean`
+Avvia una sessione di registrazione dell'impronta vocale per il parlante specificato. Ritorna `false` se una registrazione è già in corso o il backend di embedding non è disponibile (emettendo `SpeakerEnrollmentFinished(false, "", reason)`).
+
+### `CancelSpeakerEnrollment() → boolean`
+Annulla la registrazione dell'impronta vocale in corso ed emette `SpeakerEnrollmentFinished(false, "", "cancelled")`.
+
+### `DeleteSpeakerProfile(profile_id: string) → boolean`
+Elimina definitivamente un profilo vocale memorizzato su disco. Ritorna `true` se il profilo è stato eliminato con successo.
+
 ---
 
 ## Dettaglio Segnali
@@ -301,6 +438,46 @@ Emesso quando il daemon rileva una dipendenza mancante nel sistema.
 - `description`: descrizione leggibile della dipendenza.
 - `is_critical`: `true` se la dipendenza è essenziale per il funzionamento base.
 
+### `SpeakerEnrollmentProgress(progress: double, level: double)`
+Emesso periodicamente durante la registrazione vocale dell'utente.
+- `progress`: avanzamento temporale normalizzato (0.0–1.0).
+- `level`: ampiezza RMS istantanea dell'audio del microfono normalizzata (0.0–1.0).
+
+### `SpeakerEnrollmentFinished(success: boolean, profile_id: string, message: string)`
+Emesso al termine della sessione di registrazione vocale.
+- `success`: `true` se l'impronta vocale è stata registrata con successo.
+- `profile_id`: ID univoco del profilo registrato o aggiornato.
+- `message`: codice esito (`"enrolled"`, `"cancelled"`, `"insufficient_speech"`, `"unavailable"`, `"no_audio"`, `"timeout"`).
+
+### `SpeakerIdentified(name: string, score: double, status: string, overlap: boolean)`
+Emesso ad ogni verifica del parlante completata con successo o informativamente.
+- `name`: nome visualizzato del parlante riconosciuto.
+- `score`: punteggio di similarità del coseno rispetto al profilo (0.0–1.0).
+- `status`: esito della classificazione (`"recognized"`, `"unknown"`, `"insufficient_audio"`, `"no_profiles"`, `"unavailable"`).
+- `overlap`: `true` se è stata rilevata una sovrapposizione di voci concorrenti durante l'enunciato.
+
+### `SpeakerRejected(reason: string, message: string)`
+Emesso in modalità `gate` quando una richiesta vocale viene respinta dalle policy di sicurezza.
+- `reason`: motivazione tecnica del rifiuto (`"unknown"`, `"overlap"`, `"insufficient_audio"`, `"no_profiles"`, `"unavailable"`, `"timeout"`).
+- `message`: messaggio localizzato esplicativo inviato al motore TTS.
+
+### `ConversationCreated(context_id: string, reason: string)`
+Emesso quando viene creata una nuova conversazione.
+- `context_id`: UUID della nuova conversazione creata.
+- `reason`: motivo della creazione (`"user"`, `"deep_dive"`).
+
+### `ConversationToken(context_id: string, token: string, is_complete: boolean)`
+Emesso per indirizzare lo streaming di token alla chat specifica di appartenenza.
+- `context_id`: UUID della conversazione cui appartengono i token.
+- `token`: frammento di testo generato dall'LLM (o risposta fast-path se `is_complete=True` e `token!=""`).
+- `is_complete`: `true` al termine della generazione dello stream.
+
+### `ConversationTranscript(context_id: string, text: string, is_final: bool)`
+Emesso per registrare la trascrizione dell'utente nella conversazione specifica.
+- `context_id`: UUID della conversazione o `"voice"`.
+- `text`: testo del messaggio inviato dall'utente.
+- `is_final`: `true` se la trascrizione è definitiva.
+
 ---
 
 ## Test e Invocazione da CLI
@@ -329,3 +506,12 @@ gdbus monitor --session \
   --dest org.local.VoiceAssistant \
   --object-path /org/local/VoiceAssistant
 ```
+
+### Conversazioni
+- `CreateConversation(title: String) -> String (context_id)`
+- `ListConversations() -> String (JSON)`
+- `DeleteConversation(context_id: String) -> Boolean`
+- `GetConversationMessages(context_id: String) -> String (JSON)`
+- `ProcessTextInContext(text: String, context_id: String)`
+- `ToggleListeningInContext(context_id: String) -> Boolean`
+- `TriggerListeningInContext(context_id: String) -> Boolean`

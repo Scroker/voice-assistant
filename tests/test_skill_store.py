@@ -78,6 +78,48 @@ class TestSkillStore(unittest.TestCase):
         self.assertEqual(skill["args"], {"setting": "bluetooth", "enabled": False})
         self.assertIn("frase con apostrofo l'assistente", skill["triggers"])
 
+    def test_save_command_skill_roundtrip(self):
+        skill_store.save_user_skill({
+            "intent": "cmd_intent",
+            "name": "Esegui Script",
+            "action_type": "command",
+            "command": "sh -c 'echo 42'",
+            "triggers": ["avvia script"],
+        })
+        registry = SkillRegistry.from_default_directory()
+        skill = registry.find_by_intent("cmd_intent")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill["action_type"], "command")
+        self.assertEqual(skill["command"], "sh -c 'echo 42'")
+
+    def test_save_response_skill_roundtrip(self):
+        skill_store.save_user_skill({
+            "intent": "resp_intent",
+            "name": "Password Wifi",
+            "action_type": "response",
+            "response": "La password è 987654321",
+            "triggers": ["qual è la password"],
+        })
+        registry = SkillRegistry.from_default_directory()
+        skill = registry.find_by_intent("resp_intent")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill["action_type"], "response")
+        self.assertEqual(skill["response"], "La password è 987654321")
+
+    def test_save_prompt_skill_roundtrip(self):
+        skill_store.save_user_skill({
+            "intent": "prompt_intent",
+            "name": "Traduttore",
+            "action_type": "prompt",
+            "prompt": "Traduci in francese ogni messaggio",
+            "triggers": ["traduci in francese"],
+        })
+        registry = SkillRegistry.from_default_directory()
+        skill = registry.find_by_intent("prompt_intent")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill["action_type"], "prompt")
+        self.assertEqual(skill["prompt"], "Traduci in francese ogni messaggio")
+
 
 if __name__ == "__main__":
     unittest.main()

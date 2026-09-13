@@ -161,10 +161,52 @@ class TestSkillExecutor(unittest.TestCase):
             "_body": "",
         }
         executor = SkillExecutor(skill)
-
         success, response, result = executor.execute("", mcp_manager=MagicMock())
         self.assertFalse(success)
         self.assertIn("vuoto", response.lower())
+
+    def test_executor_handles_response_action_type(self):
+        skill = {
+            "intent": "static_test",
+            "name": "Static",
+            "action_type": "response",
+            "response": "Risposta fissa di test",
+            "triggers": ["test statico"],
+        }
+        executor = SkillExecutor(skill)
+        success, response, result = executor.execute("test statico")
+        self.assertTrue(success)
+        self.assertEqual(response, "Risposta fissa di test")
+
+    def test_executor_handles_command_action_type(self):
+        skill = {
+            "intent": "shell_test",
+            "name": "Shell Test",
+            "action_type": "command",
+            "command": "echo 'output shell'",
+            "triggers": ["esegui shell"],
+        }
+        executor = SkillExecutor(skill)
+        success, response, result = executor.execute("esegui shell")
+        self.assertTrue(success)
+        self.assertEqual(response, "output shell")
+        self.assertEqual(result["returncode"], 0)
+
+    def test_executor_handles_prompt_action_type(self):
+        skill = {
+            "intent": "prompt_test",
+            "name": "AI Translator",
+            "action_type": "prompt",
+            "prompt": "Traduci in inglese",
+            "triggers": ["traduci"],
+        }
+        executor = SkillExecutor(skill)
+        mock_llm = MagicMock(return_value="Hello world")
+        success, response, result = executor.execute("ciao mondo", llm_fallback=mock_llm)
+        self.assertTrue(success)
+        self.assertEqual(response, "Hello world")
+        mock_llm.assert_called_once()
+        self.assertIn("Traduci in inglese", mock_llm.call_args[0][0])
 
 
 if __name__ == "__main__":

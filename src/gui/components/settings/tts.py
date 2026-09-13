@@ -62,6 +62,7 @@ class TTSSettings:
 
     def _setup(self) -> None:
         self._updating = False
+
         bind_setting(self.settings, "tts-enabled", self.builder, "tts_enable_row", "active")
 
         local_mode_radio = self.builder.get_object("tts_mode_local_radio")

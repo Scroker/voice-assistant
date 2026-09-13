@@ -50,5 +50,15 @@ class TestAppSlotMatcher(unittest.TestCase):
         self.assertNotIn("profile", result["name"].lower())
 
 
+    def test_matches_mail_aliases(self):
+        # "posta" must resolve to default mail client (e.g. Evolution) and NOT to "Pods"
+        for alias in ("posta", "mail", "email", "posta elettronica"):
+            result = self.matcher.match(alias)
+            if result:
+                self.assertNotIn("pods", result["name"].lower())
+                self.assertNotIn("pods", result["desktop_id"].lower())
+                self.assertEqual(result["score"], 100.0)
+
+
 if __name__ == "__main__":
     unittest.main()

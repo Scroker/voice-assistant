@@ -8,12 +8,7 @@ logger = logging.getLogger("VoiceAssistant.Settings")
 
 
 def get_boolean_setting(settings, key: str, default: bool) -> bool:
-    """Legge un booleano da GSettings tollerando uno schema compilato obsoleto.
-
-    GSettings considera fatale l'accesso a una chiave inesistente e aborta il processo
-    invece di sollevare un'eccezione: qui la chiave viene verificata prima di leggerla,
-    così un daemon aggiornato con schema vecchio ricade sul default anziché crashare.
-    """
+    """Legge un booleano da GSettings tollerando uno schema compilato obsoleto."""
     if not settings:
         return default
     try:
@@ -31,6 +26,51 @@ def get_boolean_setting(settings, key: str, default: bool) -> bool:
         return settings.get_boolean(key)
     except Exception as e:
         logger.warning(f"Impossibile leggere l'impostazione booleana '{key}': {e}")
+        return default
+
+
+def get_string_setting(settings, key: str, default: str) -> str:
+    """Legge una stringa da GSettings tollerando uno schema compilato obsoleto."""
+    if not settings:
+        return default
+    try:
+        schema = getattr(settings.props, "settings_schema", None)
+    except Exception:
+        schema = getattr(settings, "settings_schema", None)
+    if schema is not None and hasattr(schema, "has_key"):
+        try:
+            if not schema.has_key(key):
+                logger.warning(f"Chiave GSettings '{key}' assente dallo schema installato: uso il default {default}.")
+                return default
+        except Exception:
+            return default
+    try:
+        val = settings.get_string(key)
+        return val if val else default
+    except Exception as e:
+        logger.warning(f"Impossibile leggere l'impostazione stringa '{key}': {e}")
+        return default
+
+
+def get_double_setting(settings, key: str, default: float) -> float:
+    """Legge un double da GSettings tollerando uno schema compilato obsoleto."""
+    if not settings:
+        return default
+    try:
+        schema = getattr(settings.props, "settings_schema", None)
+    except Exception:
+        schema = getattr(settings, "settings_schema", None)
+    if schema is not None and hasattr(schema, "has_key"):
+        try:
+            if not schema.has_key(key):
+                logger.warning(f"Chiave GSettings '{key}' assente dallo schema installato: uso il default {default}.")
+                return default
+        except Exception:
+            return default
+    try:
+        return float(settings.get_double(key))
+    except Exception as e:
+        logger.warning(f"Impossibile leggere l'impostazione double '{key}': {e}")
         return default
 
 

@@ -36,7 +36,7 @@ class ProviderManager:
     def _show_notification(self, notif):
         if notif:
             try:
-                notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant")
+                notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant.GUI")
             except Exception:
                 pass
             notif.show()
@@ -101,9 +101,9 @@ class ProviderManager:
             notif = self.owner._active_notifs[model_key]
         else:
             try:
-                notif = notify2.Notification("Voice Assistant", f"Inizializzazione {local_provider_name} ({local_model_name})...", "system-run-symbolic")
+                notif = notify2.Notification("Voice Assistant", f"Inizializzazione {local_provider_name} ({local_model_name})...", "vocal-assistant-icon")
                 try:
-                    notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant")
+                    notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant.GUI")
                 except Exception:
                     pass
                 notif._is_closed = False
@@ -159,7 +159,7 @@ class ProviderManager:
                 # Senza EXPIRES_NEVER la notifica di avanzamento si affidava al fatto di
                 # essere rimostrata di continuo per restare visibile.
                 notif.set_timeout(notify2.EXPIRES_NEVER)
-                notif.update("Voice Assistant", f"Scaricamento {local_provider_name} ({local_model_name}): {percent}%", "folder-download-symbolic")
+                notif.update("Voice Assistant", f"Scaricamento {local_provider_name} ({local_model_name}): {percent}%", "vocal-assistant-icon")
                 GLib.idle_add(self._show_notification, notif)
 
         try:
@@ -304,6 +304,10 @@ class ProviderManager:
                         is_inst = hfile in installed_files or hstem in installed_files
                         item = dict(hm)
                         item["installed"] = is_inst
+                        if is_inst:
+                            inst_info = installed_files.get(hfile) or installed_files.get(hstem)
+                            if inst_info and inst_info.get("size_text"):
+                                item["size_text"] = inst_info["size_text"]
                         models.append(item)
                         seen_ids.add(hid)
             except Exception as e:
@@ -472,9 +476,9 @@ class ProviderManager:
 
             notif = None
             try:
-                notif = notify2.Notification("Voice Assistant", f"Inizio scaricamento {provider} ({model_name})...", "folder-download-symbolic")
+                notif = notify2.Notification("Voice Assistant", f"Inizio scaricamento {provider} ({model_name})...", "vocal-assistant-icon")
                 try:
-                    notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant")
+                    notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant.GUI")
                 except Exception:
                     pass
                 notif.set_timeout(notify2.EXPIRES_NEVER)
@@ -522,7 +526,7 @@ class ProviderManager:
                         notif.id = 0
                         notif._is_closed = False
                     notif.set_timeout(notify2.EXPIRES_NEVER)
-                    notif.update("Voice Assistant", f"Scaricamento {provider} ({model_name}): {percent}%", "folder-download-symbolic")
+                    notif.update("Voice Assistant", f"Scaricamento {provider} ({model_name}): {percent}%", "vocal-assistant-icon")
                     GLib.idle_add(self._show_notification, notif)
 
             try:
@@ -617,7 +621,7 @@ class ProviderManager:
                 self.owner.emit_download_progress(provider, model_name, 100)
                 if notif:
                     notif.set_timeout(notify2.EXPIRES_NEVER)
-                    notif.update("Voice Assistant", f"Modello {model_name} scaricato con successo!", "emblem-ok-symbolic")
+                    notif.update("Voice Assistant", f"Modello {model_name} scaricato con successo!", "vocal-assistant-icon")
                     notif._is_closed = False
                     GLib.idle_add(self._show_notification, notif)
             except Exception as e:
@@ -780,9 +784,9 @@ class ProviderManager:
         self.cleanup_partial_download(provider, model_name)
 
         try:
-            notif = notify2.Notification("Voice Assistant", f"Scaricamento di {model_name} annullato", "dialog-warning-symbolic")
+            notif = notify2.Notification("Voice Assistant", f"Scaricamento di {model_name} annullato", "vocal-assistant-icon")
             try:
-                notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant")
+                notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant.GUI")
             except Exception:
                 pass
             notif.set_timeout(4000)

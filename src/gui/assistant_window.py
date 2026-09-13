@@ -1,3 +1,5 @@
+import gettext
+_ = gettext.gettext
 """
 AssistantWindow — Finestra interattiva GTK4 / Libadwaita per l'Assistente Vocale.
 
@@ -15,7 +17,7 @@ import time
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw, GLib, Gdk, Gio
+from gi.repository import Gtk, Adw, GLib, Gdk, Gio, GObject
 
 try:
     Adw.init()
@@ -70,6 +72,91 @@ class AssistantWindow(Adw.ApplicationWindow):
     info_btn = Gtk.Template.Child()
     user_avatar = Gtk.Template.Child()
     user_title = Gtk.Template.Child()
+    chats_list = Gtk.Template.Child()
+    addons_sidebar = Gtk.Template.Child()
+    new_chat_btn = Gtk.Template.Child()
+    split_view = Gtk.Template.Child()
+    stack_pages = Gtk.Template.Child()
+
+    # MCP Template Children
+    mcp_enable_row = Gtk.Template.Child()
+    mcp_registry_url_row = Gtk.Template.Child()
+    mcp_server_gnome_row = Gtk.Template.Child()
+    mcp_servers_group = Gtk.Template.Child()
+
+    # Skills Template Children
+    skills_nav_view = Gtk.Template.Child()
+    skills_subpage = Gtk.Template.Child()
+    skill_editor_subpage = Gtk.Template.Child()
+    skills_list_group = Gtk.Template.Child()
+    skills_add_btn = Gtk.Template.Child()
+    skill_editor_name_row = Gtk.Template.Child()
+    skill_editor_intent_row = Gtk.Template.Child()
+    skill_editor_tool_row = Gtk.Template.Child()
+    skill_editor_triggers_view = Gtk.Template.Child()
+    skill_editor_args_view = Gtk.Template.Child()
+    skill_editor_delete_btn = Gtk.Template.Child()
+    skill_editor_save_btn = Gtk.Template.Child()
+    skill_editor_error_row = Gtk.Template.Child()
+
+
+    def _init_settings(self):
+        self._settings = None
+        schema_id = "org.gnome.shell.extensions.voice-assistant"
+        try:
+            source = Gio.SettingsSchemaSource.get_default()
+            if source and source.lookup(schema_id, True):
+                self._settings = Gio.Settings.new(schema_id)
+            else:
+                candidates = [
+                    os.path.normpath(os.path.join(_gui_dir, "..", "..", "data", "schemas")),
+                    os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@scroker.github.io/schemas"),
+                ]
+                for c in candidates:
+                    if os.path.isdir(c):
+                        src = Gio.SettingsSchemaSource.new_from_directory(c, source, False)
+                        if src and src.lookup(schema_id, True):
+                            self._settings = Gio.Settings.new_full(src.lookup(schema_id, True), None, None)
+                            break
+        except Exception as e:
+            _log.warning(f"Impossibile inizializzare GSettings in AssistantWindow: {e}")
+
+    def _setup_addons_pages(self) -> None:
+        self._init_settings()
+        try:
+            from components.settings.skills import SkillsSettings
+            from components.settings.mcp import MCPSettings
+        except ImportError:
+            from gui.components.settings.skills import SkillsSettings
+            from gui.components.settings.mcp import MCPSettings
+
+        self.skills_settings = SkillsSettings(
+            builder=None,
+            settings=self._settings,
+            parent_window=self,
+            nav_view=self.skills_nav_view,
+            skills_page=self.skills_subpage,
+            editor_page=self.skill_editor_subpage,
+            list_group=self.skills_list_group,
+            add_btn=self.skills_add_btn,
+            name_row=self.skill_editor_name_row,
+            intent_row=self.skill_editor_intent_row,
+            tool_row=self.skill_editor_tool_row,
+            triggers_view=self.skill_editor_triggers_view,
+            args_view=self.skill_editor_args_view,
+            delete_btn=self.skill_editor_delete_btn,
+            save_btn=self.skill_editor_save_btn,
+        )
+        self.skills_settings.reload()
+
+        self.mcp_settings = MCPSettings(
+            builder=None,
+            settings=self._settings,
+            enable_row=self.mcp_enable_row,
+            registry_url_row=self.mcp_registry_url_row,
+            server_gnome_row=self.mcp_server_gnome_row,
+            servers_group=self.mcp_servers_group,
+        )
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -82,6 +169,20 @@ class AssistantWindow(Adw.ApplicationWindow):
 
         # Inizializza il componente ChatView
         self.chat_view = ChatView(chat_box=self.chat_box, scrolled=self.scrolled)
+
+        self._current_context_id = ""
+        self._generating_context_id = ""
+        if hasattr(self, "new_chat_btn") and self.new_chat_btn:
+            self.new_chat_btn.connect("clicked", self._on_new_chat)
+        self._setup_addons_pages()
+
+        if hasattr(self, "chats_list") and self.chats_list:
+            self.chats_list.connect("row-activated", self._on_chat_selected)
+            self.chats_list.connect("row-selected", self._on_chat_selected)
+        if hasattr(self, "addons_sidebar") and self.addons_sidebar:
+            self.addons_sidebar.set_selected(Gtk.INVALID_LIST_POSITION)
+            self.addons_sidebar.connect("notify::selected-item", self._on_addons_selected)
+
 
         self._pending_deps: list = []
         self._dep_debounce_id: int | None = None
@@ -108,6 +209,9 @@ class AssistantWindow(Adw.ApplicationWindow):
         self.daemon_client = DaemonClient(
             on_transcript=self._on_transcript_received,
             on_token=self._on_response_token_streamed,
+            on_conversation_transcript=self._on_conversation_transcript,
+            on_conversation_token=self._on_conversation_token,
+            on_conversation_created=self._on_conversation_created,
             on_state_changed=self._on_state_changed,
             on_dependency_required=self._on_dependency_required_signal,
             on_ready=self._on_daemon_ready,
@@ -158,8 +262,156 @@ class AssistantWindow(Adw.ApplicationWindow):
     # D-Bus Handlers & Client Integration
     # ------------------------------------------------------------------
 
+    def _refresh_chats_list(self):
+        if not hasattr(self, "chats_list") or not self.chats_list:
+            return
+            
+        if hasattr(self.chats_list, "remove_all"):
+            self.chats_list.remove_all()
+        else:
+            child = self.chats_list.get_first_child()
+            while child:
+                next_child = child.get_next_sibling()
+                self.chats_list.remove(child)
+                child = next_child
+            
+        chats = self.daemon_client.list_conversations_sync()
+        if not chats:
+            new_id = self.daemon_client.create_conversation_sync()
+            if new_id:
+                chats = self.daemon_client.list_conversations_sync()
+
+        valid_ids = [c["id"] for c in chats] if chats else []
+        if not self._current_context_id or self._current_context_id == "voice" or self._current_context_id not in valid_ids:
+            if chats:
+                self._current_context_id = chats[0]["id"]
+            else:
+                self._current_context_id = ""
+
+        for c in (chats or []):
+            title = c.get("title", "Nuova Chat")
+            row = Adw.ActionRow(title=title)
+            row.context_id = c["id"]
+            row.set_activatable(True)
+            row.set_selectable(True)
+            row.set_title_lines(1)
+            row.set_tooltip_text(title)
+            
+            del_btn = Gtk.Button(icon_name="user-trash-symbolic")
+            del_btn.add_css_class("flat")
+            del_btn.add_css_class("circular")
+            del_btn.set_valign(Gtk.Align.CENTER)
+            
+            def on_delete(btn, ctx_id=c["id"]):
+                self._on_delete_chat(ctx_id)
+                
+            del_btn.connect("clicked", on_delete)
+            row.add_suffix(del_btn)
+            
+            chat_icon = Gtk.Image.new_from_icon_name("chat-bubbles-text-symbolic")
+            row.add_prefix(chat_icon)
+            
+            self.chats_list.append(row)
+            if self._current_context_id == c["id"]:
+                if hasattr(self, "addons_sidebar") and self.addons_sidebar and self.addons_sidebar.get_selected_item() is not None:
+                    pass
+                else:
+                    self.chats_list.select_row(row)
+
+    def open_conversation(self, context_id: str) -> None:
+        """Apre esplicitamente una conversazione specificata per ID."""
+        if not context_id or context_id == "voice":
+            return
+        self._current_context_id = context_id
+        if hasattr(self, "addons_sidebar") and self.addons_sidebar:
+            self.addons_sidebar.set_selected(Gtk.INVALID_LIST_POSITION)
+        if hasattr(self, "chat_headerbar") and self.chat_headerbar:
+            self.chat_headerbar.set_visible(True)
+        if hasattr(self, "stack_pages") and self.stack_pages:
+            self.stack_pages.set_visible_child_name("Chat")
+        self._refresh_chats_list()
+        self._load_current_chat()
+
+    def _load_current_chat(self):
+        self.chat_view.clear()
+        if not self._current_context_id or self._current_context_id == "voice":
+            self.add_assistant_message("Ciao! Come posso aiutarti?")
+            return
+        msgs = self.daemon_client.get_conversation_messages_sync(self._current_context_id)
+        if not msgs:
+            self.add_assistant_message("Ciao! Come posso aiutarti?")
+        else:
+            for m in msgs:
+                if m.get("role") == "user":
+                    self.add_user_message(m.get("content", ""))
+                elif m.get("role") == "assistant":
+                    self.add_assistant_message(m.get("content", ""))
+
+    def _on_addons_selected(self, sidebar, pspec):
+        item = sidebar.get_selected_item()
+        if item is None:
+            return
+
+        # Deseleziona chat
+        if hasattr(self, "chats_list") and self.chats_list:
+            self.chats_list.unselect_all()
+
+        title = item.get_title()
+        if hasattr(self, "chat_headerbar") and self.chat_headerbar:
+            self.chat_headerbar.set_visible(False)
+
+        if hasattr(self, "stack_pages") and self.stack_pages:
+            if title == "Skills":
+                self.stack_pages.set_visible_child_name("Skills")
+                if hasattr(self, "skills_settings") and self.skills_settings:
+                    self.skills_settings.reload()
+            elif title == "MCP":
+                self.stack_pages.set_visible_child_name("MCP")
+
+    def _on_chat_selected(self, listbox, row):
+        if not row:
+            return
+        if hasattr(self, "addons_sidebar") and self.addons_sidebar:
+            if self.addons_sidebar.get_selected_item() is not None:
+                self.addons_sidebar.set_selected(Gtk.INVALID_LIST_POSITION)
+
+        ctx_id = getattr(row, "context_id", "")
+        if not ctx_id or ctx_id == "voice":
+            return
+        is_already_selected = (ctx_id == self._current_context_id)
+        self._current_context_id = ctx_id
+
+        if hasattr(self, "chat_headerbar") and self.chat_headerbar:
+            self.chat_headerbar.set_visible(True)
+        if hasattr(self, "stack_pages") and self.stack_pages:
+            self.stack_pages.set_visible_child_name("Chat")
+
+        if not is_already_selected:
+            self._load_current_chat()
+
+    def _on_new_chat(self, widget):
+        new_id = self.daemon_client.create_conversation_sync()
+        if new_id:
+            self._current_context_id = new_id
+            self._refresh_chats_list()
+            self._load_current_chat()
+
+    def _on_delete_chat(self, ctx_id):
+        success = self.daemon_client.delete_conversation_sync(ctx_id)
+        if success:
+            if self._current_context_id == ctx_id:
+                self._current_context_id = ""
+                self._refresh_chats_list()
+                self._load_current_chat()
+            else:
+                self._refresh_chats_list()
+
     def _on_daemon_ready(self, client: DaemonClient) -> None:
         _log.debug("DaemonClient pronto")
+        
+        GLib.idle_add(self._refresh_chats_list)
+        GLib.idle_add(self._load_current_chat)
+
         if self._pending_install_deps:
             auto_start = self._pending_auto_install
             self._pending_install_deps = False
@@ -172,9 +424,17 @@ class AssistantWindow(Adw.ApplicationWindow):
             threading.Thread(target=self._poll_missing_deps, daemon=True).start()
 
     def _on_transcript_received(self, text: str, is_final: bool) -> None:
+        # Il segnale globale vocale non modifica le finestre di chat GUI
+        pass
+
+    def _on_response_token_streamed(self, token: str, is_complete: bool) -> None:
+        # Il segnale globale vocale non modifica le finestre di chat GUI
+        pass
+
+    def _on_conversation_transcript(self, context_id: str, text: str, is_final: bool) -> None:
+        if context_id != self._current_context_id:
+            return
         if is_final:
-            self._streaming_active = False
-            # Evita duplicati se il messaggio è un'eco di quello appena inviato via GUI
             if (
                 getattr(self, "_last_sent_text", None) == text
                 and (time.time() - getattr(self, "_last_sent_time", 0.0)) < 3.0
@@ -188,10 +448,12 @@ class AssistantWindow(Adw.ApplicationWindow):
 
             GLib.idle_add(_glib_safe(_idle_add_user, "add_user_message"), text)
 
-    def _on_response_token_streamed(self, token: str, is_complete: bool) -> None:
+    def _on_conversation_token(self, context_id: str, token: str, is_complete: bool) -> None:
+        if context_id != self._current_context_id:
+            return
+
         if is_complete:
             if not self._streaming_active and token:
-                # Risposta fast-path: nessun token precedente, mostra tutto
                 def _idle_add_assistant(t: str) -> bool:
                     self.add_assistant_message(t)
                     return False
@@ -213,6 +475,10 @@ class AssistantWindow(Adw.ApplicationWindow):
                 return False
 
             GLib.idle_add(_glib_safe(_idle_append, "append_token"), token)
+
+    def _on_conversation_created(self, context_id: str, reason: str) -> None:
+        _log.info(f"Ricevuto segnale ConversationCreated({context_id}, {reason})")
+        GLib.idle_add(self._refresh_chats_list)
 
     def _on_dependency_required_signal(self) -> None:
         if self._dep_debounce_id:
@@ -284,11 +550,19 @@ class AssistantWindow(Adw.ApplicationWindow):
         self.entry.set_text("")
         self._last_sent_text = text
         self._last_sent_time = time.time()
+        self._generating_context_id = self._current_context_id
         self.add_user_message(text)
-        self.daemon_client.send_text(text)
+        self.daemon_client.send_text_in_context(text, self._current_context_id)
 
     def _on_toggle_mic(self, widget: Gtk.Widget) -> None:
-        self.daemon_client.trigger_listening()
+        if not self._current_context_id or self._current_context_id == "voice":
+            new_id = self.daemon_client.create_conversation_sync()
+            if new_id:
+                self._current_context_id = new_id
+                self._refresh_chats_list()
+
+        target_ctx = self._current_context_id or "voice"
+        self.daemon_client.toggle_listening_in_context(target_ctx)
 
     def _setup_user_profile(self) -> None:
         """Rileva dinamicamente il nome e l'avatar dell'utente di sistema."""

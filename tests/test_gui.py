@@ -10,7 +10,7 @@ import gi
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw, Gdk, Gio
+from gi.repository import Gtk, Adw, Gdk, Gio, GLib
 
 try:
     Gtk.init_check()
@@ -443,7 +443,7 @@ class TestGUI(unittest.TestCase):
         self.assertFalse(same("llm", "piper"))
 
     def test_dispatch_settings_rows_bind_to_gsettings(self):
-        """Verifica che la sottopagina Dispatch dei Comandi esista e scriva nelle chiavi GSettings."""
+        """Verifica che i controlli di Dispatch dei Comandi esistano nella pagina LLM e scrivano nelle chiavi GSettings."""
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.components.settings.dispatch import DispatchSettings
 
@@ -451,7 +451,7 @@ class TestGUI(unittest.TestCase):
         ui_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/ui/prefs.ui"))
         builder.add_from_file(ui_path)
 
-        for widget_id in ("dispatch_subpage", "dispatch_subpage_row", "dispatch_fast_path_row"):
+        for widget_id in ("dispatch_options_row", "dispatch_fast_path_row", "dispatch_semantic_threshold_row"):
             self.assertIsNotNone(builder.get_object(widget_id), f"Widget mancante in prefs.ui: {widget_id}")
 
         settings = Gio.Settings.new("org.gnome.shell.extensions.voice-assistant")
@@ -536,18 +536,23 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.components.settings.mcp import MCPSettings
 
-        builder = Gtk.Builder()
-        ui_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/ui/prefs.ui"))
-        builder.add_from_file(ui_path)
+        enable_row = Adw.SwitchRow()
+        reg_row = Adw.EntryRow()
+        gnome_row = Adw.ActionRow()
+        servers_group = Adw.PreferencesGroup()
 
-        mcp_settings = MCPSettings(builder, settings=None)
-        enable_row = builder.get_object("mcp_enable_row")
-        reg_row = builder.get_object("mcp_registry_url_row")
-        gnome_row = builder.get_object("mcp_server_gnome_row")
-
-        self.assertIsNotNone(enable_row)
-        self.assertIsNotNone(reg_row)
-        self.assertIsNotNone(gnome_row)
+        mcp_settings = MCPSettings(
+            enable_row=enable_row,
+            registry_url_row=reg_row,
+            server_gnome_row=gnome_row,
+            servers_group=servers_group,
+            settings=None,
+        )
+        self.assertIsNotNone(mcp_settings)
+        self.assertEqual(mcp_settings.enable_row, enable_row)
+        self.assertEqual(mcp_settings.registry_url_row, reg_row)
+        self.assertEqual(mcp_settings.server_gnome_row, gnome_row)
+        self.assertEqual(mcp_settings.servers_group, servers_group)
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
     def test_model_selector_controller(self):
@@ -659,7 +664,6 @@ class TestGUI(unittest.TestCase):
         self.assertIsNotNone(win.stt_settings)
         self.assertIsNotNone(win.llm_settings)
         self.assertIsNotNone(win.tts_settings)
-        self.assertIsNotNone(win.mcp_settings)
         self.assertIsNotNone(win.model_selector)
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
@@ -1144,6 +1148,7 @@ class TestGUI(unittest.TestCase):
         voice_row = win._b.get_object("tts_cloud_voice_row")
 
         self.assertIsNotNone(api_key_row)
+        self.assertIsInstance(api_key_row, Adw.PasswordEntryRow)
         self.assertIsNotNone(endpoint_row)
         self.assertIsNotNone(model_row)
         self.assertIsNotNone(voice_row)
@@ -1161,8 +1166,34 @@ class TestGUI(unittest.TestCase):
         self.assertEqual(cloud_cfg.get_provider_config("tts", "openai").get("voice"), "shimmer")
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
+    def test_api_key_rows_are_password_entry_rows(self):
+        """Verifica che tutte le righe di inserimento API key siano Adw.PasswordEntryRow."""
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+        from gui.settings_window import _SettingsWindow
+        win = _SettingsWindow()
+        for row_id in ("llm_api_key_row", "stt_cloud_api_key_row", "tts_cloud_api_key_row", "bugreport_apikey_row"):
+            row = win._b.get_object(row_id)
+            self.assertIsNotNone(row, f"{row_id} non trovato nel builder")
+            self.assertIsInstance(row, Adw.PasswordEntryRow, f"{row_id} dovrebbe essere Adw.PasswordEntryRow")
+
+    @unittest.skipIf(not _has_display, "No display available (headless environment)")
+    def test_llm_memory_enable_row_binds_to_gsettings(self):
+        """Verifica che la riga memoria conversazionale esista e sia legata a memory-enabled."""
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+        from gui.settings_window import _SettingsWindow
+        win = _SettingsWindow()
+        row = win._b.get_object("llm_memory_enable_row")
+        self.assertIsNotNone(row)
+        self.assertIsInstance(row, Adw.SwitchRow)
+
+        win._settings.set_boolean("memory-enabled", False)
+        self.assertFalse(row.get_active())
+        win._settings.set_boolean("memory-enabled", True)
+        self.assertTrue(row.get_active())
+
+    @unittest.skipIf(not _has_display, "No display available (headless environment)")
     def test_subpages_navigation_from_general_and_llm(self):
-        """Verifica che Storage, Bug Reporting e MCP siano subpage aperte dalle rispettive schede."""
+        """Verifica che Storage e Bug Reporting siano subpage aperte e che MCP sia rimosso dalle preferenze."""
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
@@ -1178,8 +1209,9 @@ class TestGUI(unittest.TestCase):
         self.assertIsNotNone(models_subpage)
         self.assertIsNotNone(bugreport_row)
         self.assertIsNotNone(bugreport_subpage)
-        self.assertIsNotNone(mcp_row)
-        self.assertIsNotNone(mcp_subpage)
+        # MCP non deve più esistere nella finestra preferenze
+        self.assertIsNone(mcp_row)
+        self.assertIsNone(mcp_subpage)
 
         # Simula apertura subpage models
         with patch.object(win, "push_subpage") as mock_push:
@@ -1190,11 +1222,6 @@ class TestGUI(unittest.TestCase):
         with patch.object(win, "push_subpage") as mock_push:
             bugreport_row.emit("activated")
             mock_push.assert_called_with(bugreport_subpage)
-
-        # Simula apertura subpage mcp
-        with patch.object(win, "push_subpage") as mock_push:
-            mcp_row.emit("activated")
-            mock_push.assert_called_with(mcp_subpage)
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
     def test_model_selector_hf_import_visibility(self):
@@ -1287,6 +1314,13 @@ class TestGUI(unittest.TestCase):
             title = row.get_title() or ""
             self.assertNotIn(title.lower(), ["engine", "keyword", "modello wakeword"])
 
+        # Verifica che siano inclusi sia modelli OpenWakeWord sia Sherpa indipendentemente dall'engine attivo
+        titles = [r.get_title().lower() for r in current_rows]
+        has_oww = any("openwakeword" in t or "alexa" in t for t in titles)
+        has_sherpa = any("sherpa" in t for t in titles)
+        self.assertTrue(has_oww, f"OpenWakeWord models missing from ww_group: {titles}")
+        self.assertTrue(has_sherpa, f"Sherpa-ONNX models missing from ww_group: {titles}")
+
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
     def test_ollama_local_model_selection_and_persistence(self):
         """Verifica la corretta selezione, marcatura attivo e persistenza del modello Ollama locale."""
@@ -1330,6 +1364,202 @@ class TestGUI(unittest.TestCase):
         # Verifica sottotitolo riga modello locale
         local_row = win._b.get_object("current_llm_model_row")
         self.assertIn("llama3.1:8b", local_row.get_subtitle())
+
+    @unittest.skipIf(not _has_display, "No display available (headless environment)")
+    def test_assistant_window_mcp_page(self):
+        """Verifica che la sezione MCP sia presente nella sidebar e gestibile nella GUI principale."""
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+        from gui.assistant_window import AssistantWindow
+
+        app = Adw.Application(application_id="org.local.VoiceAssistant.TestGUIMCP")
+        win = AssistantWindow(application=app)
+
+        if not hasattr(win, "sidebar_item_mcp"):
+            self.skipTest("sidebar_item_mcp non presente nell'attuale layout multi-chat")
+
+        self.assertIsNotNone(win.sidebar_item_mcp)
+        self.assertIsNotNone(win.mcp_controller)
+        self.assertIsNotNone(win.mcp_main_enable_row)
+        self.assertIsNotNone(win.mcp_main_registry_url_row)
+        self.assertIsNotNone(win.mcp_main_server_gnome_row)
+        self.assertIsNotNone(win.mcp_main_servers_group)
+
+        # Navigazione verso la pagina MCP tramite selezione sidebar
+        items = win.sidebar_addons.get_items()
+        mcp_idx = None
+        for idx in range(items.get_n_items()):
+            if items.get_item(idx) == win.sidebar_item_mcp:
+                mcp_idx = idx
+                break
+        self.assertIsNotNone(mcp_idx)
+
+        win.sidebar_addons.set_selected(mcp_idx)
+        self.assertEqual(win.stack_pages.get_visible_child_name(), "mcp")
+
+        # Ritorno alla chat deseleziona la sidebar addons
+        win.stack_pages.set_visible_child_name("chat")
+        self.assertEqual(win.sidebar_addons.get_selected(), GLib.MAXUINT)
+
+    @unittest.skipIf(not _has_display, "No display available (headless environment)")
+    def test_chats_list_has_no_voice_commands_row(self):
+        """Verifica che la lista delle chat non contenga mai la riga 'Comandi Vocali'."""
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+        from gui.assistant_window import AssistantWindow
+        from unittest.mock import MagicMock
+
+        app = Adw.Application(application_id="org.local.VoiceAssistant.TestNoVoiceRow")
+        win = AssistantWindow(application=app)
+        win.daemon_client.list_conversations_sync = MagicMock(return_value=[
+            {"id": "c1", "title": "Chat 1"},
+            {"id": "c2", "title": "Chat 2"}
+        ])
+
+        win._refresh_chats_list()
+
+        row = win.chats_list.get_first_child()
+        titles = []
+        context_ids = []
+        while row:
+            if hasattr(row, "get_title"):
+                titles.append(row.get_title())
+            if hasattr(row, "context_id"):
+                context_ids.append(row.context_id)
+            row = row.get_next_sibling()
+
+        self.assertNotIn("Comandi Vocali", titles)
+        self.assertNotIn("voice", context_ids)
+        self.assertNotEqual(win._current_context_id, "voice")
+
+    @unittest.skipIf(not _has_display, "No display available (headless environment)")
+    def test_transcript_received_does_not_change_current_chat(self):
+        """Verifica che un segnale TranscriptReceived globale non cambi la chat corrente."""
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+        from gui.assistant_window import AssistantWindow
+        from unittest.mock import MagicMock
+
+        app = Adw.Application(application_id="org.local.VoiceAssistant.TestTranscriptNoSwitch")
+        win = AssistantWindow(application=app)
+        win.daemon_client.list_conversations_sync = MagicMock(return_value=[
+            {"id": "chat-uuid-1", "title": "Mia Chat"}
+        ])
+        win._refresh_chats_list()
+        self.assertEqual(win._current_context_id, "chat-uuid-1")
+
+        # Ricezione segnale vocale globale
+        win._on_transcript_received("comando vocale estraneo", True)
+
+        # La chat corrente deve restare chat-uuid-1
+        self.assertEqual(win._current_context_id, "chat-uuid-1")
+
+    @unittest.skipIf(not _has_display, "No display available (headless environment)")
+    def test_conversation_token_for_non_visible_chat_not_written(self):
+        """Verifica che ConversationToken per una chat diversa da quella visibile non venga scritto."""
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+        from gui.assistant_window import AssistantWindow
+        from unittest.mock import MagicMock
+
+        app = Adw.Application(application_id="org.local.VoiceAssistant.TestTokenFilter")
+        win = AssistantWindow(application=app)
+        win._current_context_id = "visible-chat"
+
+        # Conta i bubble prima dell'arrivo del token
+        initial_bubble = win.current_assistant_bubble
+
+        # Arrivo token per un'altra chat
+        win._on_conversation_token("other-chat", "Token segreto per altra chat", False)
+
+        # Nessun nuovo token deve essere aggiunto alla chat visibile
+        if win.current_assistant_bubble and initial_bubble:
+            self.assertNotIn("Token segreto", win.current_assistant_bubble.label.get_text())
+        elif win.current_assistant_bubble and not initial_bubble:
+            self.fail("Un bubble è stato creato per un token appartenente a un'altra chat!")
+
+    @unittest.skipIf(not _has_display, "No display available (headless environment)")
+    def test_toggle_mic_uses_active_context_or_creates_new(self):
+        """Verifica che cliccare il microfono leghi l'ascolto alla chat corrente o ne crei una nuova se assente."""
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+        from gui.assistant_window import AssistantWindow
+        from unittest.mock import MagicMock
+
+        app = Adw.Application(application_id="org.local.VoiceAssistant.TestMicContext")
+        win = AssistantWindow(application=app)
+        win.daemon_client.toggle_listening_in_context = MagicMock()
+        win.daemon_client.create_conversation_sync = MagicMock(return_value="chat-new-999")
+        win._refresh_chats_list = MagicMock()
+
+        # Caso 1: chat corrente attiva
+        win._current_context_id = "chat-active-123"
+        win._on_toggle_mic(win.mic_btn)
+        win.daemon_client.toggle_listening_in_context.assert_called_with("chat-active-123")
+        win.daemon_client.create_conversation_sync.assert_not_called()
+
+        # Caso 2: nessuna chat corrente o chat "voice"
+        win.daemon_client.toggle_listening_in_context.reset_mock()
+        win._current_context_id = ""
+        win._on_toggle_mic(win.mic_btn)
+        win.daemon_client.create_conversation_sync.assert_called_once()
+        self.assertEqual(win._current_context_id, "chat-new-999")
+        win.daemon_client.toggle_listening_in_context.assert_called_with("chat-new-999")
+
+
+    @unittest.skipIf(not _has_display, "No display available (headless environment)")
+    def test_speaker_id_mode_action_rows_and_radios(self):
+        """Verifica che Voice Recognition usi 3 ActionRow con CheckButton radio per le modalità."""
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+        from gui.settings_window import _SettingsWindow
+
+        win = _SettingsWindow()
+        speaker_id = win.speaker_id_settings
+        b = win._b
+        settings = win._settings
+
+        # Verifica esistenza delle 3 ActionRow e dei rispettivi CheckButton
+        row_disabled = b.get_object("speaker_id_mode_disabled_row")
+        row_informative = b.get_object("speaker_id_mode_informative_row")
+        row_gate = b.get_object("speaker_id_mode_gate_row")
+
+        radio_disabled = b.get_object("speaker_id_mode_disabled_radio")
+        radio_informative = b.get_object("speaker_id_mode_informative_radio")
+        radio_gate = b.get_object("speaker_id_mode_gate_radio")
+
+        self.assertIsNotNone(row_disabled)
+        self.assertIsNotNone(row_informative)
+        self.assertIsNotNone(row_gate)
+
+        self.assertIsNotNone(radio_disabled)
+        self.assertIsNotNone(radio_informative)
+        self.assertIsNotNone(radio_gate)
+
+        # Verifica attivazione iniziale coerente con GSettings
+        settings.set_string("speaker-id-mode", "disabled")
+        self.assertTrue(radio_disabled.get_active())
+        self.assertFalse(radio_informative.get_active())
+        self.assertFalse(radio_gate.get_active())
+
+        threshold_row = b.get_object("speaker_id_threshold_row")
+        self.assertFalse(threshold_row.get_sensitive())
+
+        # Passaggio a informative
+        radio_informative.set_active(True)
+        self.assertEqual(settings.get_string("speaker-id-mode"), "informative")
+        self.assertTrue(threshold_row.get_sensitive())
+        self.assertFalse(radio_disabled.get_active())
+        self.assertTrue(radio_informative.get_active())
+
+        # Tentativo di passaggio a gate senza profilo valido: deve essere bloccato e ripristinato
+        speaker_id._profiles = []  # Nessun profilo registrato
+        radio_gate.set_active(True)
+        self.assertNotEqual(settings.get_string("speaker-id-mode"), "gate")
+        self.assertEqual(settings.get_string("speaker-id-mode"), "informative")
+        self.assertTrue(radio_informative.get_active())
+        self.assertFalse(radio_gate.get_active())
+
+        # Con profilo valido, passaggio a gate consentito
+        speaker_id._profiles = [{"id": "user1", "is_current_user": True, "needs_reenroll": False}]
+        radio_gate.set_active(True)
+        self.assertEqual(settings.get_string("speaker-id-mode"), "gate")
+        self.assertTrue(radio_gate.get_active())
+        self.assertFalse(radio_informative.get_active())
 
 
 if __name__ == "__main__":

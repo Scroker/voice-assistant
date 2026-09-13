@@ -16,6 +16,7 @@ from .model_selector import ModelSelectorController
 from .models import ModelsStorageManager
 from .bugreport import BugReportSettings
 from .about import AboutSettings
+from .speaker_id import SpeakerIdSettings
 
 __all__ = [
     "bind_setting",
@@ -35,4 +36,5 @@ __all__ = [
     "ModelsStorageManager",
     "BugReportSettings",
     "AboutSettings",
+    "SpeakerIdSettings",
 ]

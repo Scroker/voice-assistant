@@ -33,6 +33,9 @@
     "window": "window_management",
     "window_management": "window_management",
     "keyring": "keyring_management",
-    "keyring_management": "keyring_management"
+    "keyring_management": "keyring_management",
+    "mail": "launch_application",
+    "email": "launch_application",
+    "posta": "launch_application"
   }
 }

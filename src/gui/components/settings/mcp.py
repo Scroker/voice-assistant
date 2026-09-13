@@ -7,7 +7,8 @@ import logging
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gio', '2.0')
-from gi.repository import Gtk, Gio
+gi.require_version('Adw', '1')
+from gi.repository import Gtk, Gio, Adw
 
 from .base import bind_setting
 
@@ -17,17 +18,41 @@ _log = logging.getLogger("VoiceAssistant.GUI.Settings.MCP")
 class MCPSettings:
     """Configura la pagina Model Context Protocol (MCP)."""
 
-    def __init__(self, builder: Gtk.Builder, settings: Gio.Settings | None):
+    def __init__(
+        self,
+        builder: Gtk.Builder | None = None,
+        settings: Gio.Settings | None = None,
+        enable_row: Adw.SwitchRow | None = None,
+        registry_url_row: Adw.EntryRow | None = None,
+        server_gnome_row: Adw.ActionRow | None = None,
+        servers_group: Adw.PreferencesGroup | None = None,
+        mcp_page: Adw.NavigationPage | None = None,
+    ):
         self.builder = builder
+        self.mcp_page = mcp_page or (builder.get_object("mcp_subpage") if builder else None)
         self.settings = settings
+        self.enable_row = enable_row or (builder.get_object("mcp_enable_row") if builder else None)
+        self.registry_url_row = registry_url_row or (builder.get_object("mcp_registry_url_row") if builder else None)
+        self.server_gnome_row = server_gnome_row or (builder.get_object("mcp_server_gnome_row") if builder else None)
+        self.servers_group = servers_group or (builder.get_object("mcp_servers_group") if builder else None)
         self._setup()
 
     def _setup(self) -> None:
-        bind_setting(self.settings, "mcp-enabled", self.builder, "mcp_enable_row", "active")
-        bind_setting(self.settings, "mcp-registry-url", self.builder, "mcp_registry_url_row", "text")
+        if self.settings:
+            if self.enable_row:
+                self.settings.bind("mcp-enabled", self.enable_row, "active", Gio.SettingsBindFlags.DEFAULT)
+            elif self.builder:
+                bind_setting(self.settings, "mcp-enabled", self.builder, "mcp_enable_row", "active")
 
-        # Visualizza i server configurati da mcp-servers
-        server_row = self.builder.get_object("mcp_server_gnome_row")
+            if self.registry_url_row:
+                self.settings.bind("mcp-registry-url", self.registry_url_row, "text", Gio.SettingsBindFlags.DEFAULT)
+            elif self.builder:
+                bind_setting(self.settings, "mcp-registry-url", self.builder, "mcp_registry_url_row", "text")
+
+        self.reload()
+
+    def reload(self) -> None:
+        server_row = self.server_gnome_row or (self.builder.get_object("mcp_server_gnome_row") if self.builder else None)
         if server_row and self.settings:
             try:
                 servers_json = self.settings.get_string("mcp-servers")

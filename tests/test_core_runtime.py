@@ -317,6 +317,34 @@ class TestCoreRuntimeModules(unittest.TestCase):
                     self.assertEqual(owner.language, "fr")
                     self.assertEqual(owner.vosk_ww_model, "vosk-model-small-fr-0.22")
 
+    def test_runtime_manager_load_settings_connects_speaker_id_signals(self):
+        """Bug: speaker-id-mode/speaker-id-threshold non erano mai collegati a on_settings_changed,
+        quindi le modifiche a runtime non venivano mai applicate al controller."""
+        owner = DummyOwner()
+        owner.model_manager = MagicMock()
+        mock_settings = MagicMock()
+
+        def get_string_mock(key):
+            if key == "stt-provider":
+                return "vosk"
+            elif key == "stt-model":
+                return "vosk-model-small-it-0.22"
+            elif key == "language":
+                return "it"
+            return ""
+
+        mock_settings.get_string.side_effect = get_string_mock
+        mock_settings.get_int.return_value = 60
+        mock_settings.get_boolean.return_value = True
+        owner.settings = mock_settings
+
+        with patch("gi.repository.Gio.Settings.new", return_value=mock_settings):
+            runtime = DaemonRuntimeManager(owner)
+            runtime.load_settings()
+
+        mock_settings.connect.assert_any_call("changed::speaker-id-mode", owner.on_settings_changed)
+        mock_settings.connect.assert_any_call("changed::speaker-id-threshold", owner.on_settings_changed)
+
     def test_initialize_notifications_with_glib(self):
         owner = DummyOwner()
         runtime = DaemonRuntimeManager(owner)
@@ -339,7 +367,7 @@ class TestCoreRuntimeModules(unittest.TestCase):
             runtime._notify_missing_deps_summary()
 
             # Verifica aggiunta hint desktop-entry per raggruppamento GNOME Shell
-            mock_notif.set_hint_string.assert_called_with("desktop-entry", "org.local.VoiceAssistant")
+            mock_notif.set_hint_string.assert_called_with("desktop-entry", "org.local.VoiceAssistant.GUI")
 
             # Verifica aggiunta azioni
             mock_notif.add_action.assert_any_call("default", "Apri", unittest.mock.ANY)
@@ -419,7 +447,7 @@ class TestCoreRuntimeModules(unittest.TestCase):
             # Test cancel_download
             with patch("gi.repository.GLib.idle_add", side_effect=lambda cb, arg: cb(arg)):
                 manager.cancel_download("vosk", "model-test")
-                mock_notif.set_hint_string.assert_called_with("desktop-entry", "org.local.VoiceAssistant")
+                mock_notif.set_hint_string.assert_called_with("desktop-entry", "org.local.VoiceAssistant.GUI")
 
     def test_system_deps_does_not_contain_cargo(self):
         from daemon.core.runtime_manager import _SYSTEM_DEPS

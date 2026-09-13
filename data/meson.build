@@ -11,13 +11,12 @@ install_data('schemas/org.gnome.shell.extensions.voice-assistant.gschema.xml',
 )
 
 install_data('services/org.local.VoiceAssistant.desktop.in',
-  rename: 'org.local.VoiceAssistant.desktop',
+  rename: 'org.local.VoiceAssistant.GUI.desktop',
   install_dir: join_paths(get_option('datadir'), 'applications')
 )
 
-install_data('services/org.local.VoiceAssistant.desktop.in',
-  rename: 'org.local.VoiceAssistant.GUI.desktop',
-  install_dir: join_paths(get_option('datadir'), 'applications')
+install_subdir('icons/hicolor',
+  install_dir: join_paths(get_option('datadir'), 'icons')
 )
 
 install_subdir('icons',

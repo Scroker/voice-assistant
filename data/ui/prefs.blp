@@ -420,7 +420,7 @@ Adw.PreferencesDialog preferences_dialog {
       title: _("Cloud Configuration");
       visible: false;
 
-      Adw.EntryRow stt_cloud_api_key_row {
+      Adw.PasswordEntryRow stt_cloud_api_key_row {
         title: _("API Key");
       }
 
@@ -436,13 +436,62 @@ Adw.PreferencesDialog preferences_dialog {
     icon-name: "brain-augmented-symbolic";
     name: "llm";
 
-    Adw.PreferencesGroup {
-      title: _("Large Language Model (LLM)");
-      description: _("Enable and configure text generation capabilities.");
+    Adw.PreferencesGroup dispatch_group {
+      title: _("Command Processing");
+      description: _("How a recognized command is dispatched before reaching the full assistant.");
 
-      Adw.SwitchRow llm_enable_row {
-        title: _("Enable LLM Responses");
-        subtitle: _("Send voice transcriptions to the LLM to generate intelligent responses");
+      Adw.ExpanderRow dispatch_options_row {
+        title: _("Options");
+        subtitle: _("Fast-path direct execution and semantic routing threshold");
+
+        [prefix]
+        Gtk.Image {
+          icon-name: "media-playlist-consecutive-symbolic";
+          valign: center;
+        }
+
+        Adw.SwitchRow dispatch_fast_path_row {
+          title: _("Enable Fast-Path");
+          subtitle: _("Fastest, deterministic — direct action without model");
+        }
+
+        Adw.SpinRow dispatch_semantic_threshold_row {
+          title: _("Semantic Router Confidence Threshold");
+          subtitle: _("Minimum similarity score required to execute an action directly instead of falling through");
+          digits: 2;
+          adjustment: Gtk.Adjustment {
+            lower: 0.50;
+            upper: 0.95;
+            step-increment: 0.05;
+            page-increment: 0.05;
+            value: 0.62;
+          };
+        }
+      }
+    }
+
+    Adw.PreferencesGroup llm_system_prompt_group {
+      title: _("System Instructions");
+      description: _("Prompt and behavioral instructions for the assistant.");
+
+      Gtk.Frame {
+        styles ["card"]
+
+        Gtk.ScrolledWindow {
+          min-content-height: 140;
+          max-content-height: 280;
+          hscrollbar-policy: never;
+          propagate-natural-height: true;
+
+          Gtk.TextView llm_system_prompt_view {
+            top-margin: 10;
+            bottom-margin: 10;
+            left-margin: 12;
+            right-margin: 12;
+            wrap-mode: word;
+            buffer: Gtk.TextBuffer llm_system_prompt_buffer {};
+          }
+        }
       }
     }
 
@@ -612,7 +661,7 @@ Adw.PreferencesDialog preferences_dialog {
       title: _("Cloud Configuration");
       visible: false;
 
-      Adw.EntryRow llm_api_key_row {
+      Adw.PasswordEntryRow llm_api_key_row {
         title: _("API Key");
       }
 
@@ -633,75 +682,13 @@ Adw.PreferencesDialog preferences_dialog {
       }
     }
 
-    Adw.PreferencesGroup llm_system_prompt_group {
-      title: _("System Instructions");
+    Adw.PreferencesGroup llm_memory_group {
+      title: _("Conversation Memory");
+      description: _("Retain recent conversation history for multi-turn context.");
 
-      Adw.EntryRow llm_system_prompt_row {
-        title: _("System Prompt (Instructions)");
-      }
-    }
-
-    Adw.PreferencesGroup {
-      title: _("Tools &amp; Extensions");
-      description: _("Model Context Protocol (MCP) integrations and capabilities.");
-
-      Adw.ActionRow mcp_subpage_row {
-        title: _("Tools (MCP)");
-        subtitle: _("Configure Model Context Protocol tools and servers");
-        activatable: true;
-
-        [prefix]
-        Gtk.Image {
-          icon-name: "system-run-symbolic";
-          valign: center;
-        }
-
-        [suffix]
-        Gtk.Image {
-          icon-name: "go-next-symbolic";
-          valign: center;
-        }
-      }
-    }
-
-    Adw.PreferencesGroup {
-      title: _("Command Processing");
-      description: _("How a recognized command is dispatched before reaching the full assistant.");
-
-      Adw.ActionRow dispatch_subpage_row {
-        title: _("Command Dispatch");
-        subtitle: _("Enable or disable the Fast-Path and Medium-Path stages");
-        activatable: true;
-
-        [prefix]
-        Gtk.Image {
-          icon-name: "media-playlist-consecutive-symbolic";
-          valign: center;
-        }
-
-        [suffix]
-        Gtk.Image {
-          icon-name: "go-next-symbolic";
-          valign: center;
-        }
-      }
-
-      Adw.ActionRow skills_subpage_row {
-        title: _("Skills");
-        subtitle: _("View built-in skills and add your own trigger phrases");
-        activatable: true;
-
-        [prefix]
-        Gtk.Image {
-          icon-name: "applications-utilities-symbolic";
-          valign: center;
-        }
-
-        [suffix]
-        Gtk.Image {
-          icon-name: "go-next-symbolic";
-          valign: center;
-        }
+      Adw.SwitchRow llm_memory_enable_row {
+        title: _("Enable Memory");
+        subtitle: _("Remember previous messages in conversation");
       }
     }
   }
@@ -846,7 +833,7 @@ Adw.PreferencesDialog preferences_dialog {
       title: _("Cloud Configuration");
       visible: false;
 
-      Adw.EntryRow tts_cloud_api_key_row {
+      Adw.PasswordEntryRow tts_cloud_api_key_row {
         title: _("API Key");
       }
 
@@ -1266,6 +1253,77 @@ Adw.NavigationPage audio_subpage {
         }
       }
 
+      Adw.PreferencesGroup speaker_id_group {
+        title: _("Voice Recognition");
+        description: _("Identifies who is speaking from the voice timbre. It is not a security measure: a recording of your voice can pass the check.");
+
+        Adw.ActionRow speaker_id_mode_disabled_row {
+          title: _("Disabled");
+          subtitle: _("Do not identify speakers; all voice requests are processed");
+          activatable: true;
+          activatable-widget: speaker_id_mode_disabled_radio;
+
+          [prefix]
+          Gtk.CheckButton speaker_id_mode_disabled_radio {
+            valign: center;
+            margin-end: 12;
+          }
+        }
+
+        Adw.ActionRow speaker_id_mode_informative_row {
+          title: _("Informative");
+          subtitle: _("Identify speaker and personalize responses without blocking");
+          activatable: true;
+          activatable-widget: speaker_id_mode_informative_radio;
+
+          [prefix]
+          Gtk.CheckButton speaker_id_mode_informative_radio {
+            group: speaker_id_mode_disabled_radio;
+            valign: center;
+            margin-end: 12;
+          }
+        }
+
+        Adw.ActionRow speaker_id_mode_gate_row {
+          title: _("Gate");
+          subtitle: _("Only execute voice requests matching your voice profile");
+          activatable: true;
+          activatable-widget: speaker_id_mode_gate_radio;
+
+          [prefix]
+          Gtk.CheckButton speaker_id_mode_gate_radio {
+            group: speaker_id_mode_disabled_radio;
+            valign: center;
+            margin-end: 12;
+          }
+        }
+
+        Adw.SpinRow speaker_id_threshold_row {
+          title: _("Match threshold");
+          subtitle: _("Higher values reject more, including your own voice in noisy rooms");
+
+          adjustment: Gtk.Adjustment {
+            lower: 0.50;
+            upper: 0.95;
+            step-increment: 0.01;
+            page-increment: 0.05;
+          };
+
+          digits: 2;
+        }
+
+        Adw.ActionRow speaker_id_profile_row {
+          title: _("Voice profile");
+          subtitle: _("Not recorded");
+          activatable: true;
+
+          [suffix]
+          Gtk.Image {
+            icon-name: "go-next-symbolic";
+          }
+        }
+      }
+
       Adw.PreferencesGroup {
         Adw.ButtonRow audio_reset_btn {
           title: _("Restore Default Values");
@@ -1275,55 +1333,106 @@ Adw.NavigationPage audio_subpage {
   };
 }
 
-// COMMAND DISPATCH SUBPAGE
-Adw.NavigationPage dispatch_subpage {
-  tag: "dispatch_subpage";
-  title: _("Command Dispatch");
+// SPEAKER ENROLLMENT SUBPAGE
+Adw.NavigationPage speaker_enrollment_subpage {
+  tag: "speaker_enrollment_subpage";
+  title: _("Record Your Voice");
 
   child: Adw.ToolbarView {
     [top]
     Adw.HeaderBar {
       title-widget: Adw.WindowTitle {
-        title: _("Command Dispatch");
+        title: _("Record Your Voice");
       };
     }
 
-    content: Adw.PreferencesPage dispatch_page {
-      title: _("Command Dispatch");
-      icon-name: "media-playlist-consecutive-symbolic";
-      name: "dispatch";
+    content: Adw.Clamp {
+      maximum-size: 560;
 
-      Adw.PreferencesGroup {
-        description: _("A recognized command goes through up to three stages, stopping at the first one that resolves it: Fast-Path, Medium-Path, then Smart-Path. Disabling a stage makes commands fall through to the next one.");
-      }
+      child: Gtk.Box {
+        orientation: vertical;
+        spacing: 18;
+        margin-top: 24;
+        margin-bottom: 24;
+        margin-start: 24;
+        margin-end: 24;
 
-      Adw.PreferencesGroup {
-        title: _("Fast-Path");
-        description: _("Runs frequent commands (volume, theme, media, clock, launching apps) straight from regex patterns and semantic matching, without asking the language model. Responds in under 10 ms but only recognizes known phrasings.");
-
-        Adw.SwitchRow dispatch_fast_path_row {
-          title: _("Enable Fast-Path");
-          subtitle: _("Fastest, deterministic — no model involved");
+        Adw.Banner enrollment_download_banner {
+          title: _("Speaker identification model is downloading. Recording is currently disabled.");
+          revealed: false;
         }
 
-        Adw.SpinRow dispatch_semantic_threshold_row {
-          title: _("Semantic Router Confidence Threshold");
-          subtitle: _("Minimum similarity score required to execute an action directly instead of falling through");
-          digits: 2;
-          adjustment: Gtk.Adjustment {
-            lower: 0.50;
-            upper: 0.95;
-            step-increment: 0.05;
-            page-increment: 0.05;
-            value: 0.62;
-          };
+        Gtk.Label enrollment_intro_label {
+          label: _("Read the text aloud in your natural tone, about 50 cm from the microphone.");
+          wrap: true;
+          justify: center;
         }
-      }
 
-      Adw.PreferencesGroup {
-        title: _("Smart-Path");
-        description: _("Always active as the final stage: full conversation with memory, document retrieval and tool calling. Handles everything the Direct Action Engine leaves unresolved.");
-      }
+        Adw.PreferencesGroup {
+          Adw.ActionRow enrollment_user_row {
+            title: _("GNOME Session Account");
+            subtitle: "";
+            [prefix]
+            Gtk.Image {
+              icon-name: "avatar-default-symbolic";
+            }
+          }
+
+          Adw.EntryRow enrollment_name_entry {
+            title: _("Speaker Name");
+          }
+        }
+
+        Gtk.Frame {
+          Gtk.Label enrollment_text_label {
+            wrap: true;
+            selectable: false;
+            margin-top: 16;
+            margin-bottom: 16;
+            margin-start: 16;
+            margin-end: 16;
+            styles ["title-3"]
+          }
+        }
+
+        Gtk.LevelBar enrollment_level_bar {
+          min-value: 0.0;
+          max-value: 1.0;
+        }
+
+        Gtk.ProgressBar enrollment_progress_bar {
+          show-text: false;
+        }
+
+        Gtk.Label enrollment_status_label {
+          label: _("Ready");
+          styles ["dim-label"]
+        }
+
+        Gtk.Box {
+          orientation: horizontal;
+          homogeneous: true;
+          spacing: 12;
+
+          Gtk.Button enrollment_record_btn {
+            label: _("Start Recording");
+            styles ["suggested-action", "pill"]
+          }
+
+          Gtk.Button enrollment_cancel_btn {
+            label: _("Cancel");
+            visible: false;
+            styles ["pill"]
+          }
+        }
+
+        Adw.PreferencesGroup {
+          Adw.ButtonRow enrollment_delete_btn {
+            title: _("Delete Voice Profile");
+            styles ["destructive-action"]
+          }
+        }
+      };
     };
   };
 }
@@ -1380,190 +1489,6 @@ Adw.NavigationPage bugreport_subpage {
       Adw.PreferencesGroup {
         Adw.ButtonRow test_bugreport_btn {
           title: _("Test connessione");
-        }
-      }
-    };
-  };
-}
-
-// MCP SUBPAGE
-Adw.NavigationPage mcp_subpage {
-  tag: "mcp_subpage";
-  title: _("Tools (MCP)");
-
-  child: Adw.ToolbarView {
-    [top]
-    Adw.HeaderBar {
-      title-widget: Adw.WindowTitle {
-        title: _("Tools (MCP)");
-      };
-    }
-
-    content: Adw.PreferencesPage mcp_page {
-      title: _("Tools (MCP)");
-      icon-name: "system-run-symbolic";
-      name: "mcp";
-
-      Adw.PreferencesGroup mcp_enable_group {
-        title: _("Model Context Protocol (MCP)");
-        description: _("Integration with system tools and external capabilities.");
-
-        Adw.SwitchRow mcp_enable_row {
-          title: _("Enable Model Context Protocol");
-          subtitle: _("Allow assistant to execute actions via MCP tools");
-        }
-      }
-
-      Adw.PreferencesGroup mcp_config_group {
-        title: _("MCP Configuration");
-        description: _("Settings for tool registries and servers.");
-
-        Adw.EntryRow mcp_registry_url_row {
-          title: _("Registry URL");
-        }
-      }
-
-      Adw.PreferencesGroup mcp_servers_group {
-        title: _("Configured Servers");
-        description: _("Active MCP server connections.");
-
-        Adw.ActionRow mcp_server_gnome_row {
-          title: _("GNOME MCP Server");
-          subtitle: _("System integration tools (desktop, notifications, apps)");
-        }
-      }
-    };
-  };
-}
-
-// SKILLS CONSOLE SUBPAGE
-Adw.NavigationPage skills_subpage {
-  tag: "skills_subpage";
-  title: _("Skills");
-
-  child: Adw.ToolbarView {
-    [top]
-    Adw.HeaderBar {
-      title-widget: Adw.WindowTitle {
-        title: _("Skills");
-      };
-
-      [end]
-      Gtk.Button skills_add_btn {
-        icon-name: "list-add-symbolic";
-        tooltip-text: _("Add custom skill");
-        styles ["flat"]
-      }
-    }
-
-    content: Adw.PreferencesPage {
-      title: _("Skills");
-      icon-name: "applications-utilities-symbolic";
-      name: "skills";
-
-      Adw.PreferencesGroup {
-        description: _("Skills teach the Direct Action Engine to recognize a spoken phrase and run an MCP tool for it. Built-in skills are read-only; add your own below.");
-      }
-
-      Adw.PreferencesGroup skills_list_group {
-        title: _("Configured Skills");
-      }
-    };
-  };
-}
-
-// SKILL EDITOR SUBPAGE
-Adw.NavigationPage skill_editor_subpage {
-  tag: "skill_editor_subpage";
-  title: _("Skill");
-
-  child: Adw.ToolbarView {
-    [top]
-    Adw.HeaderBar {
-      title-widget: Adw.WindowTitle {
-        title: _("Skill");
-      };
-
-      [end]
-      Gtk.Button skill_editor_save_btn {
-        label: _("Save");
-        styles ["suggested-action"]
-      }
-    }
-
-    content: Adw.PreferencesPage {
-      title: _("Skill");
-
-      Adw.PreferencesGroup {
-        Adw.ActionRow skill_editor_error_row {
-          title: _("Error");
-          visible: false;
-          styles ["error"]
-        }
-      }
-
-      Adw.PreferencesGroup {
-        title: _("Details");
-
-        Adw.EntryRow skill_editor_name_row {
-          title: _("Display Name");
-        }
-
-        Adw.EntryRow skill_editor_intent_row {
-          title: _("Intent");
-        }
-
-        Adw.EntryRow skill_editor_tool_row {
-          title: _("MCP Tool");
-        }
-      }
-
-      Adw.PreferencesGroup {
-        title: _("Trigger Phrases");
-        description: _("One phrase per line. The semantic router matches spoken text against these.");
-
-        Gtk.Frame {
-          Gtk.ScrolledWindow {
-            min-content-height: 100;
-            hscrollbar-policy: never;
-
-            Gtk.TextView skill_editor_triggers_view {
-              top-margin: 8;
-              bottom-margin: 8;
-              left-margin: 8;
-              right-margin: 8;
-              wrap-mode: word;
-            }
-          }
-        }
-      }
-
-      Adw.PreferencesGroup {
-        title: _("Tool Arguments");
-        description: _("JSON object passed to the MCP tool, e.g. {\"setting\": \"wifi\", \"enabled\": true}.");
-
-        Gtk.Frame {
-          Gtk.ScrolledWindow {
-            min-content-height: 80;
-            hscrollbar-policy: never;
-
-            Gtk.TextView skill_editor_args_view {
-              top-margin: 8;
-              bottom-margin: 8;
-              left-margin: 8;
-              right-margin: 8;
-              wrap-mode: word;
-              monospace: true;
-            }
-          }
-        }
-      }
-
-      Adw.PreferencesGroup {
-        Gtk.Button skill_editor_delete_btn {
-          label: _("Delete Skill");
-          styles ["destructive-action"]
-          halign: start;
         }
       }
     };

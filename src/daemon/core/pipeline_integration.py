@@ -196,17 +196,19 @@ class StreamingPipelineController:
                 matched, intent_name, params, response = fast_path.dispatch(text)
                 
                 if matched:
+                    handler_response = None
+                    success = True
                     if hasattr(self.owner, "_handle_fast_path_intent"):
                         try:
-                            success, response = self.owner._handle_fast_path_intent(intent_name, params)
+                            success, handler_response = self.owner._handle_fast_path_intent(intent_name, params)
                         except TypeError:
-                            success, response = self.owner._handle_fast_path_intent(intent_name, params, text)
+                            success, handler_response = self.owner._handle_fast_path_intent(intent_name, params, text)
                     elif hasattr(self.owner, "assistant_runtime"):
-                        success, response = self.owner.assistant_runtime._handle_fast_path_intent(
+                        success, handler_response = self.owner.assistant_runtime._handle_fast_path_intent(
                             intent_name, params, text
                         )
-                    else:
-                        success = True
+                    if handler_response:
+                        response = handler_response
                     return {
                         "matched": matched,
                         "intent": intent_name,

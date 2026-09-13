@@ -14,10 +14,13 @@ import threading
 from pathlib import Path
 from typing import Callable, Any, Optional
 
+import re
+
 try:
     from core.model_registry import get_model_registry
     from core.cloud_config import get_cloud_config
     from core.locale_utils import get_system_language
+    from services.llm_service import clean_hf_name, estimate_gguf_size
 except ImportError:
     _d = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "daemon"))
     if _d not in sys.path:
@@ -25,6 +28,11 @@ except ImportError:
     from core.model_registry import get_model_registry
     from core.cloud_config import get_cloud_config
     from core.locale_utils import get_system_language
+    try:
+        from services.llm_service import clean_hf_name, estimate_gguf_size
+    except ImportError:
+        clean_hf_name = None
+        estimate_gguf_size = None
 
 import gi
 gi.require_version('Gtk', '4.0')
@@ -1199,6 +1207,16 @@ class ModelSelectorController:
             m_name = m.get("name") or m_id
             m_size = m.get("size_text") or m.get("size") or ""
             m_lang = m.get("lang") or ""
+
+            if self.current_provider.lower() in ("gguf", "llama", "local", "llm"):
+                if "/" in m_name or m_name.endswith("-GGUF") or m_name.endswith(".gguf"):
+                    if clean_hf_name:
+                        m_name = clean_hf_name(m_name)
+                if not m_size or str(m_size).strip().upper() == "GGUF":
+                    if estimate_gguf_size:
+                        m_size = estimate_gguf_size(m_id, m.get("file", ""))
+                    else:
+                        m_size = "~2.0 GB"
 
             matches_lang = self._model_matches_language(m, active_lang)
 

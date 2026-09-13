@@ -123,6 +123,77 @@ Adw.NavigationPage audio_subpage {
         }
       }
 
+      Adw.PreferencesGroup speaker_id_group {
+        title: _("Voice Recognition");
+        description: _("Identifies who is speaking from the voice timbre. It is not a security measure: a recording of your voice can pass the check.");
+
+        Adw.ActionRow speaker_id_mode_disabled_row {
+          title: _("Disabled");
+          subtitle: _("Do not identify speakers; all voice requests are processed");
+          activatable: true;
+          activatable-widget: speaker_id_mode_disabled_radio;
+
+          [prefix]
+          Gtk.CheckButton speaker_id_mode_disabled_radio {
+            valign: center;
+            margin-end: 12;
+          }
+        }
+
+        Adw.ActionRow speaker_id_mode_informative_row {
+          title: _("Informative");
+          subtitle: _("Identify speaker and personalize responses without blocking");
+          activatable: true;
+          activatable-widget: speaker_id_mode_informative_radio;
+
+          [prefix]
+          Gtk.CheckButton speaker_id_mode_informative_radio {
+            group: speaker_id_mode_disabled_radio;
+            valign: center;
+            margin-end: 12;
+          }
+        }
+
+        Adw.ActionRow speaker_id_mode_gate_row {
+          title: _("Gate");
+          subtitle: _("Only execute voice requests matching your voice profile");
+          activatable: true;
+          activatable-widget: speaker_id_mode_gate_radio;
+
+          [prefix]
+          Gtk.CheckButton speaker_id_mode_gate_radio {
+            group: speaker_id_mode_disabled_radio;
+            valign: center;
+            margin-end: 12;
+          }
+        }
+
+        Adw.SpinRow speaker_id_threshold_row {
+          title: _("Match threshold");
+          subtitle: _("Higher values reject more, including your own voice in noisy rooms");
+
+          adjustment: Gtk.Adjustment {
+            lower: 0.50;
+            upper: 0.95;
+            step-increment: 0.01;
+            page-increment: 0.05;
+          };
+
+          digits: 2;
+        }
+
+        Adw.ActionRow speaker_id_profile_row {
+          title: _("Voice profile");
+          subtitle: _("Not recorded");
+          activatable: true;
+
+          [suffix]
+          Gtk.Image {
+            icon-name: "go-next-symbolic";
+          }
+        }
+      }
+
       Adw.PreferencesGroup {
         Adw.ButtonRow audio_reset_btn {
           title: _("Restore Default Values");

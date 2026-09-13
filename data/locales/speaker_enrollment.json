@@ -1,0 +1,12 @@
+{
+  "it": {
+    "title": "Registrazione Vocale",
+    "instructions": "Leggi a voce alta e con tono naturale il testo seguente per registrare la tua impronta vocale.",
+    "text": "Nel mezzo del cammin di nostra vita mi ritrovai per una selva oscura, ché la diritta via era smarrita. Ahi quanto a dir qual era è cosa dura esta selva selvaggia e aspra e forte che nel pensier rinova la paura! Tant' è amara che poco è più morte; ma per trattar del ben ch'i' vi trovai, dirò de l'altre cose ch'i' v'ho scorte."
+  },
+  "en": {
+    "title": "Voice Enrollment",
+    "instructions": "Read the following text aloud in a natural tone to create your voice profile.",
+    "text": "The quick brown fox jumps over the lazy dog near the riverbank. Every morning brings a new opportunity to explore and learn something valuable. As the sun rises above the quiet hills, fresh ideas emerge and give shape to the day ahead. Speak clearly and maintain a steady rhythm while your voice is being recorded."
+  }
+}

@@ -24,7 +24,9 @@
       "Novembre",
       "Dicembre"
     ],
-    "clock_template": "Data e ora corrente di sistema: {day_name} {day} {month_name} {year}, ore {time}."
+    "clock_template": "Data e ora corrente di sistema: {day_name} {day} {month_name} {year}, ore {time}.",
+    "time_template": "Sono le {time}.",
+    "date_template": "Oggi è {day_name} {day} {month_name} {year}."
   },
   "en": {
     "days": [
@@ -51,7 +53,9 @@
       "November",
       "December"
     ],
-    "clock_template": "Current system date and time: {day_name}, {month_name} {day}, {year}, at {time}."
+    "clock_template": "Current system date and time: {day_name}, {month_name} {day}, {year}, at {time}.",
+    "time_template": "It is {time}.",
+    "date_template": "Today is {day_name}, {month_name} {day}, {year}."
   },
   "default": {
     "days": [
@@ -78,6 +82,8 @@
       "November",
       "December"
     ],
-    "clock_template": "Current system date and time: {day_name}, {month_name} {day}, {year}, at {time}."
+    "clock_template": "Current system date and time: {day_name}, {month_name} {day}, {year}, at {time}.",
+    "time_template": "It is {time}.",
+    "date_template": "Today is {day_name}, {month_name} {day}, {year}."
   }
 }

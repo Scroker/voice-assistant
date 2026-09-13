@@ -17,6 +17,7 @@ Performance Metrics Integration:
 import re
 import json
 import logging
+import time
 from typing import Callable, Optional, Dict, Any, List, Tuple
 from .state import StateMachine, AssistantState
 from .smart_path_controller import SmartPathController
@@ -133,8 +134,39 @@ def load_fast_path_patterns(lang: str = "") -> List[Tuple[str, str, Any, str]]:
         params = item.get("params", {})
         resp_key = item.get("response_key", intent)
         resp_tmpl = responses.get(resp_key, "")
-        res.append((pattern, intent, lambda m, p=params: dict(p), resp_tmpl))
+        def _make_extractor(p):
+            def _extract(m):
+                extracted = dict(p)
+                if m and hasattr(m, "groupdict"):
+                    for k, v in m.groupdict().items():
+                        if v is not None:
+                            extracted[k] = v.strip()
+                return extracted
+            return _extract
+
+        res.append((pattern, intent, _make_extractor(params), resp_tmpl))
     return res
+
+
+def is_deep_dive_requested(text: str, lang: str = "") -> bool:
+    """Restituisce True se il testo contiene una richiesta esplicita di approfondimento."""
+    if not text:
+        return False
+    from core.data_loader import load_json_data
+    raw = load_json_data("nlu/deep_dive_patterns.json", fallback_default=[]) or []
+    patterns = []
+    if lang:
+        for item in raw:
+            if item.get("lang") == lang:
+                patterns.extend(item.get("patterns", []))
+    if not patterns:
+        for item in raw:
+            patterns.extend(item.get("patterns", []))
+    clean = text.strip().lower()
+    for pat in patterns:
+        if re.search(pat, clean, re.IGNORECASE):
+            return True
+    return False
 
 
 class FastPathDispatcher:
@@ -226,7 +258,14 @@ class FastPathDispatcher:
             match = re.search(pattern, clean_text)
             if match:
                 params = param_extractor(match)
-                response_text = response_template.format(**params) if params else response_template
+                if intent_name == "get_time":
+                    from core.locale_utils import get_current_time_str
+                    response_text = get_current_time_str()
+                elif intent_name == "get_date":
+                    from core.locale_utils import get_current_date_str
+                    response_text = get_current_date_str()
+                else:
+                    response_text = response_template.format(**params) if params else response_template
                 
                 if self.intent_handler:
                     try:
@@ -320,19 +359,47 @@ class PipelineController:
         llm_streamer: Optional[Callable[[str], Any]] = None,
         tts_engine: Optional[Callable[[str], None]] = None,
         mcp_manager: Optional[Any] = None,
+        context_manager: Optional[Any] = None,
         fast_path_enabled: bool = False,
+        memory_enabled: bool = True,
+        owner: Optional[Any] = None,
+        settings: Optional[Any] = None,
     ):
         self.state_machine = state_machine
         self.audio_player = audio_player
         self.llm_streamer = llm_streamer
         self.tts_engine = tts_engine
         self.mcp_manager = mcp_manager
+        self.context_manager = context_manager
+        self.owner = owner
+        self.settings = settings
 
         self._fast_path_enabled = fast_path_enabled
         self.fast_path = FastPathDispatcher(enabled=fast_path_enabled)
-        self.smart_path = SmartPathController()
+        self.smart_path = SmartPathController(memory_enabled=memory_enabled)
         self.sentence_aggregator = SentenceAggregator(sentence_callback=self._on_sentence_ready)
         self._streaming_active = False
+        # Impostato da cancel_pipeline(): distingue una cancellazione esplicita
+        # (stop) dalla normale fine dello streaming, che resetta anche
+        # _streaming_active. Serve a sopprimere TTS/deep-dive residui dopo lo stop.
+        self._request_cancelled = False
+
+        self._current_context_id = "voice"
+        self._current_speak = True
+        self._current_tts_length = 0
+        self._current_tts_sentences = 0
+        self._accumulated_deep_dive_sentences: List[str] = []
+        self._needs_deep_dive = False
+
+    @property
+    def memory_enabled(self) -> bool:
+        """Flag per abilitare o disabilitare la memoria della conversazione."""
+        return getattr(self.smart_path, "memory_enabled", True)
+
+    @memory_enabled.setter
+    def memory_enabled(self, value: bool) -> None:
+        if hasattr(self, "smart_path") and self.smart_path:
+            self.smart_path.memory_enabled = bool(value)
 
     @property
     def fast_path_enabled(self) -> bool:
@@ -345,26 +412,248 @@ class PipelineController:
         if hasattr(self, 'fast_path') and self.fast_path:
             self.fast_path.enabled = self._fast_path_enabled
 
+    def _dispatch_token(self, token: str, context_id: str) -> None:
+        """Invoca on_token_callback supportando sia firme a 1 parametro (token) che a 2 parametri (token, context_id)."""
+        if getattr(self, "on_token_callback", None):
+            try:
+                self.on_token_callback(token, context_id)
+            except TypeError:
+                try:
+                    self.on_token_callback(token)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    def _get_deep_dive_threshold(self) -> int:
+        threshold = 400
+        if self.settings:
+            try:
+                from core.settings import get_int_setting
+                val = get_int_setting(self.settings, "deep-dive-threshold-chars", 400)
+                if val:
+                    threshold = val
+            except Exception:
+                pass
+        return threshold
+
+    def _notify_deep_dive(self, chat_id: str):
+        """Mostra una notifica desktop cliccabile per l'approfondimento aperto nella chat."""
+        def _on_notif_action(notif, action):
+            logger.info(f"[DeepDive] Azione notifica '{action}' per chat {chat_id}")
+            launcher = getattr(self.owner, '_launch_gui', None) if self.owner else None
+            if callable(launcher):
+                launcher("--open-conversation", chat_id)
+
+        try:
+            import notify2
+            if not notify2.is_initted():
+                notify2.init("Voice Assistant")
+            notif = notify2.Notification(
+                "Approfondimento disponibile",
+                "I dettagli completi sono stati spostati nella chat.",
+                "vocal-assistant-icon"
+            )
+            try:
+                notif.set_hint_string("desktop-entry", "org.local.VoiceAssistant.GUI")
+            except Exception:
+                pass
+            notif.add_action("default", "Apri", _on_notif_action)
+            notif.show()
+            return
+        except Exception as e:
+            logger.warning(f"[Pipeline] Notifica deep dive via notify2 fallita ({e}), fallback GDBus")
+
+        try:
+            from gi.repository import Gio, GLib
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            params = GLib.Variant(
+                "(susssasa{sv}i)",
+                (
+                    "Voice Assistant",
+                    0,
+                    "vocal-assistant-icon",
+                    "Approfondimento disponibile",
+                    "I dettagli completi sono stati spostati nella chat.",
+                    ["default", "Apri"],
+                    {"desktop-entry": GLib.Variant("s", "org.local.VoiceAssistant.GUI")},
+                    -1,
+                )
+            )
+            bus.call_sync(
+                "org.freedesktop.Notifications",
+                "/org/freedesktop/Notifications",
+                "org.freedesktop.Notifications",
+                "Notify",
+                params,
+                None,
+                Gio.DBusCallFlags.NONE,
+                1000,
+                None
+            )
+        except Exception as ex:
+            logger.debug(f"[Pipeline] Fallback notifica GDBus non riuscito: {ex}")
+
+    def _handle_deep_dive_completion(self, context_id: str, full_response: str, user_text: str = ""):
+        """Gestisce il completamento dell'approfondimento dopo la risposta."""
+        if not getattr(self, '_needs_deep_dive', False):
+            return
+
+        if getattr(self, '_request_cancelled', False):
+            # La richiesta è stata interrotta (stop) mentre lo streaming era in corso:
+            # non leggere nulla via TTS e non creare/notificare alcuna chat.
+            logger.info("[Pipeline] Deep dive completion ignorato: richiesta cancellata.")
+            return
+
+        threshold = self._get_deep_dive_threshold()
+        total_len = max(len(full_response), getattr(self, '_current_tts_length', 0))
+
+        try:
+            from core.locale_utils import get_system_language
+            lang = get_system_language(default="it")
+        except Exception:
+            lang = "it"
+
+        if total_len >= threshold:
+            logger.info(f"[Pipeline] Deep dive attivato: lunghezza {total_len} >= soglia {threshold}")
+            new_id = None
+            if self.context_manager:
+                title = "Approfondimento" if lang == "it" else "Deep Dive"
+                new_id = self.context_manager.create(title=title)
+                new_ctx = self.context_manager.get(new_id)
+                if new_ctx:
+                    question_text = (user_text or "").strip()
+                    answer_text = full_response.strip()
+
+                    # Se la memoria conversazione è abilitata, riprendi le ultime
+                    # messaggi della voice ctx come contesto; altrimenti (memoria
+                    # disabilitata) la voice ctx è vuota e la nuova chat deve
+                    # comunque contenere almeno la domanda e la risposta correnti.
+                    base_msgs: List[Dict[str, Any]] = []
+                    if self.memory_enabled:
+                        voice_ctx = self.context_manager.get("voice")
+                        if voice_ctx:
+                            with voice_ctx.lock:
+                                base_msgs = list(voice_ctx.messages[-6:])
+
+                    last_two = base_msgs[-2:]
+                    already_has_current_pair = (
+                        len(last_two) == 2
+                        and last_two[0].get("role") == "user"
+                        and (last_two[0].get("content") or "").strip() == question_text
+                        and last_two[1].get("role") == "assistant"
+                        and (last_two[1].get("content") or "").strip() == answer_text
+                    )
+
+                    with new_ctx.lock:
+                        new_ctx.messages = base_msgs
+                        if not already_has_current_pair:
+                            if question_text:
+                                new_ctx.messages.append({
+                                    "role": "user",
+                                    "content": question_text,
+                                    "timestamp": time.time(),
+                                })
+                            new_ctx.messages.append({
+                                "role": "assistant",
+                                "content": answer_text,
+                                "timestamp": time.time(),
+                            })
+                    self.context_manager.save(new_id)
+
+            # Leggi con TTS la frase localizzata da responses.json -> deep_dive.opened_chat
+            try:
+                from core.data_loader import load_json_data
+                resp_data = load_json_data("locales/responses.json", fallback_default={}) or {}
+                loc_data = resp_data.get(lang) or resp_data.get("it") or {}
+                dd_msg = loc_data.get("deep_dive", {}).get("opened_chat", "Ti ho aperto i dettagli nella chat.")
+            except Exception:
+                dd_msg = "Ti ho aperto i dettagli nella chat."
+
+            if self.tts_engine:
+                try:
+                    self.tts_engine(dd_msg)
+                except Exception as e:
+                    logger.error(f"[Pipeline] Errore sintesi TTS deep dive completamento: {e}")
+
+            if new_id and self.owner:
+                try:
+                    if hasattr(self.owner, "ConversationCreated"):
+                        self.owner.ConversationCreated(new_id, "deep_dive")
+                except Exception as e:
+                    logger.debug(f"[Pipeline] Errore emissione ConversationCreated: {e}")
+
+            if new_id:
+                self._notify_deep_dive(new_id)
+        else:
+            logger.info(f"[Pipeline] Deep dive non attivato: lunghezza {total_len} < soglia {threshold}. Leggo le frasi accumulate.")
+            for s in self._accumulated_deep_dive_sentences:
+                if self.tts_engine:
+                    try:
+                        self.tts_engine(s)
+                    except Exception as e:
+                        logger.error(f"[Pipeline] Errore sintesi frase accumulata: {e}")
+
     def _on_sentence_ready(self, sentence: str):
         """Callback invocata dall'aggregatore quando una frase completa è pronta."""
         if not getattr(self, '_current_speak', True):
             return
-        logger.info(f"[Pipeline] Frase pronta per TTS: '{sentence}'")
+
+        if getattr(self, '_request_cancelled', False):
+            # Richiesta interrotta (stop): non inviare più nulla al TTS, anche se
+            # lo stream (Smart-Path o fallback) continua a produrre token/frasi.
+            return
+
+        clean_sentence = sentence.strip()
+        if not clean_sentence:
+            return
+
+        self._current_tts_sentences = getattr(self, '_current_tts_sentences', 0) + 1
+        self._current_tts_length = getattr(self, '_current_tts_length', 0) + len(clean_sentence)
+
+        if getattr(self, '_needs_deep_dive', False):
+            if self._current_tts_sentences == 1:
+                logger.info(f"[Pipeline] Prima frase deep dive inviata al TTS: '{clean_sentence}'")
+                if self.tts_engine:
+                    try:
+                        self.tts_engine(clean_sentence)
+                    except Exception as e:
+                        logger.error(f"[Pipeline] Errore sintesi TTS prima frase deep dive: {e}")
+            else:
+                self._accumulated_deep_dive_sentences.append(clean_sentence)
+            return
+
+        logger.info(f"[Pipeline] Frase pronta per TTS: '{clean_sentence}'")
         if self.tts_engine:
             try:
-                self.tts_engine(sentence)
+                self.tts_engine(clean_sentence)
             except Exception as e:
-                logger.error(f"[Pipeline] Errore sintesi TTS della frase '{sentence}': {e}")
+                logger.error(f"[Pipeline] Errore sintesi TTS della frase '{clean_sentence}': {e}")
 
-    def process_text_input(self, text: str, speak: bool = True) -> Dict[str, Any]:
+    def process_text_input(
+        self,
+        text: str,
+        speak: bool = True,
+        context_id: str = "voice",
+        extra_context: str = "",
+    ) -> Dict[str, Any]:
         """
         Elabora il testo trascritto dall'STT o inviato da GUI.
         Se speak=False, la risposta è puramente testuale nella GUI senza riproduzione audio TTS.
         """
+        self._current_context_id = context_id
         self._current_speak = speak
+        self._current_tts_length = 0
+        self._current_tts_sentences = 0
+        self._accumulated_deep_dive_sentences = []
+        self._needs_deep_dive = bool(speak and context_id == "voice" and is_deep_dive_requested(text))
+        self._request_cancelled = False
+        
         if not text or not text.strip():
             self.state_machine.set_state(AssistantState.IDLE)
             return {"fast_path": False, "transcription": "", "response": ""}
+
+        ctx = self.context_manager.get(context_id) if self.context_manager else None
 
         if speak and self.audio_player and hasattr(self.audio_player, 'prepare_playback'):
             self.audio_player.prepare_playback()
@@ -376,6 +665,15 @@ class PipelineController:
             matched, intent, params, response_text = self.fast_path.dispatch(text)
             if matched and response_text:
                 logger.info(f"[Pipeline] Fast-Path match: {intent} -> '{response_text}' (speak={speak})")
+                
+                # Registriamo anche il fast-path nel contesto
+                if ctx:
+                    if context_id != "voice" or getattr(self.smart_path, "memory_enabled", True):
+                        ctx.add_message("user", text)
+                        ctx.add_message("assistant", response_text)
+                    if self.context_manager:
+                        self.context_manager.save(context_id)
+
                 if speak:
                     self.state_machine.set_state(AssistantState.SPEAKING)
                     if self.tts_engine:
@@ -396,13 +694,18 @@ class PipelineController:
             try:
                 success, smart_response, tool_result = self.smart_path.execute_smart_path(
                     text,
+                    context=ctx,
+                    extra_context=extra_context,
                     llm_streamer=self.llm_streamer,
                     mcp_manager=self.mcp_manager,
-                    token_callback=getattr(self, 'on_token_callback', None),
+                    token_callback=(lambda tok: self._dispatch_token(tok, context_id)) if getattr(self, 'on_token_callback', None) else None,
                     sentence_callback=self._on_sentence_ready if speak else None,
                 )
                 
                 if success and smart_response:
+                    if self.context_manager:
+                        self.context_manager.save(context_id)
+                    self._handle_deep_dive_completion(context_id, smart_response, user_text=text)
                     logger.info(f"[Pipeline] Smart-Path success: '{smart_response}' (speak={speak})")
                     if speak:
                         self.state_machine.set_state(AssistantState.SPEAKING)
@@ -429,18 +732,32 @@ class PipelineController:
         if self.llm_streamer:
             try:
                 self.state_machine.set_state(AssistantState.PROCESSING)
-                for token in self.llm_streamer(text):
+                
+                history_msgs = ctx.get_messages_for_llm() if (ctx and getattr(self.smart_path, "memory_enabled", False)) else None
+                
+                if ctx:
+                    self.smart_path.add_user_message(text, ctx)
+                    
+                try:
+                    stream_iter = self.llm_streamer(text, history=history_msgs, context=extra_context)
+                except TypeError:
+                    try:
+                        stream_iter = self.llm_streamer(text, history=history_msgs)
+                    except TypeError:
+                        stream_iter = self.llm_streamer(text)
+                for token in stream_iter:
                     if not self._streaming_active:
                         break
                     full_response += token
-                    if getattr(self, 'on_token_callback', None):
-                        try:
-                            self.on_token_callback(token)
-                        except Exception:
-                            pass
+                    self._dispatch_token(token, context_id)
                     self.sentence_aggregator.add_token(token)
 
                 self.sentence_aggregator.flush()
+                if ctx and full_response.strip():
+                    self.smart_path.add_assistant_message(full_response.strip(), ctx)
+                    if self.context_manager:
+                        self.context_manager.save(context_id)
+                self._handle_deep_dive_completion(context_id, full_response, user_text=text)
             except Exception as e:
                 logger.error(f"[Pipeline] Errore durante lo streaming LLM: {e}")
             finally:
@@ -457,6 +774,7 @@ class PipelineController:
     def cancel_pipeline(self, target_state=AssistantState.IDLE):
         """Interrompe immediatamente l'elaborazione corrente."""
         self._streaming_active = False
+        self._request_cancelled = True
         self.sentence_aggregator.reset()
         if self.audio_player and hasattr(self.audio_player, 'stop_playback'):
             self.audio_player.stop_playback()

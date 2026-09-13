@@ -114,6 +114,7 @@ class VectorStore:
         self.ttl_seconds = ttl_seconds
         
         # In-memory cache for fast access
+        self._lock = threading.RLock()
         self.documents: Dict[str, Document] = {}
         self.doc_vectors: Dict[str, Dict[str, float]] = {}
         
@@ -122,6 +123,8 @@ class VectorStore:
             data_dir = Path.home() / ".local" / "share" / "voice-assistant"
             data_dir.mkdir(parents=True, exist_ok=True)
             db_path = str(data_dir / "rag_store.db")
+        else:
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         
         self.db_path = db_path
         self._init_db()
@@ -230,48 +233,58 @@ class VectorStore:
         Returns:
             The document ID (new or existing if deduplicated)
         """
-        # Check for duplicates
-        test_id = Document._hash_content(content)
-        if test_id in self.documents:
-            logger.debug(f"[VectorStore] Document already exists: {test_id}")
-            return test_id
+        with self._lock:
+            # Check for duplicates
+            test_id = doc_id or Document._hash_content(content)
+            if test_id in self.documents:
+                logger.debug(f"[VectorStore] Document already exists: {test_id}")
+                return test_id
 
-        # Evict if at capacity
-        if len(self.documents) >= self.max_documents:
-            oldest_id = min(
-                self.documents.keys(),
-                key=lambda k: self.documents[k].timestamp,
-            )
-            self.remove_document(oldest_id)
-            logger.debug(f"[VectorStore] Evicted oldest document: {oldest_id}")
+            # Evict if at capacity
+            if len(self.documents) >= self.max_documents:
+                oldest_id = min(
+                    self.documents.keys(),
+                    key=lambda k: self.documents[k].timestamp,
+                )
+                self.remove_document(oldest_id)
+                logger.debug(f"[VectorStore] Evicted oldest document: {oldest_id}")
 
-        # Add to in-memory cache
-        doc = Document(content=content, doc_id=doc_id or test_id, metadata=metadata)
-        tokens = _simple_tokenize(content)
-        vec = _build_sparse_vector(tokens)
+            # Add to in-memory cache
+            doc = Document(content=content, doc_id=test_id, metadata=metadata)
+            tokens = _simple_tokenize(content)
+            vec = _build_sparse_vector(tokens)
 
-        self.documents[doc.doc_id] = doc
-        self.doc_vectors[doc.doc_id] = vec
-        logger.info(f"[VectorStore] Added document {doc.doc_id}: {content[:50]}...")
+            self.documents[doc.doc_id] = doc
+            self.doc_vectors[doc.doc_id] = vec
+            logger.info(f"[VectorStore] Added document {doc.doc_id}: {content[:50]}...")
 
-        return doc.doc_id
+            return doc.doc_id
 
-    def search(self, query: str, top_k: int = 5, min_score: float = 0.1) -> List[Tuple[str, float]]:
+    def search(self, query: str, top_k: int = 5, min_score: float = 0.1, context_id: str = "voice") -> List[Tuple[str, float]]:
         """Search for similar documents in memory.
 
-        Args:
-            query: Search query text
-            top_k: Number of results to return
-            min_score: Minimum similarity score threshold
-
-        Returns:
-            List of (content, score) tuples
+        Returns list of (content, score) tuples.
         """
+        with self._lock:
+            if not self.documents:
+                return []
+            docs_snapshot = dict(self.documents)
+            vectors_snapshot = dict(self.doc_vectors)
+
         query_tokens = _simple_tokenize(query)
         query_vec = _build_sparse_vector(query_tokens)
 
+        if not query_vec:
+            return []
+
         scores = []
-        for doc_id, doc_vec in self.doc_vectors.items():
+        for doc_id, doc in docs_snapshot.items():
+            # Filtro per contesto: ignora i doc di un'altra chat. I doc senza context_id sono globali (es. skills)
+            doc_ctx = doc.metadata.get("context_id") if doc.metadata else None
+            if doc_ctx and doc_ctx != context_id:
+                continue
+
+            doc_vec = vectors_snapshot.get(doc_id, {})
             score = _cosine_similarity(query_vec, doc_vec)
             if score >= min_score:
                 scores.append((doc_id, score))
@@ -279,33 +292,62 @@ class VectorStore:
         scores.sort(key=lambda x: x[1], reverse=True)
         results = []
         for doc_id, score in scores[:top_k]:
-            doc = self.documents[doc_id]
+            doc = docs_snapshot[doc_id]
             results.append((doc.content, score))
 
         return results
 
     def remove_document(self, doc_id: str) -> bool:
         """Remove a document from memory cache."""
-        if doc_id in self.documents:
-            del self.documents[doc_id]
-            del self.doc_vectors[doc_id]
-            logger.debug(f"[VectorStore] Removed document: {doc_id}")
-            return True
-        return False
+        with self._lock:
+            if doc_id in self.documents:
+                del self.documents[doc_id]
+                self.doc_vectors.pop(doc_id, None)
+                logger.debug(f"[VectorStore] Removed document: {doc_id}")
+                return True
+            return False
+
+    def delete_by_metadata(self, key: str, value: Any) -> int:
+        """Removes all documents matching a metadata key-value pair from memory and SQLite."""
+        with self._lock:
+            to_remove = [
+                doc_id for doc_id, doc in self.documents.items()
+                if doc.metadata and doc.metadata.get(key) == value
+            ]
+            for doc_id in to_remove:
+                self.documents.pop(doc_id, None)
+                self.doc_vectors.pop(doc_id, None)
+
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=5.0)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM documents WHERE json_extract(metadata, '$.' || ?) = ?",
+                    (key, value),
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"[VectorStore] Failed to delete from DB by metadata: {e}")
+
+            return len(to_remove)
 
     def get_all_documents(self) -> List[Dict[str, Any]]:
         """Get all documents from memory cache."""
-        return [doc.to_dict() for doc in self.documents.values()]
+        with self._lock:
+            return [doc.to_dict() for doc in self.documents.values()]
 
     def clear(self) -> None:
         """Clear all documents from memory cache."""
-        self.documents.clear()
-        self.doc_vectors.clear()
-        logger.info("[VectorStore] Cleared all documents from memory")
+        with self._lock:
+            self.documents.clear()
+            self.doc_vectors.clear()
+            logger.info("[VectorStore] Cleared all documents from memory")
 
     def get_size(self) -> int:
         """Get number of documents in memory cache."""
-        return len(self.documents)
+        with self._lock:
+            return len(self.documents)
 
     def _periodic_sync(self) -> None:
         """Background thread: periodically sync memory to SQLite."""
@@ -319,11 +361,14 @@ class VectorStore:
     def _sync_to_db(self) -> None:
         """Sync all in-memory documents to SQLite."""
         try:
+            with self._lock:
+                docs = list(self.documents.values())
+
             conn = sqlite3.connect(self.db_path, timeout=5.0)
             conn.isolation_level = None  # autocommit mode
             cursor = conn.cursor()
             
-            for doc_id, doc in self.documents.items():
+            for doc in docs:
                 cursor.execute("""
                     INSERT OR REPLACE INTO documents 
                     (doc_id, content, metadata, embedding, timestamp, created_at)

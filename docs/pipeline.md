@@ -61,6 +61,33 @@ graph TD
 
 ---
 
+## 1.1 Riconoscimento del Parlante (Speaker ID Verification)
+
+Prima che il testo riconosciuto (STT) entri nel `PipelineController`, il runtime dell'assistente (`assistant_runtime.py`) valuta l'identità vocale tramite `SpeakerIdController`:
+
+```mermaid
+graph TD
+    Audio[Audio del Parlato + Pre-roll 2.0s] --> Sess[VoiceSpeakerSession]
+    Sess --> Overlap{Sovrapposizione Voci?<br/>Sliding Window}
+    Overlap -->|Sì| OverlapFlag[overlap_detected = True]
+    Overlap -->|No| Embed[VoiceEncoder Embedding]
+    OverlapFlag --> Embed
+    Embed --> Match[SpeakerProfileStore.match]
+    Match --> Policy{SpeakerPolicy.evaluate<br/>mode: disabled/informative/gate}
+
+    Policy -->|gate: Rifiuto / Overlap| Reject[Emissione SpeakerRejected<br/>TTS Messaggio di Errore<br/>Blocco Richiesta]
+    Policy -->|informative: Riconosciuto| InfoContext[llm_context: 'Parlante identificato: Nome'<br/>Passaggio a PipelineController]
+    Policy -->|gate: Riconosciuto| GateContext[llm_context: 'Parlante identificato: Nome'<br/>Passaggio a PipelineController]
+    Policy -->|disabled / input testo| NoContext[Nessun Contesto Extra<br/>Passaggio a PipelineController]
+```
+
+### Modalità Operative
+1. **`disabled`**: Nessuna verifica attiva. Tutte le richieste passano direttamente alla pipeline.
+2. **`informative`**: Verifica asincrona in background. Se il parlante corrisponde al profilo memorizzato con punteggio $\ge$ soglia (default 0.75), inietta `"Parlante identificato: <nome>."` come contesto addizionale per SMART PATH ed LLM streaming. Non blocca alcuna richiesta.
+3. **`gate`**: Politica fail-closed di sicurezza. Esegue il comando vocale solo se il parlante corrisponde al profilo registrato e non vi sono sovrapposizioni di voci. All'attivazione della wakeword viene invocato il pre-riscaldamento asincrono `warm_up()`; la fase di `finalize()` attende fino a 8s la disponibilità dell'embedding. Durante il funzionamento in `gate`, il `ModelManager` protegge il backend Resemblyzer dallo scaricamento per inattività. In caso di fallimento (`unknown`, `overlap`, `insufficient_audio`, `no_profiles`, `unavailable`, `timeout`), emette il segnale D-Bus `SpeakerRejected`, pronuncia un messaggio esplicativo tramite TTS e arresta immediatamente la richiesta. I comandi di interruzione pura (`is_pure_stop_command`, es. `stop`, `basta`, `zitto`, `fermati`) e l'input testuale da GUI bypassano sempre la barriera e cancellano immediatamente la pipeline senza passare dall'LLM.
+
+---
+
 ## 2. Fast-Path Dispatcher (`FastPathDispatcher`)
 
 Per evitare le latenze dei modelli LLM nel caso di comandi semplici e deterministici, il sistema utilizza un sistema di **Fast-Path Intent Dispatcher** con tempo di risposta inferiore a **10ms**. Il dispatcher è implementato interamente dentro `src/daemon/core/pipeline.py` (classe `FastPathDispatcher`, righe ~140-297) — non è un modulo separato. **È disattivo di default**, attivabile dall'utente con `fast-path-enabled` (vedi warning in cima alla pagina): il codice sotto descrive il comportamento del dispatcher quando attivo.
@@ -192,11 +219,28 @@ La pipeline supporta il parametro `speak: bool = True` per differenziare la moda
 - Attivata via **Wakeword** o pulsante microfono.
 - L'output dell'assistente viene mostrato a schermo nella GUI ed **emesso acusticamente via TTS** tramite l'`AudioPlayer`.
 - Lo stato passa a `AssistantState.SPEAKING` durante la riproduzione.
-
 ### 2. Interazione da Tastiera (`is_voice=False`, `speak=False`)
 - Attivata dalla casella di testo nella **Finestra GUI Chat**.
 - I token dell'LLM e le frasi del Fast-Path vengono visualizzati **in tempo reale** nella chat della GUI, ma la riproduzione audio TTS viene **completamente disattivata**.
 - Lo stato del sistema rimane in `AssistantState.PROCESSING` durante la generazione e ritorna immediatamente in `AssistantState.IDLE`.
+
+### 3. Comandi di Interruzione Rapida (Pure Stop Command)
+- Se l'input vocale o testuale corrisponde a un comando di arresto puro (`is_pure_stop_command`, es. `"stop"`, `"basta"`, `"zitto"`, `"fermati"`):
+  - Viene interrotta immediatamente la riproduzione TTS attiva e azzerato il buffer audio.
+  - L'elaborazione della pipeline viene cancellata senza invocare l'LLM né registrare transazioni parziali.
+  - Non viene applicato alcun blocco o penalità dalla policy di Speaker ID.
+
+### 4. Modalità Deep Dive Vocale
+Quando un utente formula una richiesta vocale complessa che richiede un approfondimento esplicito:
+- Il sistema verifica la corrispondenza con i pattern regex di deep dive (`data/nlu/deep_dive_patterns.json`, funzione `is_deep_dive_requested(text)`).
+- Durante lo streaming LLM con `needs_deep_dive=True`, il `SentenceAggregator` invia al TTS **solo la prima frase** della risposta completa. I token residui continuano a essere accumulati in background.
+- Al completamento dello stream, se la lunghezza totale della risposta raggiunge o supera la soglia configurata `deep-dive-threshold-chars` (default **400 caratteri** in GSettings):
+  1. Viene creata automaticamente una nuova conversazione interattiva tramite `ConversationContextManager.create(trigger="deep_dive")`.
+  2. Vengono importati nella nuova chat gli ultimi 6 messaggi vocali della sessione per preservare la continuità del contesto, seguiti dalla risposta LLM completa.
+  3. Il TTS sintetizza la conferma vocale localizzata: `"Ti ho aperto i dettagli in una chat."` (`opened_chat`).
+  4. Viene emesso il segnale D-Bus `ConversationCreated(chat_id, "deep_dive")`.
+  5. Viene mostrata una notifica desktop di sistema GNOME con pulsante/azione predefinita che lancia la GUI puntando alla conversazione creata (`gui/start.sh --open-conversation <chat_id>`).
+- Se il testo non matcha i pattern di deep dive o se la risposta generata è inferiore alla soglia, la risposta viene letta per intero dal TTS.
 
 ---
 
@@ -208,19 +252,28 @@ La GUI (`src/gui/`) è un'applicazione GTK4/Libadwaita **separata** che comunica
 
 | Metodo | Comportamento |
 |---|---|
-| `ProcessTextInput(text)` | Richiama `_process_text(text, is_voice=False)` — pipeline completa in modalità silenziosa (nessun TTS) |
+| `ProcessTextInput(text)` | Richiama `_process_text(text, is_voice=False)` su contesto di default — pipeline in modalità silenziosa (nessun TTS) |
+| `ProcessConversationTextInput(conversation_id, text)` | Elabora testo specificando il `conversation_id` della sessione chat attiva |
 | `ToggleListening()` | Attiva/disattiva il microfono dalla GUI |
+| `GetConversations()` | Elenco metadati di tutte le conversazioni salvate in formato JSON |
+| `GetConversation(conversation_id)` | Dettaglio messaggi della conversazione specificata |
+| `CreateConversation(title)` | Crea una nuova sessione di chat interattiva |
+| `DeleteConversation(conversation_id)` | Elimina atomicamente la sessione indicata |
+| `ClearConversations()` | Rimuove tutte le conversazioni utente |
 
 ### Segnali D-Bus emessi verso la GUI
 
 | Segnale | Dati | Uso nella GUI |
 |---|---|---|
-| `TranscriptReceived(text, is_final)` | Testo STT | Mostra il messaggio dell'utente nella chat quando `is_final=True` |
-| `ResponseTokenStreamed(token, is_complete)` | Token LLM o risposta fast-path | `is_complete=False` → append token; `is_complete=True` → chiude bolla |
+| `TranscriptReceived(text, is_final)` | Testo STT | Canale broadcast generico per compatibilità |
+| `ResponseTokenStreamed(token, is_complete)` | Token LLM broadcast | Canale broadcast generico per compatibilità |
+| `ConversationTranscript(conversation_id, text, is_user, is_final)` | Trascrizione con ID chat | Routing mirato del messaggio dell'utente o assistente alla chat attiva |
+| `ConversationToken(conversation_id, token, is_complete)` | Token LLM con ID chat | Routing mirato dei token in streaming alla bolla della conversazione corretta |
+| `ConversationCreated(conversation_id, trigger)` | ID e trigger evento | Notifica alla GUI di selezionare la nuova chat (es. trigger `"deep_dive"`) |
 | `StateChanged(state)` | Stato corrente | Aggiorna l'indicatore di stato nella barra del titolo |
 
 ### Distinzione Fast-Path vs LLM Streaming
 
 La GUI usa il flag interno `_streaming_active` per distinguere i due casi:
-- **Fast-Path**: arriva un singolo `ResponseTokenStreamed(risposta_completa, True)` senza token precedenti → messaggio completo immediato.
-- **LLM Streaming**: arrivano N `ResponseTokenStreamed(token, False)` seguiti da `ResponseTokenStreamed("", True)` → bolla aperta che si riempie progressivamente poi si chiude.
+- **Fast-Path**: arriva un singolo token/messaggio con `is_complete=True` senza token precedenti → messaggio completo immediato.
+- **LLM Streaming**: arrivano N token con `is_complete=False` seguiti da token vuoto `""` con `is_complete=True` → bolla aperta che si riempie progressivamente poi si chiude.

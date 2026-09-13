@@ -13,13 +13,17 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
     <property name="default-height">680</property>
     <child>
       <object class="AdwBreakpoint">
-        <condition>max-width: 400sp</condition>
+        <condition>max-width: 500sp</condition>
         <setter object="split_view" property="collapsed">true</setter>
+        <setter object="split_view" property="min-sidebar-width">180</setter>
+        <setter object="split_view" property="max-sidebar-width">250</setter>
       </object>
     </child>
     <property name="content">
       <object class="AdwOverlaySplitView" id="split_view">
         <property name="show-sidebar" bind-source="show_sidebar_button" bind-property="active" bind-flags="sync-create"/>
+        <property name="min-sidebar-width">280</property>
+        <property name="max-sidebar-width">350</property>
         <property name="sidebar">
           <object class="AdwToolbarView">
             <child type="top">
@@ -30,6 +34,15 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                     <property name="subtitle" translatable="yes">AI Locale &amp; Offline</property>
                   </object>
                 </property>
+                <child type="end">
+                  <object class="GtkButton" id="new_chat_btn">
+                    <property name="icon-name">list-add-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Nuova chat</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
               </object>
             </child>
             <child type="bottom">
@@ -83,13 +96,19 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
               <object class="GtkBox">
                 <property name="orientation">1</property>
                 <child>
-                  <object class="AdwViewSwitcherSidebar">
+                  <object class="GtkScrolledWindow">
                     <property name="vexpand">true</property>
-                    <property name="stack">stack_pages</property>
+                    <child>
+                      <object class="GtkListBox" id="chats_list">
+                        <style>
+                          <class name="navigation-sidebar"/>
+                        </style>
+                      </object>
+                    </child>
                   </object>
                 </child>
                 <child>
-                  <object class="AdwSidebar">
+                  <object class="AdwSidebar" id="addons_sidebar">
                     <child>
                       <object class="AdwSidebarSection">
                         <property name="title">Addons</property>
@@ -114,94 +133,349 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
           </object>
         </property>
         <property name="content">
-          <object class="AdwToolbarView" id="toolbar_view">
-            <child type="top">
-              <object class="AdwHeaderBar">
-                <child type="start">
-                  <object class="GtkToggleButton" id="show_sidebar_button">
-                    <property name="icon-name">sidebar-show-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Toggle Sidebar</property>
-                    <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="sync-create"/>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <property name="content">
-              <object class="AdwViewStack" id="stack_pages">
-                <child>
-                  <object class="AdwViewStackPage">
-                    <property name="name">Chat</property>
-                    <property name="icon-name">chat-message-new-symbolic</property>
-                    <property name="title">Chat</property>
-                    <property name="child">
-                      <object class="AdwToolbarView">
-                        <child>
-                          <object class="AdwClamp">
-                            <property name="maximum-size">680</property>
+          <object class="AdwViewStack" id="stack_pages">
+            <child>
+              <object class="AdwViewStackPage">
+                <property name="name">Chat</property>
+                <property name="icon-name">chat-message-new-symbolic</property>
+                <property name="title">Chat</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar" id="chat_headerbar">
+                        <child type="start">
+                          <object class="GtkToggleButton" id="show_sidebar_button">
+                            <property name="icon-name">sidebar-show-symbolic</property>
+                            <property name="tooltip-text" translatable="yes">Toggle Sidebar</property>
+                            <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="sync-create"/>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <object class="AdwClamp">
+                        <property name="maximum-size">680</property>
+                        <property name="child">
+                          <object class="GtkScrolledWindow" id="scrolled">
+                            <property name="hscrollbar-policy">2</property>
+                            <property name="vexpand">true</property>
                             <property name="child">
-                              <object class="GtkScrolledWindow" id="scrolled">
-                                <property name="hscrollbar-policy">2</property>
-                                <property name="vexpand">true</property>
-                                <property name="child">
-                                  <object class="GtkBox" id="chat_box">
-                                    <property name="orientation">1</property>
-                                    <property name="margin-top">12</property>
-                                    <property name="margin-bottom">12</property>
-                                  </object>
-                                </property>
+                              <object class="GtkBox" id="chat_box">
+                                <property name="orientation">1</property>
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
                               </object>
                             </property>
                           </object>
-                        </child>
-                        <child type="bottom">
-                          <object class="AdwClamp">
-                            <property name="maximum-size">680</property>
-                            <property name="child">
-                              <object class="GtkBox">
-                                <property name="orientation">0</property>
-                                <property name="spacing">8</property>
-                                <property name="margin-top">8</property>
-                                <property name="margin-bottom">12</property>
-                                <property name="margin-start">12</property>
-                                <property name="margin-end">12</property>
-                                <child>
-                                  <object class="GtkEntry" id="entry">
-                                    <property name="placeholder-text" translatable="yes">Scrivi un messaggio o fai una domanda...</property>
-                                    <property name="hexpand">true</property>
-                                    <style>
-                                      <class name="pill"/>
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkButton" id="send_btn">
-                                    <property name="icon-name">paper-plane-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Invia messaggio</property>
-                                    <style>
-                                      <class name="suggested-action"/>
-                                      <class name="circular"/>
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkButton" id="mic_btn">
-                                    <property name="icon-name">audio-input-microphone-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Avvia ascolto vocale (Push-to-Talk)</property>
-                                    <style>
-                                      <class name="circular"/>
-                                    </style>
-                                  </object>
-                                </child>
+                        </property>
+                      </object>
+                    </property>
+                    <child type="bottom">
+                      <object class="AdwClamp">
+                        <property name="maximum-size">680</property>
+                        <property name="child">
+                          <object class="GtkBox">
+                            <property name="orientation">0</property>
+                            <property name="spacing">8</property>
+                            <property name="margin-top">8</property>
+                            <property name="margin-bottom">12</property>
+                            <property name="margin-start">12</property>
+                            <property name="margin-end">12</property>
+                            <child>
+                              <object class="GtkEntry" id="entry">
+                                <property name="placeholder-text" translatable="yes">Scrivi un messaggio o fai una domanda...</property>
+                                <property name="hexpand">true</property>
+                                <style>
+                                  <class name="pill"/>
+                                </style>
                               </object>
-                            </property>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="send_btn">
+                                <property name="icon-name">paper-plane-symbolic</property>
+                                <property name="tooltip-text" translatable="yes">Invia messaggio</property>
+                                <style>
+                                  <class name="suggested-action"/>
+                                  <class name="circular"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="mic_btn">
+                                <property name="icon-name">audio-input-microphone-symbolic</property>
+                                <property name="tooltip-text" translatable="yes">Avvia ascolto vocale (Push-to-Talk)</property>
+                                <style>
+                                  <class name="circular"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwViewStackPage">
+                <property name="name">MCP</property>
+                <property name="title">MCP</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar">
+                        <child type="start">
+                          <object class="GtkToggleButton" id="show_sidebar_button_mcp">
+                            <property name="icon-name">sidebar-show-symbolic</property>
+                            <property name="tooltip-text" translatable="yes">Toggle Sidebar</property>
+                            <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="sync-create"/>
+                          </object>
+                        </child>
+                        <property name="title-widget">
+                          <object class="AdwWindowTitle">
+                            <property name="title" translatable="yes">Tools (MCP)</property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <object class="AdwPreferencesPage" id="mcp_page">
+                        <property name="title" translatable="yes">Tools (MCP)</property>
+                        <property name="icon-name">system-run-symbolic</property>
+                        <property name="name">mcp</property>
+                        <child>
+                          <object class="AdwPreferencesGroup" id="mcp_enable_group">
+                            <property name="title" translatable="yes">Model Context Protocol (MCP)</property>
+                            <property name="description" translatable="yes">Integration with system tools and external capabilities.</property>
+                            <child>
+                              <object class="AdwSwitchRow" id="mcp_enable_row">
+                                <property name="title" translatable="yes">Enable Model Context Protocol</property>
+                                <property name="subtitle" translatable="yes">Allow assistant to execute actions via MCP tools</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwPreferencesGroup" id="mcp_config_group">
+                            <property name="title" translatable="yes">MCP Configuration</property>
+                            <property name="description" translatable="yes">Settings for tool registries and servers.</property>
+                            <child>
+                              <object class="AdwEntryRow" id="mcp_registry_url_row">
+                                <property name="title" translatable="yes">Registry URL</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwPreferencesGroup" id="mcp_servers_group">
+                            <property name="title" translatable="yes">Configured Servers</property>
+                            <property name="description" translatable="yes">Active MCP server connections.</property>
+                            <child>
+                              <object class="AdwActionRow" id="mcp_server_gnome_row">
+                                <property name="title" translatable="yes">GNOME MCP Server</property>
+                                <property name="subtitle" translatable="yes">System integration tools (desktop, notifications, apps)</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>
                     </property>
                   </object>
-                </child>
+                </property>
               </object>
-            </property>
+            </child>
+            <child>
+              <object class="AdwViewStackPage">
+                <property name="name">Skills</property>
+                <property name="title">Skills</property>
+                <property name="child">
+                  <object class="AdwNavigationView" id="skills_nav_view">
+                    <child>
+                      <object class="AdwNavigationPage" id="skills_subpage">
+                        <property name="tag">skills_subpage</property>
+                        <property name="title" translatable="yes">Skills</property>
+                        <property name="child">
+                          <object class="AdwToolbarView">
+                            <child type="top">
+                              <object class="AdwHeaderBar">
+                                <child type="start">
+                                  <object class="GtkToggleButton" id="show_sidebar_button_skills">
+                                    <property name="icon-name">sidebar-show-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Toggle Sidebar</property>
+                                    <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="sync-create"/>
+                                  </object>
+                                </child>
+                                <property name="title-widget">
+                                  <object class="AdwWindowTitle">
+                                    <property name="title" translatable="yes">Skills</property>
+                                  </object>
+                                </property>
+                                <child type="end">
+                                  <object class="GtkButton" id="skills_add_btn">
+                                    <property name="icon-name">list-add-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Add custom skill</property>
+                                    <style>
+                                      <class name="flat"/>
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <property name="content">
+                              <object class="AdwPreferencesPage">
+                                <property name="title" translatable="yes">Skills</property>
+                                <property name="icon-name">applications-utilities-symbolic</property>
+                                <property name="name">skills</property>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <property name="description" translatable="yes">Skills teach the Direct Action Engine to recognize a spoken phrase and run an MCP tool for it. Built-in skills are read-only; add your own below.</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesGroup" id="skills_list_group">
+                                    <property name="title" translatable="yes">Configured Skills</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwNavigationPage" id="skill_editor_subpage">
+                        <property name="tag">skill_editor_subpage</property>
+                        <property name="title" translatable="yes">Skill</property>
+                        <property name="child">
+                          <object class="AdwToolbarView">
+                            <child type="top">
+                              <object class="AdwHeaderBar">
+                                <property name="title-widget">
+                                  <object class="AdwWindowTitle">
+                                    <property name="title" translatable="yes">Skill</property>
+                                  </object>
+                                </property>
+                                <child type="end">
+                                  <object class="GtkButton" id="skill_editor_save_btn">
+                                    <property name="label" translatable="yes">Save</property>
+                                    <style>
+                                      <class name="suggested-action"/>
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <property name="content">
+                              <object class="AdwPreferencesPage">
+                                <property name="title" translatable="yes">Skill</property>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <child>
+                                      <object class="AdwActionRow" id="skill_editor_error_row">
+                                        <property name="title" translatable="yes">Error</property>
+                                        <property name="visible">false</property>
+                                        <style>
+                                          <class name="error"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <property name="title" translatable="yes">Details</property>
+                                    <child>
+                                      <object class="AdwEntryRow" id="skill_editor_name_row">
+                                        <property name="title" translatable="yes">Display Name</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwEntryRow" id="skill_editor_intent_row">
+                                        <property name="title" translatable="yes">Intent</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwEntryRow" id="skill_editor_tool_row">
+                                        <property name="title" translatable="yes">MCP Tool</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <property name="title" translatable="yes">Trigger Phrases</property>
+                                    <property name="description" translatable="yes">One phrase per line. The semantic router matches spoken text against these.</property>
+                                    <child>
+                                      <object class="GtkFrame">
+                                        <child>
+                                          <object class="GtkScrolledWindow">
+                                            <property name="min-content-height">100</property>
+                                            <property name="hscrollbar-policy">2</property>
+                                            <child>
+                                              <object class="GtkTextView" id="skill_editor_triggers_view">
+                                                <property name="top-margin">8</property>
+                                                <property name="bottom-margin">8</property>
+                                                <property name="left-margin">8</property>
+                                                <property name="right-margin">8</property>
+                                                <property name="wrap-mode">2</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <property name="title" translatable="yes">Tool Arguments</property>
+                                    <property name="description" translatable="yes">JSON object passed to the MCP tool, e.g. {"setting": "wifi", "enabled": true}.</property>
+                                    <child>
+                                      <object class="GtkFrame">
+                                        <child>
+                                          <object class="GtkScrolledWindow">
+                                            <property name="min-content-height">80</property>
+                                            <property name="hscrollbar-policy">2</property>
+                                            <child>
+                                              <object class="GtkTextView" id="skill_editor_args_view">
+                                                <property name="top-margin">8</property>
+                                                <property name="bottom-margin">8</property>
+                                                <property name="left-margin">8</property>
+                                                <property name="right-margin">8</property>
+                                                <property name="wrap-mode">2</property>
+                                                <property name="monospace">true</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <child>
+                                      <object class="GtkButton" id="skill_editor_delete_btn">
+                                        <property name="label" translatable="yes">Delete Skill</property>
+                                        <style>
+                                          <class name="destructive-action"/>
+                                        </style>
+                                        <property name="halign">1</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
           </object>
         </property>
       </object>

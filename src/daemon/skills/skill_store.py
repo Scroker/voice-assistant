@@ -42,17 +42,33 @@ def _yaml_quote(value: str) -> str:
 
 def _serialize_markdown_skill(skill: Dict[str, Any]) -> str:
     intent = str(skill["intent"]).strip()
-    lines = ["---", f"name: {_yaml_quote(skill.get('name') or intent)}"]
-    if skill.get("tool"):
-        lines.append(f"tool: {_yaml_quote(skill['tool'])}")
-    lines.append(f"args: {json.dumps(skill.get('args') or {})}")
+    action_type = skill.get("action_type") or "system"
+    lines = [
+        "---",
+        f"name: {_yaml_quote(skill.get('name') or intent)}",
+        f"action_type: {_yaml_quote(action_type)}",
+    ]
+    if action_type == "system":
+        if skill.get("tool"):
+            lines.append(f"tool: {_yaml_quote(skill['tool'])}")
+        lines.append(f"args: {json.dumps(skill.get('args') or {})}")
+    elif action_type == "command":
+        lines.append(f"command: {_yaml_quote(skill.get('command') or '')}")
+    elif action_type == "prompt":
+        lines.append(f"prompt: {_yaml_quote(skill.get('prompt') or '')}")
+    elif action_type == "response":
+        lines.append(f"response: {_yaml_quote(skill.get('response') or '')}")
+
     lines.append(f"intent: {_yaml_quote(intent)}")
     lines.append("triggers:")
     for trigger in skill["triggers"]:
         lines.append(f"  - {_yaml_quote(trigger)}")
     lines.append("---")
     lines.append("")
-    lines.append(f"Custom skill for intent '{intent}', created from the Skills console.")
+    if action_type == "prompt" and skill.get("prompt"):
+        lines.append(str(skill.get("prompt")).strip())
+    else:
+        lines.append(f"Custom skill for intent '{intent}', created from the Skills console.")
     lines.append("")
     return "\n".join(lines)
 
@@ -67,15 +83,38 @@ def save_user_skill(skill: Dict[str, Any]) -> Path:
     if not triggers:
         raise ValueError("Serve almeno una frase di attivazione.")
 
+    action_type = str(skill.get("action_type") or "system").strip().lower()
+    if action_type not in ("system", "command", "prompt", "response"):
+        action_type = "system"
+
+    command = str(skill.get("command") or "").strip()
+    prompt = str(skill.get("prompt") or "").strip()
+    response = str(skill.get("response") or "").strip()
+    tool = str(skill.get("tool") or "").strip()
     args = skill.get("args") or {}
-    if not isinstance(args, dict):
-        raise ValueError("Args deve essere un oggetto JSON.")
+
+    if action_type == "command":
+        if not command:
+            raise ValueError("Il comando terminale è obbligatorio.")
+    elif action_type == "prompt":
+        if not prompt:
+            raise ValueError("Le istruzioni/prompt per l'AI sono obbligatorie.")
+    elif action_type == "response":
+        if not response:
+            raise ValueError("Il testo della risposta è obbligatorio.")
+    elif action_type == "system":
+        if not isinstance(args, dict):
+            raise ValueError("Args deve essere un oggetto JSON.")
 
     normalized = {
         "name": str(skill.get("name") or intent).strip(),
         "intent": intent,
-        "tool": str(skill.get("tool") or "").strip(),
-        "args": args,
+        "action_type": action_type,
+        "command": command,
+        "prompt": prompt,
+        "response": response,
+        "tool": tool,
+        "args": args if isinstance(args, dict) else {},
         "triggers": triggers,
     }
 

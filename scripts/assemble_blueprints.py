@@ -25,11 +25,8 @@ _SUBPAGE_ORDER = [
     "subpages.blp",
     "subpage_models.blp",
     "subpage_audio.blp",
-    "subpage_dispatch.blp",
+    "subpage_speaker_enrollment.blp",
     "subpage_bugreport.blp",
-    "subpage_mcp.blp",
-    "subpage_skills.blp",
-    "subpage_skill_editor.blp",
 ]
 
 

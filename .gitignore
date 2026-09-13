@@ -34,3 +34,4 @@ po/voice-assistant.pot
 .DS_Store
 *.swp
 *~
+.claude/

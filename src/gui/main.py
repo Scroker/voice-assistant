@@ -58,6 +58,16 @@ def main() -> int:
             app_instance._assistant_win = win
             win.present()
 
+        if '--open-conversation' in args:
+            try:
+                idx = args.index('--open-conversation')
+                if idx + 1 < len(args):
+                    conv_id = args[idx + 1]
+                    if hasattr(win, 'open_conversation'):
+                        win.open_conversation(conv_id)
+            except Exception as e:
+                pass
+
         if '--install-deps' in args or '--auto-install' in args:
             auto_start = '--auto-install' in args
             win.trigger_dependency_installer(auto_start=auto_start)

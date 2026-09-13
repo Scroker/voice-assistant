@@ -116,5 +116,25 @@
     "intent": "mute",
     "params": {},
     "response_key": "mute"
+  },
+  {
+    "pattern": "(?:invia|manda|scrivi)\\s+(?:una\\s+|un')?(?:email|mail)\\s+a\\s+(?P<to>[^\\s]+@[^\\s]+|[a-zA-Z0-9._-]+)(?:\\s+con\\s+oggetto\\s+(?P<subject>.+?))?(?:\\s+(?:e\\s+)?(?:con\\s+testo|testo|con\\s+messaggio|messaggio|dicendo)\\s+(?P<text>.+))?$",
+    "intent": "compose_mail",
+    "params": {},
+    "response_key": "compose_mail"
+  },
+  {
+    "pattern": "(?:scrivi|componi|crea)\\s+(?:una\\s+|un')?(?:nuova\\s+)?(?:mail|email)|(?:nuova\\s+)(?:mail|email)",
+    "intent": "compose_mail",
+    "params": {},
+    "response_key": "compose_mail"
+  },
+  {
+    "pattern": "(?:(?:apri|aprire|avvia|lancia|mostra|mostrami|controlla|guarda)\\s+(?:la\\s+|le\\s+|l'|i\\s+)?(?:posta(?:\\s+elettronica)?|mail|email|e-mail)|^(?:la\\s+|le\\s+|l'|i\\s+)?(?:posta(?:\\s+elettronica)?|mail|email|e-mail)$)",
+    "intent": "launch_app",
+    "params": {
+      "app": "mail"
+    },
+    "response_key": "launch_app"
   }
 ]

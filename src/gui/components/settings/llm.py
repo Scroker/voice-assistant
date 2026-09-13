@@ -297,8 +297,6 @@ class LLMSettings:
         self._update_current_model_label()
 
     def _setup(self) -> None:
-        bind_setting(self.settings, "llm-enabled", self.builder, "llm_enable_row", "active")
-
         local_mode_radio = self.builder.get_object("llm_mode_local_radio")
         cloud_mode_radio = self.builder.get_object("llm_mode_cloud_radio")
 
@@ -400,7 +398,15 @@ class LLMSettings:
 
         # Setup API Key e Prompt di Sistema
         self._setup_api_key_row()
-        bind_setting(self.settings, "llm-system-prompt", self.builder, "llm_system_prompt_row", "text")
+        if self.builder.get_object("llm_system_prompt_buffer"):
+            bind_setting(self.settings, "llm-system-prompt", self.builder, "llm_system_prompt_buffer", "text")
+        elif self.builder.get_object("llm_system_prompt_row"):
+            bind_setting(self.settings, "llm-system-prompt", self.builder, "llm_system_prompt_row", "text")
+
+        # Memoria conversazione
+        self.memory_enable_row = self.builder.get_object("llm_memory_enable_row")
+        if self.memory_enable_row and self.settings:
+            self.settings.bind("memory-enabled", self.memory_enable_row, "active", Gio.SettingsBindFlags.DEFAULT)
 
         # Unificazione endpoint URL (sincronizza sia llm-endpoint che llm-url e cloud_config)
         self._setup_endpoint_row()
@@ -428,26 +434,6 @@ class LLMSettings:
                 current_llm_row.connect("activated", _open_llm_selector)
             if cloud_llm_row:
                 cloud_llm_row.connect("activated", _open_llm_selector)
-
-        # Sottopagina Tools (MCP)
-        mcp_row = self.builder.get_object("mcp_subpage_row")
-        mcp_subpage = self.builder.get_object("mcp_subpage")
-        if mcp_row and mcp_subpage:
-            def _open_mcp(*_):
-                win = self.parent_window or (mcp_row.get_root() if hasattr(mcp_row, "get_root") else None)
-                if win and hasattr(win, "push_subpage"):
-                    win.push_subpage(mcp_subpage)
-            mcp_row.connect("activated", _open_mcp)
-
-        # Sottopagina Dispatch dei Comandi
-        dispatch_subpage_row = self.builder.get_object("dispatch_subpage_row")
-        dispatch_subpage = self.builder.get_object("dispatch_subpage")
-        if dispatch_subpage_row and dispatch_subpage:
-            def _open_dispatch(*_):
-                win = self.parent_window or (dispatch_subpage_row.get_root() if hasattr(dispatch_subpage_row, "get_root") else None)
-                if win and hasattr(win, "push_subpage"):
-                    win.push_subpage(dispatch_subpage)
-            dispatch_subpage_row.connect("activated", _open_dispatch)
 
         # Sottoscrizione reattiva alle modifiche GSettings
         if self.settings:

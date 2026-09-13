@@ -46,5 +46,11 @@
     "package_name": "openwakeword",
     "description": "Motore Wake Word OpenWakeWord",
     "is_critical": false
+  },
+  {
+    "import_name": "resemblyzer",
+    "package_name": "resemblyzer",
+    "description": "Riconoscimento vocale del parlante (Speaker ID)",
+    "is_critical": false
   }
 ]

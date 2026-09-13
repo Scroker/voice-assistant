@@ -19,7 +19,8 @@ subdir('tests')
 
 gnome.post_install(
   glib_compile_schemas: true,
-  update_desktop_database: false
+  update_desktop_database: false,
+  gtk_update_icon_cache: true
 )
 
 meson.add_install_script('sh', '-c', 'glib-compile-schemas "$MESON_INSTALL_DESTDIR_PREFIX/share/gnome-shell/extensions/@0@/schemas"'.format(uuid))

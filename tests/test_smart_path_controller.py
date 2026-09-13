@@ -178,6 +178,29 @@ class TestSmartPathController(unittest.TestCase):
 
         self.assertEqual(len(controller.memory.messages), 0)
 
+    def test_memory_enabled_toggle_clears_memory_when_disabled(self):
+        controller = SmartPathController(memory_enabled=True)
+        controller.add_user_message("Message 1")
+        controller.add_assistant_message("Response 1")
+        self.assertEqual(len(controller.memory.messages), 2)
+
+        controller.memory_enabled = False
+        self.assertEqual(len(controller.memory.messages), 0)
+        self.assertFalse(controller.memory_enabled)
+
+    def test_memory_disabled_does_not_record_or_inject_history(self):
+        controller = SmartPathController(memory_enabled=False)
+        controller.add_user_message("Message 1")
+        controller.add_assistant_message("Response 1")
+        self.assertEqual(len(controller.memory.messages), 0)
+
+        messages = controller.build_smart_prompt("Message 2", use_history=True)
+        # Should only contain system and user prompt, no previous history messages
+        user_messages = [m for m in messages if m["role"] == "user"]
+        self.assertEqual(len(user_messages), 1)
+        self.assertEqual(user_messages[0]["content"], "Message 2")
+
+
 
 if __name__ == "__main__":
     unittest.main()

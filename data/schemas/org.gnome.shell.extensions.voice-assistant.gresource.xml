@@ -70,6 +70,7 @@
     <file>locales/date_time_formats.json</file>
     <file>locales/number_words.json</file>
     <file>locales/responses.json</file>
+    <file>locales/speaker_enrollment.json</file>
     <file>llm/default_providers.json</file>
     <file>nlu/fast_path_patterns.json</file>
     <file>catalog/stt_models.json</file>

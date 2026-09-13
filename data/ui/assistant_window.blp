@@ -8,15 +8,19 @@ template $AssistantWindow : Adw.ApplicationWindow {
   default-height: 680;
 
   Adw.Breakpoint {
-    condition ("max-width: 400sp")
+    condition ("max-width: 500sp")
 
     setters {
       split_view.collapsed: true;
+      split_view.min-sidebar-width: 180;
+      split_view.max-sidebar-width: 250;
     }
   }
 
   content: Adw.OverlaySplitView split_view {
     show-sidebar: bind show_sidebar_button.active;
+    min-sidebar-width: 280;
+    max-sidebar-width: 350;
 
     sidebar: Adw.ToolbarView {
       [top]
@@ -25,6 +29,12 @@ template $AssistantWindow : Adw.ApplicationWindow {
           title: _("Assistente Vocale");
           subtitle: _("AI Locale & Offline");
         };
+        [end]
+        Gtk.Button new_chat_btn {
+          icon-name: "list-add-symbolic";
+          tooltip-text: _("Nuova chat");
+          styles ["flat"]
+        }
       }
       
       [bottom]
@@ -58,12 +68,14 @@ template $AssistantWindow : Adw.ApplicationWindow {
 
       content: Gtk.Box {
         orientation: vertical;
-        Adw.ViewSwitcherSidebar {
+        Gtk.ScrolledWindow {
           vexpand: true;
-          stack: stack_pages;
+          Gtk.ListBox chats_list {
+            styles ["navigation-sidebar"]
+          }
         }
         
-        Adw.Sidebar {
+        Adw.Sidebar addons_sidebar {
           Adw.SidebarSection {
             title: "Addons";
             Adw.SidebarItem {
@@ -79,81 +91,278 @@ template $AssistantWindow : Adw.ApplicationWindow {
       };
     };
 
-    content: Adw.ToolbarView toolbar_view {
-      [top]
-      Adw.HeaderBar {
-        [start]
-        ToggleButton show_sidebar_button {
-          icon-name: "sidebar-show-symbolic";
-          tooltip-text: _("Toggle Sidebar");
-          active: bind split_view.show-sidebar;
-        }
-      }
-      content: Adw.ViewStack stack_pages {
-        Adw.ViewStackPage {
-          name: "Chat";
-          icon-name: "chat-message-new-symbolic";
-          title: "Chat";
-          child: Adw.ToolbarView {
-            Adw.Clamp {
-              maximum-size: 680;
+    content: Adw.ViewStack stack_pages {
+      Adw.ViewStackPage {
+        name: "Chat";
+        icon-name: "chat-message-new-symbolic";
+        title: "Chat";
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar chat_headerbar {
+            [start]
+            ToggleButton show_sidebar_button {
+              icon-name: "sidebar-show-symbolic";
+              tooltip-text: _("Toggle Sidebar");
+              active: bind split_view.show-sidebar;
+            }
+          }
 
-              child: Gtk.ScrolledWindow scrolled {
-                hscrollbar-policy: never;
-                vexpand: true;
+          content: Adw.Clamp {
+            maximum-size: 680;
 
-                child: Gtk.Box chat_box {
-                  orientation: vertical;
-                  margin-top: 12;
-                  margin-bottom: 12;
-                };
+            child: Gtk.ScrolledWindow scrolled {
+              hscrollbar-policy: never;
+              vexpand: true;
+
+              child: Gtk.Box chat_box {
+                orientation: vertical;
+                margin-top: 12;
+                margin-bottom: 12;
               };
+            };
+          };
+
+          [bottom]
+          Adw.Clamp {
+            maximum-size: 680;
+
+            child: Gtk.Box {
+              orientation: horizontal;
+              spacing: 8;
+              margin-top: 8;
+              margin-bottom: 12;
+              margin-start: 12;
+              margin-end: 12;
+
+              Gtk.Entry entry {
+                placeholder-text: _("Scrivi un messaggio o fai una domanda...");
+                hexpand: true;
+
+                styles [
+                  "pill",
+                ]
+              }
+
+              Gtk.Button send_btn {
+                icon-name: "paper-plane-symbolic";
+                tooltip-text: _("Invia messaggio");
+
+                styles [
+                  "suggested-action",
+                  "circular",
+                ]
+              }
+
+              Gtk.Button mic_btn {
+                icon-name: "audio-input-microphone-symbolic";
+                tooltip-text: _("Avvia ascolto vocale (Push-to-Talk)");
+
+                styles [
+                  "circular",
+                ]
+              }
+            };
+          }
+        };
+      }
+
+      Adw.ViewStackPage {
+        name: "MCP";
+        title: "MCP";
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {
+            [start]
+            ToggleButton show_sidebar_button_mcp {
+              icon-name: "sidebar-show-symbolic";
+              tooltip-text: _("Toggle Sidebar");
+              active: bind split_view.show-sidebar;
+            }
+            title-widget: Adw.WindowTitle {
+              title: _("Tools (MCP)");
+            };
+          }
+
+          content: Adw.PreferencesPage mcp_page {
+            title: _("Tools (MCP)");
+            icon-name: "system-run-symbolic";
+            name: "mcp";
+
+            Adw.PreferencesGroup mcp_enable_group {
+              title: _("Model Context Protocol (MCP)");
+              description: _("Integration with system tools and external capabilities.");
+
+              Adw.SwitchRow mcp_enable_row {
+                title: _("Enable Model Context Protocol");
+                subtitle: _("Allow assistant to execute actions via MCP tools");
+              }
             }
 
-            [bottom]
-            Adw.Clamp {
-              maximum-size: 680;
+            Adw.PreferencesGroup mcp_config_group {
+              title: _("MCP Configuration");
+              description: _("Settings for tool registries and servers.");
 
-              child: Gtk.Box {
-                orientation: horizontal;
-                spacing: 8;
-                margin-top: 8;
-                margin-bottom: 12;
-                margin-start: 12;
-                margin-end: 12;
+              Adw.EntryRow mcp_registry_url_row {
+                title: _("Registry URL");
+              }
+            }
 
-                Gtk.Entry entry {
-                  placeholder-text: _("Scrivi un messaggio o fai una domanda...");
-                  hexpand: true;
+            Adw.PreferencesGroup mcp_servers_group {
+              title: _("Configured Servers");
+              description: _("Active MCP server connections.");
 
-                  styles [
-                    "pill",
-                  ]
-                }
-
-                Gtk.Button send_btn {
-                  icon-name: "paper-plane-symbolic";
-                  tooltip-text: _("Invia messaggio");
-
-                  styles [
-                    "suggested-action",
-                    "circular",
-                  ]
-                }
-
-                Gtk.Button mic_btn {
-                  icon-name: "audio-input-microphone-symbolic";
-                  tooltip-text: _("Avvia ascolto vocale (Push-to-Talk)");
-
-                  styles [
-                    "circular",
-                  ]
-                }
-              };
+              Adw.ActionRow mcp_server_gnome_row {
+                title: _("GNOME MCP Server");
+                subtitle: _("System integration tools (desktop, notifications, apps)");
+              }
             }
           };
-        }
-      };
+        };
+      }
+
+      Adw.ViewStackPage {
+        name: "Skills";
+        title: "Skills";
+        child: Adw.NavigationView skills_nav_view {
+          Adw.NavigationPage skills_subpage {
+            tag: "skills_subpage";
+            title: _("Skills");
+
+            child: Adw.ToolbarView {
+              [top]
+              Adw.HeaderBar {
+                [start]
+                ToggleButton show_sidebar_button_skills {
+                  icon-name: "sidebar-show-symbolic";
+                  tooltip-text: _("Toggle Sidebar");
+                  active: bind split_view.show-sidebar;
+                }
+                title-widget: Adw.WindowTitle {
+                  title: _("Skills");
+                };
+
+                [end]
+                Gtk.Button skills_add_btn {
+                  icon-name: "list-add-symbolic";
+                  tooltip-text: _("Add custom skill");
+                  styles ["flat"]
+                }
+              }
+
+              content: Adw.PreferencesPage {
+                title: _("Skills");
+                icon-name: "applications-utilities-symbolic";
+                name: "skills";
+
+                Adw.PreferencesGroup {
+                  description: _("Skills teach the Direct Action Engine to recognize a spoken phrase and run an MCP tool for it. Built-in skills are read-only; add your own below.");
+                }
+
+                Adw.PreferencesGroup skills_list_group {
+                  title: _("Configured Skills");
+                }
+              };
+            };
+          }
+
+          Adw.NavigationPage skill_editor_subpage {
+            tag: "skill_editor_subpage";
+            title: _("Skill");
+
+            child: Adw.ToolbarView {
+              [top]
+              Adw.HeaderBar {
+                title-widget: Adw.WindowTitle {
+                  title: _("Skill");
+                };
+
+                [end]
+                Gtk.Button skill_editor_save_btn {
+                  label: _("Save");
+                  styles ["suggested-action"]
+                }
+              }
+
+              content: Adw.PreferencesPage {
+                title: _("Skill");
+
+                Adw.PreferencesGroup {
+                  Adw.ActionRow skill_editor_error_row {
+                    title: _("Error");
+                    visible: false;
+                    styles ["error"]
+                  }
+                }
+
+                Adw.PreferencesGroup {
+                  title: _("Details");
+
+                  Adw.EntryRow skill_editor_name_row {
+                    title: _("Display Name");
+                  }
+
+                  Adw.EntryRow skill_editor_intent_row {
+                    title: _("Intent");
+                  }
+
+                  Adw.EntryRow skill_editor_tool_row {
+                    title: _("MCP Tool");
+                  }
+                }
+
+                Adw.PreferencesGroup {
+                  title: _("Trigger Phrases");
+                  description: _("One phrase per line. The semantic router matches spoken text against these.");
+
+                  Gtk.Frame {
+                    Gtk.ScrolledWindow {
+                      min-content-height: 100;
+                      hscrollbar-policy: never;
+
+                      Gtk.TextView skill_editor_triggers_view {
+                        top-margin: 8;
+                        bottom-margin: 8;
+                        left-margin: 8;
+                        right-margin: 8;
+                        wrap-mode: word;
+                      }
+                    }
+                  }
+                }
+
+                Adw.PreferencesGroup {
+                  title: _("Tool Arguments");
+                  description: _("JSON object passed to the MCP tool, e.g. {\"setting\": \"wifi\", \"enabled\": true}.");
+
+                  Gtk.Frame {
+                    Gtk.ScrolledWindow {
+                      min-content-height: 80;
+                      hscrollbar-policy: never;
+
+                      Gtk.TextView skill_editor_args_view {
+                        top-margin: 8;
+                        bottom-margin: 8;
+                        left-margin: 8;
+                        right-margin: 8;
+                        wrap-mode: word;
+                        monospace: true;
+                      }
+                    }
+                  }
+                }
+
+                Adw.PreferencesGroup {
+                  Gtk.Button skill_editor_delete_btn {
+                    label: _("Delete Skill");
+                    styles ["destructive-action"]
+                    halign: start;
+                  }
+                }
+              };
+            };
+          }
+        };
+      }
     };
   };
 }

@@ -77,24 +77,54 @@ class ModelsStorageManager:
         base = os.path.expanduser(self._base_dir())
         return os.path.join(base, subdir) if subdir else base
 
-    def _scan(self, subdir: str) -> list[tuple[str, str, int]]:
+    def _scan(self, subdir: str) -> list[tuple[str, str, int, str, str]]:
         reg = get_model_registry(models_dir=self._base_dir())
-        engine = (self.settings.get_string("wakeword-engine") if self.settings else "") or "vosk"
-        prov_map = {
-            "stt": "stt",
-            "llm": "gguf",
-            "tts": "piper",
-            "sherpa": "sherpa-onnx",
-            "wakeword": "openwakeword" if engine == "openwakeword" else "sherpa-onnx",
-        }
-        prov = prov_map.get(subdir, subdir)
-        installed = reg.get_installed_models(prov)
+        if subdir in ("wakeword", "ww"):
+            installed = []
+            seen_keys = set()
+
+            # 1. Modelli espliciti openwakeword e sherpa-onnx
+            for prov in ("openwakeword", "sherpa-onnx"):
+                for m in reg.get_installed_models(prov):
+                    key = m.get("path") or m.get("id") or m.get("name")
+                    if key and key not in seen_keys:
+                        installed.append(m)
+                        seen_keys.add(key)
+
+            # 2. Eventuali altri modelli con service="wakeword"
+            for m in reg.get_installed_models("wakeword"):
+                key = m.get("path") or m.get("id") or m.get("name")
+                if key and key not in seen_keys:
+                    installed.append(m)
+                    seen_keys.add(key)
+
+            # 3. Modelli vosk usati o utilizzabili come wake word
+            vosk_ww = (self.settings.get_string("vosk-ww-model") if self.settings else "") or "vosk-model-small-it-0.22"
+            for m in reg.get_installed_models("vosk"):
+                m_id = (m.get("id") or "").lower()
+                if "small" in m_id or active_match(m_id, vosk_ww):
+                    key = m.get("path") or m.get("id") or m.get("name")
+                    if key and key not in seen_keys:
+                        installed.append(m)
+                        seen_keys.add(key)
+        else:
+            prov_map = {
+                "stt": "stt",
+                "llm": "gguf",
+                "tts": "piper",
+                "sherpa": "sherpa-onnx",
+            }
+            prov = prov_map.get(subdir, subdir)
+            installed = reg.get_installed_models(prov)
+
         result = []
         for m in sorted(installed, key=lambda x: (x.get("name") or x["id"]).lower()):
-            name = m.get("filename") or m.get("id") or m.get("name", "")
+            name = m.get("name") or m.get("filename") or m.get("id", "")
             path = m.get("path") or ""
             sz = m.get("size_bytes") or 0
-            result.append((name, path, sz))
+            prov = m.get("provider") or ""
+            mid = m.get("id") or ""
+            result.append((name, path, sz, prov, mid))
         return result
 
     def _make_row(self, name: str, size: int, is_active: bool = False) -> Adw.ActionRow:
@@ -174,24 +204,33 @@ class ModelsStorageManager:
         engine = (self.settings.get_string("wakeword-engine") if self.settings else "") or "vosk"
 
         active_ww = ""
+        active_ww_prov = ""
         if engine == "vosk":
             active_ww = (self.settings.get_string("vosk-ww-model") if self.settings else "") or "vosk-model-small-it-0.22"
+            active_ww_prov = "vosk"
         elif engine == "sherpa-onnx":
             active_ww = (self.settings.get_string("sherpa-model") if self.settings else "") or ""
+            active_ww_prov = "sherpa-onnx"
         elif engine == "openwakeword":
             active_ww = (self.settings.get_string("oww-model") if self.settings else "") or ""
+            active_ww_prov = "openwakeword"
 
-        def _dir_rows(subdir: str, active: str) -> list:
+        def _dir_rows(subdir: str, active: str, active_prov: str | None = None) -> list:
             items = self._scan(subdir)
             if items:
-                return [self._make_row(n, sz, active_match(n, active)) for n, _, sz in items]
+                rows = []
+                for n, path, sz, prov, mid in items:
+                    if active_prov is not None:
+                        is_active = (prov == active_prov) and (
+                            active_match(n, active) or active_match(mid, active) or (path and active_match(path, active))
+                        )
+                    else:
+                        is_active = active_match(n, active) or active_match(mid, active)
+                    rows.append(self._make_row(n, sz, is_active))
+                return rows
             return [Adw.ActionRow(title="Nessun modello installato", subtitle=self._full_path(subdir))]
 
-        if engine == "vosk":
-            items = self._scan("stt")
-            ww_rows = [self._make_row(n, sz, active_match(n, active_ww)) for n, _, sz in items] if items else [Adw.ActionRow(title="Nessun modello installato", subtitle=self._full_path("stt"))]
-        else:
-            ww_rows = _dir_rows("wakeword", active_ww)
+        ww_rows = _dir_rows("wakeword", active_ww, active_ww_prov)
 
         grp_ww = self.builder.get_object("ww_models_group")
         grp_stt = self.builder.get_object("stt_models_group")
@@ -236,23 +275,39 @@ class ModelsStorageManager:
             ww_active = self.settings.get_string("vosk-ww-model") or ""
             ww_prov = "vosk"
 
-        active = {
-            "stt": self.settings.get_string("stt-model") or "",
-            "llm": self.settings.get_string("llm-model") or "",
-            "tts": self.settings.get_string("tts-voice") or "",
-            "wakeword": ww_active,
-        }
+        stt_active = self.settings.get_string("stt-model") or ""
+        llm_active = self.settings.get_string("llm-model") or ""
+        tts_active = self.settings.get_string("tts-voice") or ""
+
         reg = get_model_registry(models_dir=self._base_dir())
         unused: list[dict] = []
-        prov_map = {"stt": "stt", "llm": "gguf", "tts": "piper", "wakeword": ww_prov}
-        for sub, act in active.items():
-            prov = prov_map.get(sub, sub)
-            for m in reg.get_installed_models(prov):
-                name = m.get("name") or m.get("filename") or m["id"]
-                mid = m["id"]
-                fname = m.get("filename") or ""
-                if not (active_match(name, act) or active_match(mid, act) or (fname and active_match(fname, act))):
-                    unused.append(m)
+
+        all_installed = reg.get_installed_models()
+        for m in all_installed:
+            prov = m.get("provider", "").lower()
+            serv = m.get("service", "").lower()
+            name = m.get("name") or m.get("filename") or m.get("id", "")
+            mid = m.get("id", "")
+            fname = m.get("filename") or ""
+
+            is_used = False
+            if serv == "stt" or prov in ("stt", "vosk", "whisper"):
+                if active_match(name, stt_active) or active_match(mid, stt_active) or (fname and active_match(fname, stt_active)):
+                    is_used = True
+                if engine == "vosk" and (active_match(name, ww_active) or active_match(mid, ww_active)):
+                    is_used = True
+            elif serv == "llm" or prov in ("gguf", "llm", "ollama"):
+                if active_match(name, llm_active) or active_match(mid, llm_active) or (fname and active_match(fname, llm_active)):
+                    is_used = True
+            elif serv == "tts" or prov in ("piper", "tts"):
+                if active_match(name, tts_active) or active_match(mid, tts_active) or (fname and active_match(fname, tts_active)):
+                    is_used = True
+            elif serv == "wakeword" or prov in ("openwakeword", "sherpa-onnx"):
+                if engine == prov and (active_match(name, ww_active) or active_match(mid, ww_active) or (fname and active_match(fname, ww_active))):
+                    is_used = True
+
+            if not is_used:
+                unused.append(m)
 
         if not unused:
             dlg = Adw.AlertDialog(

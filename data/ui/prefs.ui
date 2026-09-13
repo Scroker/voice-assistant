@@ -459,7 +459,7 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
             <property name="title" translatable="yes">Cloud Configuration</property>
             <property name="visible">false</property>
             <child>
-              <object class="AdwEntryRow" id="stt_cloud_api_key_row">
+              <object class="AdwPasswordEntryRow" id="stt_cloud_api_key_row">
                 <property name="title" translatable="yes">API Key</property>
               </object>
             </child>
@@ -478,13 +478,74 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
         <property name="icon-name">brain-augmented-symbolic</property>
         <property name="name">llm</property>
         <child>
-          <object class="AdwPreferencesGroup">
-            <property name="title" translatable="yes">Large Language Model (LLM)</property>
-            <property name="description" translatable="yes">Enable and configure text generation capabilities.</property>
+          <object class="AdwPreferencesGroup" id="dispatch_group">
+            <property name="title" translatable="yes">Command Processing</property>
+            <property name="description" translatable="yes">How a recognized command is dispatched before reaching the full assistant.</property>
             <child>
-              <object class="AdwSwitchRow" id="llm_enable_row">
-                <property name="title" translatable="yes">Enable LLM Responses</property>
-                <property name="subtitle" translatable="yes">Send voice transcriptions to the LLM to generate intelligent responses</property>
+              <object class="AdwExpanderRow" id="dispatch_options_row">
+                <property name="title" translatable="yes">Options</property>
+                <property name="subtitle" translatable="yes">Fast-path direct execution and semantic routing threshold</property>
+                <child type="prefix">
+                  <object class="GtkImage">
+                    <property name="icon-name">media-playlist-consecutive-symbolic</property>
+                    <property name="valign">3</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwSwitchRow" id="dispatch_fast_path_row">
+                    <property name="title" translatable="yes">Enable Fast-Path</property>
+                    <property name="subtitle" translatable="yes">Fastest, deterministic — direct action without model</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwSpinRow" id="dispatch_semantic_threshold_row">
+                    <property name="title" translatable="yes">Semantic Router Confidence Threshold</property>
+                    <property name="subtitle" translatable="yes">Minimum similarity score required to execute an action directly instead of falling through</property>
+                    <property name="digits">2</property>
+                    <property name="adjustment">
+                      <object class="GtkAdjustment">
+                        <property name="lower">0.5</property>
+                        <property name="upper">0.95</property>
+                        <property name="step-increment">0.05</property>
+                        <property name="page-increment">0.05</property>
+                        <property name="value">0.62</property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPreferencesGroup" id="llm_system_prompt_group">
+            <property name="title" translatable="yes">System Instructions</property>
+            <property name="description" translatable="yes">Prompt and behavioral instructions for the assistant.</property>
+            <child>
+              <object class="GtkFrame">
+                <style>
+                  <class name="card"/>
+                </style>
+                <child>
+                  <object class="GtkScrolledWindow">
+                    <property name="min-content-height">140</property>
+                    <property name="max-content-height">280</property>
+                    <property name="hscrollbar-policy">2</property>
+                    <property name="propagate-natural-height">true</property>
+                    <child>
+                      <object class="GtkTextView" id="llm_system_prompt_view">
+                        <property name="top-margin">10</property>
+                        <property name="bottom-margin">10</property>
+                        <property name="left-margin">12</property>
+                        <property name="right-margin">12</property>
+                        <property name="wrap-mode">2</property>
+                        <property name="buffer">
+                          <object class="GtkTextBuffer" id="llm_system_prompt_buffer"></object>
+                        </property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
               </object>
             </child>
           </object>
@@ -670,7 +731,7 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
             <property name="title" translatable="yes">Cloud Configuration</property>
             <property name="visible">false</property>
             <child>
-              <object class="AdwEntryRow" id="llm_api_key_row">
+              <object class="AdwPasswordEntryRow" id="llm_api_key_row">
                 <property name="title" translatable="yes">API Key</property>
               </object>
             </child>
@@ -695,80 +756,13 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
           </object>
         </child>
         <child>
-          <object class="AdwPreferencesGroup" id="llm_system_prompt_group">
-            <property name="title" translatable="yes">System Instructions</property>
+          <object class="AdwPreferencesGroup" id="llm_memory_group">
+            <property name="title" translatable="yes">Conversation Memory</property>
+            <property name="description" translatable="yes">Retain recent conversation history for multi-turn context.</property>
             <child>
-              <object class="AdwEntryRow" id="llm_system_prompt_row">
-                <property name="title" translatable="yes">System Prompt (Instructions)</property>
-              </object>
-            </child>
-          </object>
-        </child>
-        <child>
-          <object class="AdwPreferencesGroup">
-            <property name="title" translatable="yes">Tools &amp;amp; Extensions</property>
-            <property name="description" translatable="yes">Model Context Protocol (MCP) integrations and capabilities.</property>
-            <child>
-              <object class="AdwActionRow" id="mcp_subpage_row">
-                <property name="title" translatable="yes">Tools (MCP)</property>
-                <property name="subtitle" translatable="yes">Configure Model Context Protocol tools and servers</property>
-                <property name="activatable">true</property>
-                <child type="prefix">
-                  <object class="GtkImage">
-                    <property name="icon-name">system-run-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
-                <child type="suffix">
-                  <object class="GtkImage">
-                    <property name="icon-name">go-next-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-          </object>
-        </child>
-        <child>
-          <object class="AdwPreferencesGroup">
-            <property name="title" translatable="yes">Command Processing</property>
-            <property name="description" translatable="yes">How a recognized command is dispatched before reaching the full assistant.</property>
-            <child>
-              <object class="AdwActionRow" id="dispatch_subpage_row">
-                <property name="title" translatable="yes">Command Dispatch</property>
-                <property name="subtitle" translatable="yes">Enable or disable the Fast-Path and Medium-Path stages</property>
-                <property name="activatable">true</property>
-                <child type="prefix">
-                  <object class="GtkImage">
-                    <property name="icon-name">media-playlist-consecutive-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
-                <child type="suffix">
-                  <object class="GtkImage">
-                    <property name="icon-name">go-next-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwActionRow" id="skills_subpage_row">
-                <property name="title" translatable="yes">Skills</property>
-                <property name="subtitle" translatable="yes">View built-in skills and add your own trigger phrases</property>
-                <property name="activatable">true</property>
-                <child type="prefix">
-                  <object class="GtkImage">
-                    <property name="icon-name">applications-utilities-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
-                <child type="suffix">
-                  <object class="GtkImage">
-                    <property name="icon-name">go-next-symbolic</property>
-                    <property name="valign">3</property>
-                  </object>
-                </child>
+              <object class="AdwSwitchRow" id="llm_memory_enable_row">
+                <property name="title" translatable="yes">Enable Memory</property>
+                <property name="subtitle" translatable="yes">Remember previous messages in conversation</property>
               </object>
             </child>
           </object>
@@ -928,7 +922,7 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
             <property name="title" translatable="yes">Cloud Configuration</property>
             <property name="visible">false</property>
             <child>
-              <object class="AdwEntryRow" id="tts_cloud_api_key_row">
+              <object class="AdwPasswordEntryRow" id="tts_cloud_api_key_row">
                 <property name="title" translatable="yes">API Key</property>
               </object>
             </child>
@@ -1416,6 +1410,83 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
               </object>
             </child>
             <child>
+              <object class="AdwPreferencesGroup" id="speaker_id_group">
+                <property name="title" translatable="yes">Voice Recognition</property>
+                <property name="description" translatable="yes">Identifies who is speaking from the voice timbre. It is not a security measure: a recording of your voice can pass the check.</property>
+                <child>
+                  <object class="AdwActionRow" id="speaker_id_mode_disabled_row">
+                    <property name="title" translatable="yes">Disabled</property>
+                    <property name="subtitle" translatable="yes">Do not identify speakers; all voice requests are processed</property>
+                    <property name="activatable">true</property>
+                    <property name="activatable-widget">speaker_id_mode_disabled_radio</property>
+                    <child type="prefix">
+                      <object class="GtkCheckButton" id="speaker_id_mode_disabled_radio">
+                        <property name="valign">3</property>
+                        <property name="margin-end">12</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwActionRow" id="speaker_id_mode_informative_row">
+                    <property name="title" translatable="yes">Informative</property>
+                    <property name="subtitle" translatable="yes">Identify speaker and personalize responses without blocking</property>
+                    <property name="activatable">true</property>
+                    <property name="activatable-widget">speaker_id_mode_informative_radio</property>
+                    <child type="prefix">
+                      <object class="GtkCheckButton" id="speaker_id_mode_informative_radio">
+                        <property name="group">speaker_id_mode_disabled_radio</property>
+                        <property name="valign">3</property>
+                        <property name="margin-end">12</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwActionRow" id="speaker_id_mode_gate_row">
+                    <property name="title" translatable="yes">Gate</property>
+                    <property name="subtitle" translatable="yes">Only execute voice requests matching your voice profile</property>
+                    <property name="activatable">true</property>
+                    <property name="activatable-widget">speaker_id_mode_gate_radio</property>
+                    <child type="prefix">
+                      <object class="GtkCheckButton" id="speaker_id_mode_gate_radio">
+                        <property name="group">speaker_id_mode_disabled_radio</property>
+                        <property name="valign">3</property>
+                        <property name="margin-end">12</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwSpinRow" id="speaker_id_threshold_row">
+                    <property name="title" translatable="yes">Match threshold</property>
+                    <property name="subtitle" translatable="yes">Higher values reject more, including your own voice in noisy rooms</property>
+                    <property name="adjustment">
+                      <object class="GtkAdjustment">
+                        <property name="lower">0.5</property>
+                        <property name="upper">0.95</property>
+                        <property name="step-increment">0.01</property>
+                        <property name="page-increment">0.05</property>
+                      </object>
+                    </property>
+                    <property name="digits">2</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwActionRow" id="speaker_id_profile_row">
+                    <property name="title" translatable="yes">Voice profile</property>
+                    <property name="subtitle" translatable="yes">Not recorded</property>
+                    <property name="activatable">true</property>
+                    <child type="suffix">
+                      <object class="GtkImage">
+                        <property name="icon-name">go-next-symbolic</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
               <object class="AdwPreferencesGroup">
                 <child>
                   <object class="AdwButtonRow" id="audio_reset_btn">
@@ -1429,64 +1500,139 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
       </object>
     </property>
   </object>
-  <object class="AdwNavigationPage" id="dispatch_subpage">
-    <property name="tag">dispatch_subpage</property>
-    <property name="title" translatable="yes">Command Dispatch</property>
+  <object class="AdwNavigationPage" id="speaker_enrollment_subpage">
+    <property name="tag">speaker_enrollment_subpage</property>
+    <property name="title" translatable="yes">Record Your Voice</property>
     <property name="child">
       <object class="AdwToolbarView">
         <child type="top">
           <object class="AdwHeaderBar">
             <property name="title-widget">
               <object class="AdwWindowTitle">
-                <property name="title" translatable="yes">Command Dispatch</property>
+                <property name="title" translatable="yes">Record Your Voice</property>
               </object>
             </property>
           </object>
         </child>
         <property name="content">
-          <object class="AdwPreferencesPage" id="dispatch_page">
-            <property name="title" translatable="yes">Command Dispatch</property>
-            <property name="icon-name">media-playlist-consecutive-symbolic</property>
-            <property name="name">dispatch</property>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <property name="description" translatable="yes">A recognized command goes through up to three stages, stopping at the first one that resolves it: Fast-Path, Medium-Path, then Smart-Path. Disabling a stage makes commands fall through to the next one.</property>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <property name="title" translatable="yes">Fast-Path</property>
-                <property name="description" translatable="yes">Runs frequent commands (volume, theme, media, clock, launching apps) straight from regex patterns and semantic matching, without asking the language model. Responds in under 10 ms but only recognizes known phrasings.</property>
+          <object class="AdwClamp">
+            <property name="maximum-size">560</property>
+            <property name="child">
+              <object class="GtkBox">
+                <property name="orientation">1</property>
+                <property name="spacing">18</property>
+                <property name="margin-top">24</property>
+                <property name="margin-bottom">24</property>
+                <property name="margin-start">24</property>
+                <property name="margin-end">24</property>
                 <child>
-                  <object class="AdwSwitchRow" id="dispatch_fast_path_row">
-                    <property name="title" translatable="yes">Enable Fast-Path</property>
-                    <property name="subtitle" translatable="yes">Fastest, deterministic — no model involved</property>
+                  <object class="AdwBanner" id="enrollment_download_banner">
+                    <property name="title" translatable="yes">Speaker identification model is downloading. Recording is currently disabled.</property>
+                    <property name="revealed">false</property>
                   </object>
                 </child>
                 <child>
-                  <object class="AdwSpinRow" id="dispatch_semantic_threshold_row">
-                    <property name="title" translatable="yes">Semantic Router Confidence Threshold</property>
-                    <property name="subtitle" translatable="yes">Minimum similarity score required to execute an action directly instead of falling through</property>
-                    <property name="digits">2</property>
-                    <property name="adjustment">
-                      <object class="GtkAdjustment">
-                        <property name="lower">0.5</property>
-                        <property name="upper">0.95</property>
-                        <property name="step-increment">0.05</property>
-                        <property name="page-increment">0.05</property>
-                        <property name="value">0.62</property>
+                  <object class="GtkLabel" id="enrollment_intro_label">
+                    <property name="label" translatable="yes">Read the text aloud in your natural tone, about 50 cm from the microphone.</property>
+                    <property name="wrap">true</property>
+                    <property name="justify">2</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwPreferencesGroup">
+                    <child>
+                      <object class="AdwActionRow" id="enrollment_user_row">
+                        <property name="title" translatable="yes">GNOME Session Account</property>
+                        <property name="subtitle"></property>
+                        <child type="prefix">
+                          <object class="GtkImage">
+                            <property name="icon-name">avatar-default-symbolic</property>
+                          </object>
+                        </child>
                       </object>
-                    </property>
+                    </child>
+                    <child>
+                      <object class="AdwEntryRow" id="enrollment_name_entry">
+                        <property name="title" translatable="yes">Speaker Name</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkFrame">
+                    <child>
+                      <object class="GtkLabel" id="enrollment_text_label">
+                        <property name="wrap">true</property>
+                        <property name="selectable">false</property>
+                        <property name="margin-top">16</property>
+                        <property name="margin-bottom">16</property>
+                        <property name="margin-start">16</property>
+                        <property name="margin-end">16</property>
+                        <style>
+                          <class name="title-3"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLevelBar" id="enrollment_level_bar">
+                    <property name="min-value">0</property>
+                    <property name="max-value">1</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkProgressBar" id="enrollment_progress_bar">
+                    <property name="show-text">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="enrollment_status_label">
+                    <property name="label" translatable="yes">Ready</property>
+                    <style>
+                      <class name="dim-label"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkBox">
+                    <property name="orientation">0</property>
+                    <property name="homogeneous">true</property>
+                    <property name="spacing">12</property>
+                    <child>
+                      <object class="GtkButton" id="enrollment_record_btn">
+                        <property name="label" translatable="yes">Start Recording</property>
+                        <style>
+                          <class name="suggested-action"/>
+                          <class name="pill"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="enrollment_cancel_btn">
+                        <property name="label" translatable="yes">Cancel</property>
+                        <property name="visible">false</property>
+                        <style>
+                          <class name="pill"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwPreferencesGroup">
+                    <child>
+                      <object class="AdwButtonRow" id="enrollment_delete_btn">
+                        <property name="title" translatable="yes">Delete Voice Profile</property>
+                        <style>
+                          <class name="destructive-action"/>
+                        </style>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <property name="title" translatable="yes">Smart-Path</property>
-                <property name="description" translatable="yes">Always active as the final stage: full conversation with memory, document retrieval and tool calling. Handles everything the Direct Action Engine leaves unresolved.</property>
-              </object>
-            </child>
+            </property>
           </object>
         </property>
       </object>
@@ -1554,235 +1700,6 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                 <child>
                   <object class="AdwButtonRow" id="test_bugreport_btn">
                     <property name="title" translatable="yes">Test connessione</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-          </object>
-        </property>
-      </object>
-    </property>
-  </object>
-  <object class="AdwNavigationPage" id="mcp_subpage">
-    <property name="tag">mcp_subpage</property>
-    <property name="title" translatable="yes">Tools (MCP)</property>
-    <property name="child">
-      <object class="AdwToolbarView">
-        <child type="top">
-          <object class="AdwHeaderBar">
-            <property name="title-widget">
-              <object class="AdwWindowTitle">
-                <property name="title" translatable="yes">Tools (MCP)</property>
-              </object>
-            </property>
-          </object>
-        </child>
-        <property name="content">
-          <object class="AdwPreferencesPage" id="mcp_page">
-            <property name="title" translatable="yes">Tools (MCP)</property>
-            <property name="icon-name">system-run-symbolic</property>
-            <property name="name">mcp</property>
-            <child>
-              <object class="AdwPreferencesGroup" id="mcp_enable_group">
-                <property name="title" translatable="yes">Model Context Protocol (MCP)</property>
-                <property name="description" translatable="yes">Integration with system tools and external capabilities.</property>
-                <child>
-                  <object class="AdwSwitchRow" id="mcp_enable_row">
-                    <property name="title" translatable="yes">Enable Model Context Protocol</property>
-                    <property name="subtitle" translatable="yes">Allow assistant to execute actions via MCP tools</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup" id="mcp_config_group">
-                <property name="title" translatable="yes">MCP Configuration</property>
-                <property name="description" translatable="yes">Settings for tool registries and servers.</property>
-                <child>
-                  <object class="AdwEntryRow" id="mcp_registry_url_row">
-                    <property name="title" translatable="yes">Registry URL</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup" id="mcp_servers_group">
-                <property name="title" translatable="yes">Configured Servers</property>
-                <property name="description" translatable="yes">Active MCP server connections.</property>
-                <child>
-                  <object class="AdwActionRow" id="mcp_server_gnome_row">
-                    <property name="title" translatable="yes">GNOME MCP Server</property>
-                    <property name="subtitle" translatable="yes">System integration tools (desktop, notifications, apps)</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-          </object>
-        </property>
-      </object>
-    </property>
-  </object>
-  <object class="AdwNavigationPage" id="skills_subpage">
-    <property name="tag">skills_subpage</property>
-    <property name="title" translatable="yes">Skills</property>
-    <property name="child">
-      <object class="AdwToolbarView">
-        <child type="top">
-          <object class="AdwHeaderBar">
-            <property name="title-widget">
-              <object class="AdwWindowTitle">
-                <property name="title" translatable="yes">Skills</property>
-              </object>
-            </property>
-            <child type="end">
-              <object class="GtkButton" id="skills_add_btn">
-                <property name="icon-name">list-add-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Add custom skill</property>
-                <style>
-                  <class name="flat"/>
-                </style>
-              </object>
-            </child>
-          </object>
-        </child>
-        <property name="content">
-          <object class="AdwPreferencesPage">
-            <property name="title" translatable="yes">Skills</property>
-            <property name="icon-name">applications-utilities-symbolic</property>
-            <property name="name">skills</property>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <property name="description" translatable="yes">Skills teach the Direct Action Engine to recognize a spoken phrase and run an MCP tool for it. Built-in skills are read-only; add your own below.</property>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup" id="skills_list_group">
-                <property name="title" translatable="yes">Configured Skills</property>
-              </object>
-            </child>
-          </object>
-        </property>
-      </object>
-    </property>
-  </object>
-  <object class="AdwNavigationPage" id="skill_editor_subpage">
-    <property name="tag">skill_editor_subpage</property>
-    <property name="title" translatable="yes">Skill</property>
-    <property name="child">
-      <object class="AdwToolbarView">
-        <child type="top">
-          <object class="AdwHeaderBar">
-            <property name="title-widget">
-              <object class="AdwWindowTitle">
-                <property name="title" translatable="yes">Skill</property>
-              </object>
-            </property>
-            <child type="end">
-              <object class="GtkButton" id="skill_editor_save_btn">
-                <property name="label" translatable="yes">Save</property>
-                <style>
-                  <class name="suggested-action"/>
-                </style>
-              </object>
-            </child>
-          </object>
-        </child>
-        <property name="content">
-          <object class="AdwPreferencesPage">
-            <property name="title" translatable="yes">Skill</property>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <child>
-                  <object class="AdwActionRow" id="skill_editor_error_row">
-                    <property name="title" translatable="yes">Error</property>
-                    <property name="visible">false</property>
-                    <style>
-                      <class name="error"/>
-                    </style>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <property name="title" translatable="yes">Details</property>
-                <child>
-                  <object class="AdwEntryRow" id="skill_editor_name_row">
-                    <property name="title" translatable="yes">Display Name</property>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwEntryRow" id="skill_editor_intent_row">
-                    <property name="title" translatable="yes">Intent</property>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwEntryRow" id="skill_editor_tool_row">
-                    <property name="title" translatable="yes">MCP Tool</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <property name="title" translatable="yes">Trigger Phrases</property>
-                <property name="description" translatable="yes">One phrase per line. The semantic router matches spoken text against these.</property>
-                <child>
-                  <object class="GtkFrame">
-                    <child>
-                      <object class="GtkScrolledWindow">
-                        <property name="min-content-height">100</property>
-                        <property name="hscrollbar-policy">2</property>
-                        <child>
-                          <object class="GtkTextView" id="skill_editor_triggers_view">
-                            <property name="top-margin">8</property>
-                            <property name="bottom-margin">8</property>
-                            <property name="left-margin">8</property>
-                            <property name="right-margin">8</property>
-                            <property name="wrap-mode">2</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <property name="title" translatable="yes">Tool Arguments</property>
-                <property name="description" translatable="yes">JSON object passed to the MCP tool, e.g. {"setting": "wifi", "enabled": true}.</property>
-                <child>
-                  <object class="GtkFrame">
-                    <child>
-                      <object class="GtkScrolledWindow">
-                        <property name="min-content-height">80</property>
-                        <property name="hscrollbar-policy">2</property>
-                        <child>
-                          <object class="GtkTextView" id="skill_editor_args_view">
-                            <property name="top-margin">8</property>
-                            <property name="bottom-margin">8</property>
-                            <property name="left-margin">8</property>
-                            <property name="right-margin">8</property>
-                            <property name="wrap-mode">2</property>
-                            <property name="monospace">true</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <child>
-                  <object class="GtkButton" id="skill_editor_delete_btn">
-                    <property name="label" translatable="yes">Delete Skill</property>
-                    <style>
-                      <class name="destructive-action"/>
-                    </style>
-                    <property name="halign">1</property>
                   </object>
                 </child>
               </object>

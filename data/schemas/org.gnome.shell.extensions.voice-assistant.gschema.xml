@@ -116,11 +116,6 @@
       <summary>Cartella salvataggio modelli</summary>
       <description>La cartella in cui vengono salvati e cercati i modelli STT.</description>
     </key>
-    <key name="llm-enabled" type="b">
-      <default>true</default>
-      <summary>Abilitazione risposte LLM</summary>
-      <description>Se vero, l'assistente utilizzerà l'LLM per generare le risposte.</description>
-    </key>
     <key name="llm-url" type="s">
       <default>'http://localhost:11434'</default>
       <summary>URL Server LLM</summary>
@@ -160,6 +155,11 @@
       <default>''</default>
       <summary>Chiave API per LLM/TTS in Cloud</summary>
       <description>Chiave API opzionale per l'autenticazione con OpenAI, Anthropic, DeepSeek, Groq o OpenRouter.</description>
+    </key>
+    <key name="memory-enabled" type="b">
+      <default>true</default>
+      <summary>Abilita memoria conversazionale</summary>
+      <description>Consente all'assistente di mantenere in memoria i messaggi recenti della conversazione per il contesto multi-turno.</description>
     </key>
     <key name="tts-engine" type="s">
       <default>'piper'</default>
@@ -261,6 +261,22 @@
       <default>0.62</default>
       <summary>Soglia di confidenza del router semantico</summary>
       <description>Punteggio minimo di similarità (0.0-1.0) richiesto perché il router semantico esegua un'azione diretta invece di passare la frase allo Smart-Path.</description>
+    </key>
+    <key name="speaker-id-mode" type="s">
+      <default>'disabled'</default>
+      <summary>Modalità identificazione del parlante</summary>
+      <description>Modalità operativa per il riconoscimento vocale biometrico: 'disabled' (disattivato), 'informative' (riconosce il nome e lo passa al contesto LLM), 'gate' (barriera biometrica fail-closed).</description>
+    </key>
+    <key name="speaker-id-threshold" type="d">
+      <default>0.75</default>
+      <summary>Soglia di similarità cosenica per il riconoscimento del parlante</summary>
+      <description>Soglia minima di correlazione (0.50-0.95, predefinita 0.75) tra l'audio ricevuto e il profilo per considerare la voce riconosciuta.</description>
+    </key>
+    <key name="deep-dive-threshold-chars" type="i">
+      <range min="150" max="2000"/>
+      <default>400</default>
+      <summary>Soglia caratteri per approfondimento vocale</summary>
+      <description>Numero minimo di caratteri della risposta dell'assistente che attiva l'approfondimento in una chat dedicata quando richiesto esplicitamente.</description>
     </key>
   </schema>
 </schemalist>

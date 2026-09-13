@@ -186,6 +186,34 @@ class VoiceAssistant(object):
     def ResponseTokenStreamed(self, token: str, is_complete: bool):
         pass
 
+    @dbus_signal
+    def SpeakerEnrollmentProgress(self, progress: float, level: float):
+        pass
+
+    @dbus_signal
+    def SpeakerEnrollmentFinished(self, success: bool, profile_id: str, message: str):
+        pass
+
+    @dbus_signal
+    def SpeakerIdentified(self, profile_name: str, score: float, status: str, overlap_detected: bool):
+        pass
+
+    @dbus_signal
+    def SpeakerRejected(self, reason: str, message: str):
+        pass
+
+    @dbus_signal
+    def ConversationCreated(self, context_id: str, reason: str):
+        pass
+
+    @dbus_signal
+    def ConversationToken(self, context_id: str, token: str, is_complete: bool):
+        pass
+
+    @dbus_signal
+    def ConversationTranscript(self, context_id: str, text: str, is_final: bool):
+        pass
+
     def GetMissingDependencies(self) -> str:
         """Ritorna la lista JSON delle dipendenze mancanti (Python e di sistema) aggiornata."""
         if hasattr(self, 'runtime_manager') and hasattr(self.runtime_manager, 'refresh_missing_deps'):
@@ -194,6 +222,58 @@ class VoiceAssistant(object):
             except Exception as e:
                 logger.warning(f"Errore durante refresh_missing_deps: {e}")
         return json.dumps(self._missing_deps)
+
+    def GetSpeakerStatus(self) -> str:
+        """Ritorna lo stato del sottosistema speaker ID (disponibilità, download in corso)."""
+        ctrl = getattr(self, "speaker_id_controller", None)
+        if not ctrl:
+            return json.dumps({
+                "available": False,
+                "downloading": False,
+                "download_percent": 0,
+                "status": "unavailable",
+                "message": "SpeakerIdController non inizializzato nel demone.",
+            })
+        return json.dumps(ctrl.get_status())
+
+    def GetSpeakerProfiles(self) -> str:
+        """Ritorna l'elenco dei profili vocali salvati in formato JSON."""
+        ctrl = getattr(self, "speaker_id_controller", None)
+        if not ctrl:
+            return json.dumps([])
+        return json.dumps(ctrl.get_profiles())
+
+    def StartSpeakerEnrollment(self, display_name: str, duration_s: float) -> bool:
+        """Avvia la registrazione per l'arruolamento di un nuovo profilo vocale."""
+        ctrl = getattr(self, "speaker_id_controller", None)
+        if not ctrl:
+            self.SpeakerEnrollmentFinished(False, "", "unavailable")
+            return False
+
+        is_disabled = (str(self._state).lower() in ("disabled", "assistantstate.disabled"))
+        stream_open = getattr(getattr(self, "_stream", None), "active", True)
+        if is_disabled or not stream_open:
+            logger.warning("StartSpeakerEnrollment rejected: state=%s, stream_open=%s", self._state, stream_open)
+            self.SpeakerEnrollmentFinished(False, "", "no_audio")
+            return False
+
+        if self._state in ("listening", "speaking", "processing"):
+            self.set_state("idle")
+        return ctrl.start_enrollment(display_name, duration_s=duration_s)
+
+    def CancelSpeakerEnrollment(self) -> bool:
+        """Annulla la registrazione di arruolamento vocale in corso."""
+        ctrl = getattr(self, "speaker_id_controller", None)
+        if not ctrl:
+            return False
+        return ctrl.cancel_enrollment()
+
+    def DeleteSpeakerProfile(self, profile_id: str) -> bool:
+        """Elimina un profilo vocale memorizzato."""
+        ctrl = getattr(self, "speaker_id_controller", None)
+        if not ctrl:
+            return False
+        return ctrl.delete_profile(profile_id)
 
     def notify_dependency_required(
         self,
@@ -257,25 +337,41 @@ class VoiceAssistant(object):
 
     def ToggleListening(self) -> bool:
         """Metodo chiamato dall'estensione GNOME quando l'utente clicca sull'icona della barra superiore."""
-        if self._state == "disabled":
-            logger.info("Abilitazione dell'assistente.")
-            self.settings.set_boolean("enabled", True)
-            self.trigger_assistant()
-            return True
-        elif self._state in ("listening", "speaking", "processing"):
-            logger.info("Interruzione assistente e ritorno in idle.")
-            self.set_state("idle")
-            return False
-        else:
-            self.trigger_assistant()
-            return True
+        return self.ToggleListeningInContext("voice")
 
     def TriggerListening(self) -> bool:
         """Avvia o forza l'ascolto vocale immediato (Push-to-Talk da GUI/Estensione)."""
         logger.info("[D-Bus] Richiesta ascolto vocale immediato da GUI/Estensione.")
+        return self.TriggerListeningInContext("voice")
+
+    def ToggleListeningInContext(self, context_id: str) -> bool:
+        """Alterna l'ascolto vocale legato a uno specifico contesto di chat."""
+        if self._state == "disabled":
+            logger.info("Abilitazione dell'assistente.")
+            self.settings.set_boolean("enabled", True)
+            target_ctx = context_id if (hasattr(self, 'context_manager') and self.context_manager and self.context_manager.is_valid_chat_id(context_id)) else "voice"
+            self.trigger_assistant(origin="manual", context_id=target_ctx)
+            return True
+        elif self._state in ("listening", "speaking", "processing"):
+            logger.info("Interruzione assistente e ritorno in idle.")
+            if hasattr(self, 'pipeline_controller') and self.pipeline_controller:
+                self.pipeline_controller.cancel_pipeline()
+            elif hasattr(self, 'audio_player') and self.audio_player:
+                self.audio_player.stop_playback()
+            self.set_state("idle")
+            return False
+        else:
+            target_ctx = context_id if (hasattr(self, 'context_manager') and self.context_manager and self.context_manager.is_valid_chat_id(context_id)) else "voice"
+            self.trigger_assistant(origin="manual", context_id=target_ctx)
+            return True
+
+    def TriggerListeningInContext(self, context_id: str) -> bool:
+        """Avvia o forza l'ascolto vocale immediato legato a uno specifico contesto di chat."""
+        logger.info(f"[D-Bus] Richiesta ascolto vocale immediato per contesto: {context_id}")
         if self._state == "disabled":
             self.settings.set_boolean("enabled", True)
-        self.trigger_assistant()
+        target_ctx = context_id if (hasattr(self, 'context_manager') and self.context_manager and self.context_manager.is_valid_chat_id(context_id)) else "voice"
+        self.trigger_assistant(origin="manual", context_id=target_ctx)
         return True
 
     def GetAvailableModels(self, provider: str) -> str:
@@ -393,8 +489,26 @@ class VoiceAssistant(object):
     def ProcessTextInput(self, text: str):
         """Metodo D-Bus per inviare testo direttamente alla pipeline dell'assistente (senza sintesi audio)."""
         logger.info(f"[D-Bus] Ricevuto testo da input GUI: '{text}'")
+        target_ctx = None
+        if hasattr(self, 'context_manager') and self.context_manager:
+            convs = self.context_manager.list_conversations()
+            if convs:
+                target_ctx = convs[0]["id"]
+            else:
+                target_ctx = self.context_manager.create()
+        if not target_ctx:
+            target_ctx = "voice"
         import threading
-        threading.Thread(target=self._process_text, args=(text, False), daemon=True).start()
+        threading.Thread(target=self.assistant_runtime.enqueue_request, args=(text, False, target_ctx), daemon=True).start()
+
+    def ProcessTextInContext(self, text: str, context_id: str):
+        """Metodo D-Bus per inviare testo a una chat specifica."""
+        logger.info(f"[D-Bus] Ricevuto testo da input GUI per contesto {context_id}: '{text}'")
+        if not hasattr(self, 'context_manager') or not self.context_manager or not self.context_manager.is_valid_chat_id(context_id):
+            logger.warning(f"ProcessTextInContext rifiutato per context_id non valido: {context_id}")
+            return
+        import threading
+        threading.Thread(target=self.assistant_runtime.enqueue_request, args=(text, False, context_id), daemon=True).start()
 
     @staticmethod
     def _run_mcp_operation(operation, *args):
@@ -408,6 +522,9 @@ class VoiceAssistant(object):
             return json.dumps([])
         return self._run_mcp_operation(self.mcp_manager.get_marketplace_featured) if hasattr(self.mcp_manager, 'get_marketplace_featured') else json.dumps([])
 
+    def GetMarketplaceFeatured(self) -> str:
+        return self.get_marketplace_featured()
+
     def search_marketplace(self, query: str) -> str:
         """Searches the marketplace for a query string."""
         if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
@@ -415,6 +532,9 @@ class VoiceAssistant(object):
         if hasattr(self.mcp_manager, 'search_marketplace'):
             return self._run_mcp_operation(self.mcp_manager.search_marketplace, query)
         return json.dumps([])
+
+    def SearchMarketplace(self, query: str) -> str:
+        return self.search_marketplace(query)
 
     def get_server_details(self, server_name: str) -> str:
         """Returns the details of a given MCP server."""
@@ -424,6 +544,9 @@ class VoiceAssistant(object):
             return self._run_mcp_operation(self.mcp_manager.get_server_details, server_name)
         return json.dumps({})
 
+    def GetServerDetails(self, server_name: str) -> str:
+        return self.get_server_details(server_name)
+
     def get_marketplace_categories(self) -> str:
         """Returns the available marketplace categories."""
         if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
@@ -432,6 +555,9 @@ class VoiceAssistant(object):
             return self._run_mcp_operation(self.mcp_manager.get_marketplace_categories)
         return json.dumps([])
 
+    def GetMarketplaceCategories(self) -> str:
+        return self.get_marketplace_categories()
+
     def filter_marketplace_by_category(self, category: str) -> str:
         """Returns the servers matching a category."""
         if not hasattr(self, 'mcp_manager') or self.mcp_manager is None:
@@ -439,6 +565,9 @@ class VoiceAssistant(object):
         if hasattr(self.mcp_manager, 'filter_marketplace_by_category'):
             return self._run_mcp_operation(self.mcp_manager.filter_marketplace_by_category, category)
         return json.dumps([])
+
+    def FilterMarketplaceByCategory(self, category: str) -> str:
+        return self.filter_marketplace_by_category(category)
 
     def install_mcp_server(self, server_name: str, server_config: str, env_vars: str = ""):
         """Installs an MCP server via the configured manager."""
@@ -576,12 +705,62 @@ class VoiceAssistant(object):
             component="VoiceAssistant.AudioLoop",
         )
 
-    def _on_llm_token(self, token: str):
-        """Callback invocata a ogni token generato dall'LLM; emette il segnale D-Bus."""
+    def _on_llm_token(self, token: str, context_id: str = "voice"):
+        """Callback invocata a ogni token generato dall'LLM; emette i segnali D-Bus."""
         try:
-            self.ResponseTokenStreamed(token, False)
+            if context_id == "voice":
+                self.ResponseTokenStreamed(token, False)
         except Exception:
             pass
+        try:
+            self.ConversationToken(context_id, token, False)
+        except Exception:
+            pass
+
+    def ListConversations(self) -> str:
+        """Restituisce le conversazioni GUI (JSON string)."""
+        if not hasattr(self, 'context_manager') or not self.context_manager:
+            return json.dumps([])
+        return json.dumps(self.context_manager.list_conversations())
+
+    def CreateConversation(self) -> str:
+        """Crea una nuova conversazione e ne restituisce l'ID."""
+        if not hasattr(self, 'context_manager') or not self.context_manager:
+            return ""
+        return self.context_manager.create()
+
+    def DeleteConversation(self, context_id: str) -> bool:
+        """Elimina una conversazione."""
+        if not hasattr(self, 'context_manager') or not self.context_manager:
+            return False
+        deleted = self.context_manager.delete(context_id)
+
+        # Pulizia dal vector store RAG
+        try:
+            sp = None
+            if hasattr(self, 'pipeline_controller') and hasattr(self.pipeline_controller, 'smart_path'):
+                sp = self.pipeline_controller.smart_path
+            elif hasattr(self, 'assistant_runtime') and hasattr(self.assistant_runtime, 'smart_path'):
+                sp = self.assistant_runtime.smart_path
+            if sp and hasattr(sp, 'vector_store') and sp.vector_store:
+                sp.vector_store.delete_by_metadata("context_id", context_id)
+        except Exception as ex:
+            logger.warning(f"Errore pulizia RAG per conversazione {context_id}: {ex}")
+
+        return bool(deleted)
+
+    def GetConversationMessages(self, context_id: str) -> str:
+        """Restituisce i messaggi di una conversazione (JSON string)."""
+        if context_id == "voice":
+            return json.dumps([])
+        if not hasattr(self, 'context_manager') or not self.context_manager:
+            return json.dumps([])
+        if not self.context_manager.is_valid_chat_id(context_id):
+            return json.dumps([])
+        ctx = self.context_manager.get(context_id)
+        if not ctx:
+            return json.dumps([])
+        return json.dumps(ctx.to_dict().get("messages", []))
 
     def _on_playback_finished(self):
         """Callback invocata dall'AudioPlayer al termine della riproduzione vocale."""
@@ -607,8 +786,8 @@ class VoiceAssistant(object):
     def reset_wakeword_recognizer(self):
         return self.assistant_runtime.reset_wakeword_recognizer()
 
-    def trigger_assistant(self):
-        return self.assistant_runtime.trigger_assistant()
+    def trigger_assistant(self, origin: str = "manual", context_id: str = "voice"):
+        return self.assistant_runtime.trigger_assistant(origin=origin, context_id=context_id)
 
     def _audio_loop(self):
         return self.assistant_runtime._audio_loop()

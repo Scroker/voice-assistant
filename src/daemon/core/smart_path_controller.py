@@ -27,19 +27,49 @@ class SmartPathController:
         self,
         memory_max_messages: int = 20,
         vector_store_max_docs: int = 1000,
+        memory_enabled: bool = True,
     ):
-        """Initialize Smart Path controller.
-
-        Args:
-            memory_max_messages: Max conversation history messages
-            vector_store_max_docs: Max RAG documents to retain
-        """
+        """Initialize Smart Path controller."""
+        self._memory_enabled = bool(memory_enabled)
         self.memory = ConversationMemory(max_messages=memory_max_messages)
         self.vector_store = VectorStore(max_documents=vector_store_max_docs)
-        self.prompt_builder = PromptBuilder()
+        self.prompt_builder = PromptBuilder(include_chat_history=self._memory_enabled)
         self.tool_parser = ToolCallParser()
         self.skill_registry = SkillRegistry.from_default_directory()
         self.last_tool_result: Optional[Dict[str, Any]] = None
+
+    @property
+    def memory_enabled(self) -> bool:
+        return self._memory_enabled
+
+    @memory_enabled.setter
+    def memory_enabled(self, value: bool) -> None:
+        self._memory_enabled = bool(value)
+        if hasattr(self, 'prompt_builder') and self.prompt_builder:
+            self.prompt_builder.include_chat_history = self._memory_enabled
+        if not self._memory_enabled and hasattr(self, 'memory') and self.memory:
+            self.memory.clear()
+
+    def clear_memory(self) -> None:
+        """Clear conversation memory."""
+        if hasattr(self, 'memory') and self.memory:
+            self.memory.clear()
+
+    def get_conversation_summary(self) -> str:
+        """Get summary of current conversation memory."""
+        if hasattr(self, 'memory') and self.memory:
+            return self.memory.get_summary()
+        return ""
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get Smart Path controller statistics."""
+        memory_count = len(self.memory.messages) if hasattr(self, 'memory') and self.memory else 0
+        return {
+            "memory_messages": memory_count,
+            "rag_documents": len(self.vector_store.documents),
+            "available_skills": len(self.skill_registry.skills),
+            "memory_enabled": self._memory_enabled,
+        }
 
     @staticmethod
     def _resolve_maybe_async(value: Any) -> Any:
@@ -81,25 +111,52 @@ class SmartPathController:
             logger.error(f"[SmartPath] Tool execution failed: {e}")
             return None
 
-    def add_user_message(self, text: str) -> None:
+    def add_user_message(self, text: str, context: Any = None) -> None:
         """Record user message in memory."""
-        self.memory.add_user_message(text)
-        # Also add to RAG for future retrieval
-        self.vector_store.add_document(
-            content=text,
-            metadata={"source": "user_input"},
-        )
+        ctx_id = getattr(context, "context_id", None) if context else "voice"
+        if context:
+            # GUI chats always record messages for transcript, even if memory is disabled
+            if ctx_id != "voice" or self._memory_enabled:
+                context.add_message("user", text)
+        elif self._memory_enabled:
+            # Voice memory
+            self.memory.add_user_message(text)
+            ctx_id = "voice"
 
-    def add_assistant_message(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> None:
-        """Record assistant message in memory."""
-        self.memory.add_assistant_message(text, metadata=metadata)
-        # Add non-tool-call text to RAG
-        text_only = self.tool_parser.extract_text_response(text)
-        if text_only.strip():
+        # Only add to RAG if memory is enabled
+        if self._memory_enabled:
+            import hashlib
+            doc_id = hashlib.md5(f"{ctx_id}\0{text}".encode("utf-8")).hexdigest()[:16]
             self.vector_store.add_document(
-                content=text_only,
-                metadata={"source": "assistant_response"},
+                content=text,
+                metadata={"source": "user_input", "context_id": ctx_id},
+                doc_id=doc_id,
             )
+
+    def add_assistant_message(self, text: str, metadata: Any = None, context: Any = None) -> None:
+        """Record assistant message in memory."""
+        if context is None and metadata is not None and not isinstance(metadata, dict):
+            context = metadata
+            metadata = None
+        ctx_id = getattr(context, "context_id", None) if context else "voice"
+        if context:
+            if ctx_id != "voice" or self._memory_enabled:
+                context.add_message("assistant", text, metadata=metadata)
+        elif self._memory_enabled:
+            self.memory.add_assistant_message(text, metadata=metadata)
+            ctx_id = "voice"
+
+        # Add non-tool-call text to RAG if memory is enabled
+        if self._memory_enabled:
+            text_only = self.tool_parser.extract_text_response(text)
+            if text_only.strip():
+                import hashlib
+                doc_id = hashlib.md5(f"{ctx_id}\0{text_only}".encode("utf-8")).hexdigest()[:16]
+                self.vector_store.add_document(
+                    content=text_only,
+                    metadata={"source": "assistant_response", "context_id": ctx_id},
+                    doc_id=doc_id,
+                )
 
     def build_smart_prompt(
         self,
@@ -107,26 +164,21 @@ class SmartPathController:
         rag_query: Optional[str] = None,
         use_rag: bool = True,
         use_history: bool = True,
+        context: Any = None,
     ) -> List[Dict[str, str]]:
-        """Build a contextual prompt with RAG and history.
-
-        Args:
-            user_message: Current user input
-            rag_query: Query for RAG search (defaults to user_message)
-            use_rag: Whether to include RAG context
-            use_history: Whether to include chat history
-
-        Returns:
-            OpenAI-compatible message list
-        """
+        """Build a contextual prompt with RAG and history."""
         rag_results = None
+        ctx_id = getattr(context, "context_id", None) if context else None
         if use_rag:
             query = rag_query or user_message
-            rag_results = self.vector_store.search(query, top_k=3, min_score=0.15)
+            rag_results = self.vector_store.search(query, top_k=3, min_score=0.15, context_id=ctx_id)
 
         chat_history = None
-        if use_history:
-            chat_history = self.memory.get_context_window()
+        if use_history and self._memory_enabled:
+            if context:
+                chat_history = context.get_messages_for_llm()
+            elif hasattr(self, 'memory') and self.memory:
+                chat_history = self.memory.get_context_window()
 
         messages = self.prompt_builder.build_conversation_messages(
             user_message,
@@ -166,30 +218,55 @@ class SmartPathController:
         mcp_manager: Optional[Any] = None,
         token_callback: Optional[Any] = None,
         sentence_callback: Optional[Any] = None,
+        context: Any = None,
+        extra_context: str = "",
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """Execute the full SMART PATH pipeline.
 
         Args:
             user_message: User input text
-            llm_streamer: LLM streaming callable
+            llm_streamer: LLM streaming callable (takes history parameter)
             mcp_manager: MCP manager for tool execution
+            token_callback: Optional token streaming callback
+            sentence_callback: Optional sentence callback
+            context: Optional ConversationContext object
+            extra_context: Optional extra context string injected into system prompt
 
         Returns:
             (success, response_text, tool_result)
         """
-        # 1. Add to memory
-        self.add_user_message(user_message)
+        # 1. Read history before adding current message
+        history_msgs = None
+        if self._memory_enabled:
+            if context:
+                history_msgs = context.get_messages_for_llm()
+            elif hasattr(self, 'memory') and self.memory:
+                history_msgs = self.memory.get_context_window()
 
-        # 2. Build contextual prompt
-        messages = self.build_smart_prompt(user_message)
+        # 2. Search RAG before adding current message
+        ctx_id = getattr(context, "context_id", None) if context else None
+        rag_results = self.vector_store.search(user_message, top_k=3, min_score=0.15, context_id=ctx_id)
+        rag_text = self.prompt_builder.format_context(rag_results=rag_results)
+        llm_context = "\n\n".join(p for p in (rag_text, extra_context) if p)
 
-        # 3. Get LLM response
+        # 3. Add to memory / transcript
+        self.add_user_message(user_message, context=context)
+
+        # 4. Get LLM response
         if not llm_streamer:
             return (False, "LLM non disponibile.", None)
 
         try:
+            try:
+                stream = llm_streamer(user_message, history=history_msgs, context=llm_context)
+            except TypeError:
+                try:
+                    stream = llm_streamer(user_message, history=history_msgs)
+                except TypeError:
+                    stream = llm_streamer(user_message)
+
             llm_response, text_response, tool_result = self._consume_llm_stream(
-                llm_streamer(user_message),
+                stream,
                 mcp_manager=mcp_manager,
                 token_callback=token_callback,
                 sentence_callback=sentence_callback,
@@ -198,8 +275,8 @@ class SmartPathController:
             logger.error(f"[SmartPath] LLM streaming error: {e}")
             return (False, f"Errore LLM: {e}", None)
 
-        # 6. Record response in memory
-        self.add_assistant_message(llm_response)
+        # 5. Record response in memory
+        self.add_assistant_message(llm_response, context=context)
 
         return (True, text_response or "Ok", tool_result)
 

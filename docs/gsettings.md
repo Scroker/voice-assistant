@@ -101,10 +101,12 @@ Controllano lo stadio di esecuzione deterministico `Fast-Path (Direct Action Eng
 | Chiave | Tipo | Default | Descrizione |
 |---|---|---:|---|
 | `fast-path-enabled` | `b` | `false` | Esegue i comandi riconosciuti da regex e similarità semantica senza interpellare l'LLM (<30 ms). Se disattivato, ogni richiesta procede verso lo Smart-Path |
+| `memory-enabled` | `b` | `true` | Abilita o disabilita la memoria conversazionale multi-turno dell'assistente. Se disattivata, la cronologia precedente viene azzerata e non viene più iniettata nel contesto dell'LLM |
+| `deep-dive-threshold-chars` | `i` | `400` | Soglia di lunghezza in caratteri (range 150..2000) per attivare lo spostamento automatico dell'approfondimento vocale in una nuova chat GUI |
 
 Lo Smart-Path è sempre attivo come stadio finale e non è disattivabile: è ciò che gestisce tutto quanto non risolto dal Direct Action Engine.
 
-**Comportamento**: la chiave `fast-path-enabled` è applicata **a caldo** su `PipelineController` (`core/assistant_runtime.py::_on_settings_changed` → `pipeline.fast_path_enabled`), senza riavviare il daemon. Il valore iniziale è letto alla costruzione della pipeline in `core/runtime_manager.py::initialize_pipeline()`.
+**Comportamento**: le chiavi `fast-path-enabled` e `memory-enabled` sono applicate **a caldo** su `PipelineController` (`core/assistant_runtime.py::_on_settings_changed` → `pipeline.fast_path_enabled` / `pipeline.memory_enabled`), senza riavviare il daemon. Il valore iniziale è letto alla costruzione della pipeline in `core/runtime_manager.py::initialize_pipeline()`. Disattivando `memory-enabled`, la memoria interna viene immediatamente svuotata per garantire la riservatezza.
 
 > [!NOTE]
 > Il default `false` di `fast-path-enabled` riflette il comportamento storico del daemon, dove lo stadio era disattivato via codice. Attivandolo, i comandi frequenti (volume, tema, media, orologio, avvio app) vengono risolti localmente senza latenza dell'LLM, al costo di riconoscere solo le formulazioni previste dai pattern.
@@ -173,7 +175,6 @@ Le modifiche sono applicate senza riavviare il daemon. Il controllo idle viene e
 
 | Chiave | Tipo | Default | Descrizione |
 |--------|------|---------|-------------|
-| `llm-enabled` | `b` | `true` | Abilita la generazione di risposte tramite LLM |
 | `llm-mode` | `s` | `'local'` | Modalità di esecuzione: `'local'`, `'ollama'`, `'openai'`, `'anthropic'`, `'deepseek'`, `'ollama_cloud'`, `'custom'` |
 | `llm-provider` | `s` | `'ollama'` | Provider di elaborazione AI: `'ollama'`, `'llama.cpp'`, `'openai'`, `'disabled'` |
 | `llm-model` | `s` | `'llama3.2:3b'` | Modello di linguaggio selezionato |
@@ -213,6 +214,13 @@ Le modifiche sono applicate senza riavviare il daemon. Il controllo idle viene e
 | `bugreport-api-key` | `s` | `''` | API Key dell'account Bugzilla |
 | `bugreport-product` | `s` | `'Voice Assistant'` | Nome del prodotto Bugzilla |
 | `bugreport-component` | `s` | `'Daemon'` | Componente Bugzilla per i bug segnalati |
+
+### Riconoscimento del Parlante (Speaker ID)
+
+| Chiave | Tipo | Default | Descrizione |
+|--------|------|---------|-------------|
+| `speaker-id-mode` | `s` | `'disabled'` | Modalità operativa del riconoscimento del timbro vocale: `'disabled'`, `'informative'`, `'gate'` |
+| `speaker-id-threshold` | `d` | `0.75` | Soglia di similarità del coseno (intervallo 0.50–0.95) per convalidare l'identità del parlante |
 
 ---
 

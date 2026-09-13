@@ -111,6 +111,9 @@ class AppSlotMatcher:
             if value:
                 labels.add(value)
         labels.add(exec_name)
+        mimetypes = section.get("MimeType", "").lower()
+        if "x-scheme-handler/mailto" in mimetypes:
+            labels.update(["mail", "email", "posta", "posta elettronica"])
 
         return entry, list(labels)
 
@@ -123,7 +126,38 @@ class AppSlotMatcher:
         than against "File" itself), which is worse than failing to match at all.
         """
         query = (query or "").strip()
-        if not query or not self._candidates:
+        if not query:
+            return None
+
+        # Risoluzione diretta per alias del client di posta elettronica
+        mail_aliases = {"mail", "email", "e-mail", "posta", "posta elettronica"}
+        if query.lower() in mail_aliases:
+            try:
+                import gi
+                gi.require_version("Gio", "2.0")
+                from gi.repository import Gio
+                app_info = Gio.AppInfo.get_default_for_type("x-scheme-handler/mailto", False)
+                if app_info:
+                    return {
+                        "name": app_info.get_display_name() or app_info.get_name() or "Posta",
+                        "exec": app_info.get_executable() or "evolution",
+                        "desktop_id": app_info.get_id() or "org.gnome.Evolution.desktop",
+                        "score": 100.0,
+                    }
+            except Exception as e:
+                logger.debug(f"Default mail client lookup failed: {e}")
+
+            for entry in self._entries:
+                d_id = entry.desktop_id.lower()
+                if any(m in d_id for m in ("evolution", "thunderbird", "geary", "kmail")):
+                    return {
+                        "name": entry.name,
+                        "exec": entry.exec_name,
+                        "desktop_id": entry.desktop_id,
+                        "score": 100.0,
+                    }
+
+        if not self._candidates:
             return None
 
         result = process.extractOne(

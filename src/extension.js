@@ -90,10 +90,19 @@ function setupDaemonServices(extensionDir) {
 
     try {
         let desktopContent = loadTemplate('/org/gnome/shell/extensions/voice-assistant/services/org.local.VoiceAssistant.desktop.in', 'org.local.VoiceAssistant.desktop.in');
-        let desktopFile = appsDir.get_child('org.local.VoiceAssistant.desktop');
-        desktopFile.replace_contents(encoder.encode(desktopContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
         let desktopGuiFile = appsDir.get_child('org.local.VoiceAssistant.GUI.desktop');
         desktopGuiFile.replace_contents(encoder.encode(desktopContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+
+        // Also ensure org.local.VoiceAssistant.desktop exists with NoDisplay=true
+        // for backwards compatibility and notification routing
+        let baseDesktopFile = appsDir.get_child('org.local.VoiceAssistant.desktop');
+        let baseContent = desktopContent;
+        if (!baseContent.includes('NoDisplay=')) {
+            baseContent += '\nNoDisplay=true\n';
+        } else {
+            baseContent = baseContent.replace(/NoDisplay=false/g, 'NoDisplay=true');
+        }
+        baseDesktopFile.replace_contents(encoder.encode(baseContent), null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
     } catch (e) {
         console.error(`[VoiceAssistant] Errore installazione file .desktop: ${e.message}`);
     }
@@ -120,6 +129,17 @@ function setupDaemonServices(extensionDir) {
         } catch (e) {
             // Ignora se già esistente o errore di scrittura secondario
         }
+    }
+
+    // Aggiorna la cache delle icone utente
+    try {
+        let updateIconCacheProc = new Gio.Subprocess({
+            argv: ['gtk-update-icon-cache', '-f', '-t', userIconsDir.get_path()],
+            flags: Gio.SubprocessFlags.NONE
+        });
+        updateIconCacheProc.init(null);
+    } catch (e) {
+        // Non-bloccante se gtk-update-icon-cache non è presente
     }
 
     // 5. Reload systemd and start service
@@ -161,10 +181,22 @@ try {
     <method name="TriggerListening">
       <arg type="b" direction="out" name="is_listening"/>
     </method>
+    <method name="ToggleListeningInContext">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="b" direction="out" name="is_listening"/>
+    </method>
+    <method name="TriggerListeningInContext">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="b" direction="out" name="is_listening"/>
+    </method>
     <method name="GetState">
       <arg type="s" direction="out" name="state"/>
     </method>
     <method name="GetAvailableModels">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="out" name="models_json"/>
+    </method>
+    <method name="GetInstalledModels">
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="out" name="models_json"/>
     </method>
@@ -181,6 +213,11 @@ try {
     <method name="CancelDownload">
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="in" name="model"/>
+    </method>
+    <method name="DeleteModel">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="in" name="model"/>
+      <arg type="b" direction="out" name="success"/>
     </method>
     <method name="GetErrorReports">
       <arg type="s" direction="out" name="reports_json"/>
@@ -240,15 +277,65 @@ try {
     <method name="GetInstalledServers">
       <arg type="s" direction="out" name="servers_json"/>
     </method>
+    <method name="GetSkills">
+      <arg type="s" direction="out" name="skills_json"/>
+    </method>
+    <method name="SaveSkill">
+      <arg type="s" direction="in" name="skill_json"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
+    <method name="DeleteSkill">
+      <arg type="s" direction="in" name="intent"/>
+      <arg type="b" direction="out" name="success"/>
+      <arg type="s" direction="out" name="message"/>
+    </method>
     <method name="ShowWindow">
     </method>
     <method name="OpenSettings">
+    </method>
+        <method name="CreateConversation">
+      <arg type="s" direction="in" name="title"/>
+      <arg type="s" direction="out" name="context_id"/>
+    </method>
+    <method name="ListConversations">
+      <arg type="s" direction="out" name="conversations_json"/>
+    </method>
+    <method name="DeleteConversation">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="GetConversationMessages">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="s" direction="out" name="messages_json"/>
+    </method>
+    <method name="ProcessTextInContext">
+      <arg type="s" direction="in" name="text"/>
+      <arg type="s" direction="in" name="context_id"/>
     </method>
     <method name="ProcessTextInput">
       <arg type="s" direction="in" name="text"/>
     </method>
     <method name="GetMissingDependencies">
       <arg type="s" direction="out" name="deps_json"/>
+    </method>
+    <method name="GetSpeakerStatus">
+      <arg type="s" direction="out" name="status_json"/>
+    </method>
+    <method name="GetSpeakerProfiles">
+      <arg type="s" direction="out" name="profiles_json"/>
+    </method>
+    <method name="StartSpeakerEnrollment">
+      <arg type="s" direction="in" name="display_name"/>
+      <arg type="d" direction="in" name="duration_s"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="CancelSpeakerEnrollment">
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="DeleteSpeakerProfile">
+      <arg type="s" direction="in" name="profile_id"/>
+      <arg type="b" direction="out" name="success"/>
     </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
@@ -270,6 +357,39 @@ try {
       <arg type="s" name="package"/>
       <arg type="s" name="description"/>
       <arg type="b" name="is_critical"/>
+    </signal>
+    <signal name="SpeakerEnrollmentProgress">
+      <arg type="d" name="progress"/>
+      <arg type="d" name="level"/>
+    </signal>
+    <signal name="SpeakerEnrollmentFinished">
+      <arg type="b" name="success"/>
+      <arg type="s" name="profile_id"/>
+      <arg type="s" name="message"/>
+    </signal>
+    <signal name="SpeakerIdentified">
+      <arg type="s" name="profile_name"/>
+      <arg type="d" name="score"/>
+      <arg type="s" name="status"/>
+      <arg type="b" name="overlap_detected"/>
+    </signal>
+    <signal name="SpeakerRejected">
+      <arg type="s" name="reason"/>
+      <arg type="s" name="message"/>
+    </signal>
+    <signal name="ConversationCreated">
+      <arg type="s" name="context_id"/>
+      <arg type="s" name="reason"/>
+    </signal>
+    <signal name="ConversationToken">
+      <arg type="s" name="context_id"/>
+      <arg type="s" name="token"/>
+      <arg type="b" name="is_complete"/>
+    </signal>
+    <signal name="ConversationTranscript">
+      <arg type="s" name="context_id"/>
+      <arg type="s" name="text"/>
+      <arg type="b" name="is_final"/>
     </signal>
   </interface>
 </node>`;

@@ -165,9 +165,9 @@ class SkillRegistry:
                         break
                     item = item_match.group(1).strip()
                     if item.startswith('"') and item.endswith('"'):
-                        item = item[1:-1]
+                        item = item[1:-1].replace('\\"', '"').replace('\\\\', '\\')
                     elif item.startswith("'") and item.endswith("'"):
-                        item = item[1:-1]
+                        item = item[1:-1].replace("\\'", "'").replace('\\\\', '\\')
                     values.append(item)
                     idx += 1
                 metadata[key] = values
@@ -184,15 +184,32 @@ class SkillRegistry:
                 except Exception:
                     metadata[key] = [item.strip().strip('"') for item in value[1:-1].split(",") if item.strip()]
             elif value.startswith('"') and value.endswith('"'):
-                metadata[key] = value[1:-1]
+                metadata[key] = value[1:-1].replace('\\"', '"').replace('\\\\', '\\')
             elif value.startswith("'") and value.endswith("'"):
-                metadata[key] = value[1:-1]
+                metadata[key] = value[1:-1].replace("\\'", "'").replace('\\\\', '\\')
             else:
                 metadata[key] = value
             idx += 1
 
         if "triggers" not in metadata and "name" not in metadata:
             return None
+
+        # Determina action_type con fallback retrocompatibile
+        explicit_action_type = str(metadata.get("action_type", "")).lower()
+        if explicit_action_type in ("system", "command", "prompt", "response"):
+            action_type = explicit_action_type
+        elif "command" in metadata:
+            action_type = "command"
+        elif "response" in metadata:
+            action_type = "response"
+        elif "prompt" in metadata:
+            action_type = "prompt"
+        else:
+            action_type = "system"
+
+        prompt_val = str(metadata.get("prompt", ""))
+        if not prompt_val and action_type == "prompt" and body:
+            prompt_val = body
 
         skill = {
             "name": metadata.get("name", path.stem.replace("_", " ").title()),
@@ -202,7 +219,10 @@ class SkillRegistry:
             "intent": metadata.get("intent", path.stem.lower().replace("-", "_")),
             "source": str(path),
             "_body": body,
-            # NUOVI CAMPI:
+            "action_type": action_type,
+            "command": str(metadata.get("command", "")),
+            "prompt": prompt_val,
+            "response": str(metadata.get("response", "")),
             "tool": metadata.get("tool", ""),
             "args": metadata.get("args", {}),
             "pattern": metadata.get("pattern", ""),

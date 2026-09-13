@@ -74,7 +74,9 @@ Il processo viene avviato da `start.sh` tramite systemd e si registra sul Sessio
 | `core/data_loader.py`, `core/locale_utils.py` | Caricamento dati statici (cataloghi, pattern NLU, risposte localizzate) e utility di localizzazione |
 | `core/logger.py` | Logging strutturato, `ErrorCollector`, `EnvironmentSnapshot`, `DiagnosticBundler` (vedi [logging_design.md](logging_design.md)) |
 | `core/performance_metrics.py` | Tracciamento latenze delle operazioni (STT, LLM, TTS, wakeword) con soglie e report p95 (vedi [performance-metrics-guide.md](performance-metrics-guide.md)) |
-| `core/path_utils.py`, `core/settings.py`, `core/state.py` | Utility di percorso, wrapper GSettings e stato/enum della state machine |
+| `core/speaker_runtime.py` | `SpeakerIdController` — coordina backend Resemblyzer, profili vocali, identificatore asincrono, sessioni e registrazione per Speaker ID |
+| `services/speaker_id/` | Pacchetto specializzato per Speaker ID: `backend.py`, `resemblyzer_backend.py`, `profiles.py`, `policy.py`, `identifier.py`, `session.py`, `enrollment.py` |
+| `services/conversation_contexts.py` | `ConversationContextManager` — gestione sessioni multi-chat persistenti su disco (JSON), isolamento tra chat vocale (`voice`) e chat interattive, deep dive seeding e transazioni atomiche |
 | `VoiceAssistant` (classe) | Oggetto D-Bus principale; coordina i componenti e espone i metodi e i segnali |
 
 > [!NOTE]
@@ -123,8 +125,12 @@ stateDiagram-v2
 |---|---|---|
 | `StateChanged(s)` | `new_state: string` | Ogni transizione di stato |
 | `DownloadProgress(s, s, i)` | `provider: string, model: string, percent: int` | Durante il download di un modello (granularità 1%) |
-| `TranscriptReceived(s, b)` | `text: string, is_final: bool` | STT produce testo parziale (`is_final=False`) o finale (`True`) |
-| `ResponseTokenStreamed(s, b)` | `token: string, is_complete: bool` | LLM emette un token (`is_complete=False`) o segnala fine stream (`True`) |
+| `TranscriptReceived(s, b)` | `text: string, is_final: bool` | STT produce testo parziale (`is_final=False`) o finale (`True`) (broadcast) |
+| `ResponseTokenStreamed(s, b)` | `token: string, is_complete: bool` | LLM emette un token (`is_complete=False`) o segnala fine stream (`True`) (broadcast) |
+| `ConversationTranscript(s, s, b, b)` | `conversation_id: string, text: string, is_user: bool, is_final: bool` | Trascrizione instradata a uno specifico contesto di conversazione |
+| `ConversationToken(s, s, b)` | `conversation_id: string, token: string, is_complete: bool` | Token LLM instradato a uno specifico contesto di conversazione |
+| `ConversationCreated(s, s)` | `conversation_id: string, trigger: string` | Creazione di una nuova conversazione (es. manuale o `deep_dive`) |
+| `SpeakerRejected(s, s)` | `reason: string, details: string` | Richiesta vocale respinta dalla policy Speaker ID in modalità `gate` |
 | `DependencyRequired(s, s, b)` | `package: string, description: string, is_critical: bool` | Il daemon rileva una dipendenza di sistema mancante |
 
 ### Metodi D-Bus
@@ -134,6 +140,8 @@ Tabella non esaustiva (esempi principali) — per l'elenco completo e le firme e
 | Metodo | Firma | Descrizione |
 |---|---|---|
 | `ToggleListening() → b` | Ritorna `bool` | Alterna tra `disabled` e `idle` |
+| `ToggleListeningInContext(s) → b` | `context_id: string` | Alterna l'ascolto legando l'input vocale al contesto specificato |
+| `TriggerListeningInContext(s) → b` | `context_id: string` | Forza l'ascolto legando l'input vocale al contesto specificato |
 | `GetAvailableModels(s) → s` | `provider: string` | Restituisce il JSON dei modelli installati e disponibili (anche scaricabili) |
 | `GetInstalledModels(s) → s` | `provider: string` | Restituisce solo i modelli già presenti su disco |
 | `GetDownloadingModels() → s` | N/A | Restituisce il JSON dei download in corso |
@@ -142,6 +150,12 @@ Tabella non esaustiva (esempi principali) — per l'elenco completo e le firme e
 | `CancelDownload(s, s) → b` | `provider: string, model: string` | Annulla un download in corso e pulisce i file parziali |
 | `ShowWindow()` | N/A | Avvia la GUI standalone (subprocess `gui/start.sh`) |
 | `ProcessTextInput(s)` | `text: string` | Elabora testo dalla GUI in modalità silenziosa (senza TTS) |
+| `ProcessConversationTextInput(s, s)` | `conversation_id: string, text: string` | Elabora testo specificando il `conversation_id` della sessione chat attiva |
+| `GetConversations() → s` | N/A | Restituisce JSON con la lista delle conversazioni salvate |
+| `GetConversation(s) → s` | `conversation_id: string` | Restituisce JSON con i messaggi della conversazione |
+| `CreateConversation(s) → s` | `title: string` | Crea una nuova sessione chat e ne restituisce l'UUID |
+| `DeleteConversation(s) → b` | `conversation_id: string` | Elimina la sessione di chat specificata |
+| `ClearConversations() → b` | N/A | Rimuove tutte le conversazioni utente |
 
 ### Wake Word Engine
 
@@ -203,7 +217,12 @@ La finestra di chat è un'applicazione GTK4/Libadwaita **separata dal daemon**, 
 | `gui/dependency_installer.py` | Dialogo e wizard di installazione guidata per dipendenze di sistema/pip mancanti. |
 | `gui/start.sh` | Avvia la GUI riutilizzando il venv del daemon (`daemon/venv/bin/python3`), senza necessità di un venv separato. |
 
-### Flusso D-Bus dalla GUI
+### Flusso D-Bus dalla GUI e Gestione Multi-Chat
+
+La GUI supporta la navigazione e creazione di chat multiple isolate gestite via D-Bus dal `ConversationContextManager` del daemon:
+- **Isolamento della sessione vocale**: la sessione `voice` è separata dai contesti chat della GUI (`_current_context_id` non punta mai a `"voice"`). Le interazioni vocali ordinarie non inquinano la chat interattiva.
+- **Deep Dive**: se una richiesta vocale genera un deep dive, il daemon crea una nuova sessione chat, emette `ConversationCreated(chat_id, "deep_dive")` e apre la GUI focalizzata su quel contesto (anche tramite `--open-conversation <id>`).
+- **Routing dei messaggi e token**: la GUI sottoscrive `ConversationTranscript` e `ConversationToken`. Se il `conversation_id` del segnale corrisponde a `_current_context_id`, i token e le trascrizioni vengono renderizzati nella vista chat attiva; in caso contrario, vengono memorizzati sul daemon per la visualizzazione al momento del cambio di chat.
 
 ```mermaid
 sequenceDiagram
@@ -214,18 +233,19 @@ sequenceDiagram
     GUI->>Bus: DaemonClient / Gio.DBusProxy asincrono
     Bus-->>GUI: Connessione pronta e segnali registrati
 
-    Note over GUI: Utente invia testo da tastiera
+    Note over GUI: Utente invia testo nella chat attiva (ctx_id)
     GUI->>GUI: Aggiunge subito ChatBubble locale (traccia _last_sent_text)
-    GUI->>Bus: ProcessTextInput("apri firefox")
-    Bus->>Daemon: Elabora in modalità silenziosa
-    Daemon-->>Bus: TranscriptReceived("apri firefox", True) (ignorato da GUI per echo suppression)
-    Daemon->>Bus: Emit ResponseTokenStreamed(token, False) ×N
-    Daemon->>Bus: Emit ResponseTokenStreamed("", True)
+    GUI->>Bus: ProcessConversationTextInput(ctx_id, "apri firefox")
+    Bus->>Daemon: Elabora in modalità silenziosa per ctx_id
+    Daemon->>Bus: Emit ConversationToken(ctx_id, token, False) ×N
+    Daemon->>Bus: Emit ConversationToken(ctx_id, "", True)
     Bus-->>GUI: _on_dbus_signal → append_assistant_token / _close_current_bubble
 
-    Note over Daemon: Wakeword rilevata vocalmente
-    Daemon->>Bus: Emit TranscriptReceived(text, True)
-    Bus-->>GUI: _on_dbus_signal → add_user_message(text)
+    Note over Daemon: Wakeword rilevata vocalmente (Deep Dive)
+    Daemon->>Daemon: Risposta >= 400 chars, crea chat interattiva (new_id)
+    Daemon->>Bus: Emit ConversationCreated(new_id, "deep_dive")
+    Daemon->>Bus: Emit ConversationTranscript(new_id, text, False, True)
+    Bus-->>GUI: Seleziona automaticamente new_id e visualizza i dettagli
 ```
 
 La GUI distingue **fast-path** da **LLM streaming** tramite il flag `_streaming_active`: se `is_complete=True` arriva senza token precedenti, è una risposta completa immediata; altrimenti è la fine di uno stream progressivo. La deduplicazione previene che il messaggio digitato dall'utente compaia due volte all'arrivo dell'eco D-Bus broadcast.
@@ -527,3 +547,19 @@ Il Voice Assistant integra un'architettura **MCP (Model Context Protocol)** gest
    - Inserimento automatico degli schemi JSON dei tool e del timestamp di sistema aggiornato ad ogni richiesta dell'LLM in `LLMServiceManager`.
 
 Per i dettagli completi sul funzionamento dei tool, consultare la [Guida MCP](mcp-guide.md). Per approfondire il funzionamento della pipeline e del dispatch Fast/Smart-Path, consultare la [Guida alla Pipeline](pipeline.md) e la [SMART PATH Integration Guide](smart-path-integration.md).
+
+---
+
+## 10. Riconoscimento del Parlante (`src/daemon/services/speaker_id/`)
+
+Il sistema di riconoscimento del timbro vocale identifica chi sta parlando per personalizzare le risposte (modalità `informative`) o bloccare richieste non autorizzate (modalità `gate`).
+
+### Componenti del Pacchetto `speaker_id`
+- **`backend.py`**: Protocollo astratto `SpeakerEmbeddingBackend` (`embed()`, `preprocess()`, `load()`, `unload()`, `is_available`) e factory `create_backend`.
+- **`resemblyzer_backend.py`**: Implementazione basata sulla rete neurale d-vector Resemblyzer (GE2E loss, 256 dimensioni). Il caricamento di PyTorch e VoiceEncoder è completamente lazy.
+- **`profiles.py`**: `SpeakerProfileStore` con memorizzazione atomica su disco (`.npz` in `~/.local/share/voice-assistant/speaker_profiles/`), locking thread-safe (`threading.RLock`) e calcolo dell'embedding di riferimento combinando al 50% l'ancora iniziale e la media ponderata lineare della cronologia (fino a 19 campioni).
+- **`policy.py`**: Funzione pura `SpeakerPolicy.evaluate(...)` che implementa le decisioni per le modalità `disabled`, `informative` e `gate`, escludendo dal blocco i comandi rapidi di stop/barge-in e gli input testuali da GUI.
+- **`identifier.py`**: Background worker asincrono `SpeakerIdentifier` su coda limitata (dimensione 4) che processa gli embedding vocali senza bloccare il thread dell'audio loop.
+- **`session.py`**: `VoiceSpeakerSession` con ring buffer di pre-roll audio (2.0s) per catturare i primi fonemi della wakeword, e rilevamento sovrapposizione voci tramite finestre scorrevoli.
+- **`enrollment.py`**: `EnrollmentRecorder` per la procedura guidata di registrazione vocale da 8.0s (con verifica di almeno 4.0s di parlato utile tramite RMS).
+- **`core/speaker_runtime.py`**: `SpeakerIdController` che orchestra il ciclo di vita, i profili, le sessioni e le notifiche D-Bus.

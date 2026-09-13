@@ -8,10 +8,22 @@
     <method name="TriggerListening">
       <arg type="b" direction="out" name="is_listening"/>
     </method>
+    <method name="ToggleListeningInContext">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="b" direction="out" name="is_listening"/>
+    </method>
+    <method name="TriggerListeningInContext">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="b" direction="out" name="is_listening"/>
+    </method>
     <method name="GetState">
       <arg type="s" direction="out" name="state"/>
     </method>
     <method name="GetAvailableModels">
+      <arg type="s" direction="in" name="provider"/>
+      <arg type="s" direction="out" name="models_json"/>
+    </method>
+    <method name="GetInstalledModels">
       <arg type="s" direction="in" name="provider"/>
       <arg type="s" direction="out" name="models_json"/>
     </method>
@@ -109,11 +121,48 @@
     </method>
     <method name="OpenSettings">
     </method>
+        <method name="CreateConversation">
+      <arg type="s" direction="in" name="title"/>
+      <arg type="s" direction="out" name="context_id"/>
+    </method>
+    <method name="ListConversations">
+      <arg type="s" direction="out" name="conversations_json"/>
+    </method>
+    <method name="DeleteConversation">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="GetConversationMessages">
+      <arg type="s" direction="in" name="context_id"/>
+      <arg type="s" direction="out" name="messages_json"/>
+    </method>
+    <method name="ProcessTextInContext">
+      <arg type="s" direction="in" name="text"/>
+      <arg type="s" direction="in" name="context_id"/>
+    </method>
     <method name="ProcessTextInput">
       <arg type="s" direction="in" name="text"/>
     </method>
     <method name="GetMissingDependencies">
       <arg type="s" direction="out" name="deps_json"/>
+    </method>
+    <method name="GetSpeakerStatus">
+      <arg type="s" direction="out" name="status_json"/>
+    </method>
+    <method name="GetSpeakerProfiles">
+      <arg type="s" direction="out" name="profiles_json"/>
+    </method>
+    <method name="StartSpeakerEnrollment">
+      <arg type="s" direction="in" name="display_name"/>
+      <arg type="d" direction="in" name="duration_s"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="CancelSpeakerEnrollment">
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="DeleteSpeakerProfile">
+      <arg type="s" direction="in" name="profile_id"/>
+      <arg type="b" direction="out" name="success"/>
     </method>
     <signal name="StateChanged">
       <arg type="s" name="new_state"/>
@@ -135,6 +184,39 @@
       <arg type="s" name="package"/>
       <arg type="s" name="description"/>
       <arg type="b" name="is_critical"/>
+    </signal>
+    <signal name="SpeakerEnrollmentProgress">
+      <arg type="d" name="progress"/>
+      <arg type="d" name="level"/>
+    </signal>
+    <signal name="SpeakerEnrollmentFinished">
+      <arg type="b" name="success"/>
+      <arg type="s" name="profile_id"/>
+      <arg type="s" name="message"/>
+    </signal>
+    <signal name="SpeakerIdentified">
+      <arg type="s" name="profile_name"/>
+      <arg type="d" name="score"/>
+      <arg type="s" name="status"/>
+      <arg type="b" name="overlap_detected"/>
+    </signal>
+    <signal name="SpeakerRejected">
+      <arg type="s" name="reason"/>
+      <arg type="s" name="message"/>
+    </signal>
+    <signal name="ConversationCreated">
+      <arg type="s" name="context_id"/>
+      <arg type="s" name="reason"/>
+    </signal>
+    <signal name="ConversationToken">
+      <arg type="s" name="context_id"/>
+      <arg type="s" name="token"/>
+      <arg type="b" name="is_complete"/>
+    </signal>
+    <signal name="ConversationTranscript">
+      <arg type="s" name="context_id"/>
+      <arg type="s" name="text"/>
+      <arg type="b" name="is_final"/>
     </signal>
   </interface>
 </node>

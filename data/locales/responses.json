@@ -51,15 +51,30 @@
     "fast_path": {
       "set_theme_dark": "Modalità scura attivata",
       "set_theme_light": "Modalità chiara attivata",
-      "get_time": "Orario richiesto",
-      "get_date": "Data richiesta",
+      "get_time": "Sono le {time}.",
+      "get_date": "Oggi è {date}.",
       "launch_app": "Apro {app}",
       "media_pause": "Musica in pausa",
       "media_play": "Riproduzione avviata",
       "volume_up": "Volume alzato",
       "volume_down": "Volume abbassato",
       "mute": "Audio silenziato",
-      "volume_set": "Volume del sistema impostato al {volume}%."
+      "volume_set": "Volume del sistema impostato al {volume}%.",
+      "compose_mail": "Apro la finestra per una nuova email."
+    },
+    "unrecognized_command": "Comando non riconosciuto.",
+    "speaker_id": {
+      "context_template": "Parlante identificato: {name}.",
+      "unknown": "Voce non riconosciuta. Accesso negato.",
+      "unknown_speaker": "Voce non riconosciuta. Accesso negato.",
+      "overlap": "Rilevate più voci contemporaneamente. Accesso negato.",
+      "insufficient_audio": "Audio vocale troppo breve per il riconoscimento. Riprova.",
+      "no_profiles": "Nessun profilo vocale registrato. Registra la tua voce nelle impostazioni.",
+      "unavailable": "Servizio di riconoscimento vocale non disponibile. Verifica le impostazioni.",
+      "timeout": "Riconoscimento vocale scaduto. Riprova."
+    },
+    "deep_dive": {
+      "opened_chat": "Ti ho aperto i dettagli in una chat."
     }
   },
   "en": {
@@ -114,15 +129,31 @@
     "fast_path": {
       "set_theme_dark": "Dark mode activated",
       "set_theme_light": "Light mode activated",
-      "get_time": "Time requested",
-      "get_date": "Date requested",
+      "get_time": "It is {time}.",
+      "get_date": "Today is {date}.",
       "launch_app": "Opening {app}",
       "media_pause": "Music paused",
       "media_play": "Playback started",
       "volume_up": "Volume increased",
       "volume_down": "Volume decreased",
       "mute": "Audio muted",
-      "volume_set": "System volume set to {volume}%."
+      "volume_set": "System volume set to {volume}%.",
+      "compose_mail": "Opening new email draft."
+    },
+    "unrecognized_command": "Command not recognized.",
+    "speaker_id": {
+      "context_template": "Identified speaker: {name}.",
+      "unknown": "Voice not recognized. Access denied.",
+      "unknown_speaker": "Voice not recognized. Access denied.",
+      "overlap": "Multiple overlapping voices detected. Access denied.",
+      "insufficient_audio": "Speech audio too short for verification. Please try again.",
+      "no_profiles": "No voice profiles registered. Please enroll your voice in settings.",
+      "unavailable": "Voice identification service unavailable. Please check settings.",
+      "timeout": "Voice verification timed out. Please try again."
+    },
+    "deep_dive": {
+      "opened_chat": "I opened the details in a chat."
     }
   }
 }
+

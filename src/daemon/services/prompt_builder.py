@@ -63,6 +63,15 @@ class PromptBuilder:
         self.tools_definition = tools_definition
         self.clock_info = clock_info
 
+    def format_context(self, rag_results: Optional[List[tuple]] = None) -> str:
+        """Format RAG results as a memory context block."""
+        if not self.include_rag_context or not rag_results:
+            return ""
+        lines = ["📚 Memoria rilevante:"]
+        for content, score in rag_results[:3]:
+            lines.append(f"  • {content[:100]} (rilevanza: {score:.2f})")
+        return "\n".join(lines)
+
     def build_prompt(
         self,
         user_message: str,

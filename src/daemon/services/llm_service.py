@@ -18,11 +18,67 @@ from core.locale_utils import get_system_language
 
 logger = logging.getLogger("VoiceAssistant.LLM")
 
+def clean_hf_name(repo_id: str) -> str:
+    """Trasforma un repo ID di Hugging Face in un nome leggibile (es. 'bartowski/Llama-3.2-1B-Instruct-GGUF' -> 'Llama 3.2 1B Instruct (GGUF)')."""
+    if not repo_id:
+        return ""
+    if ":" in repo_id:
+        repo_id = repo_id.split(":", 1)[0]
+    repo_name = repo_id.split("/")[-1]
+    # Rimuovi eventuale estensione o suffisso GGUF/gguf
+    clean = re.sub(r'[-_.]?(?:gguf|GGUF)$', '', repo_name)
+    clean = clean.replace('-', ' ').replace('_', ' ')
+    clean = re.sub(r'\s+', ' ', clean).strip()
+    clean = re.sub(r'(\d+(?:\.\d+)?)\s*([bBmM])\b', lambda m: f"{m.group(1)}{m.group(2).upper()}", clean)
+    tokens = clean.split()
+    capitalized_tokens = []
+    for t in tokens:
+        if t.lower() == 'it':
+            capitalized_tokens.append('IT')
+        elif t.islower() and len(t) > 1:
+            capitalized_tokens.append(t.capitalize())
+        else:
+            capitalized_tokens.append(t)
+    clean = ' '.join(capitalized_tokens)
+    if not clean.lower().endswith("(gguf)") and not clean.lower().endswith("gguf"):
+        clean = f"{clean} (GGUF)"
+    return clean
+
+
+def estimate_gguf_size(repo_id: str = "", filename: str = "", gguf_info: Optional[Dict[str, Any]] = None) -> str:
+    """Stima la dimensione su disco di un modello quantizzato GGUF (default Q4_K_M)."""
+    total_params = None
+    if gguf_info and isinstance(gguf_info, dict):
+        total_params = gguf_info.get("total")
+
+    if not total_params:
+        text = f"{repo_id} {filename}"
+        matches = re.findall(r'(?:^|[^\w.])(\d+(?:\.\d+)?)\s*([bBmM])(?:$|[^\w])', text)
+        if matches:
+            val_str, unit = matches[-1]
+            val = float(val_str)
+            if unit.upper() == 'B':
+                total_params = int(val * 1e9)
+            elif unit.upper() == 'M':
+                total_params = int(val * 1e6)
+
+    if total_params:
+        est_bytes = total_params * 0.65
+        if est_bytes >= 1e9:
+            gb = est_bytes / 1e9
+            return f"~{gb:.1f} GB" if gb < 10 else f"~{round(gb)} GB"
+        else:
+            mb = est_bytes / 1e6
+            return f"~{round(mb)} MB"
+
+    return "~2.0 GB"
+
+
 def fetch_huggingface_models(query: str = "", limit: int = 100) -> list:
     """
     Effettua una query alle API REST di Hugging Face per cercare o elencare i modelli GGUF più popolari.
     """
-    base_url = "https://huggingface.co/api/models?filter=gguf&sort=downloads&direction=-1&limit=" + str(limit)
+    base_url = f"https://huggingface.co/api/models?filter=gguf&sort=downloads&direction=-1&limit={limit}&expand[]=gguf"
     if query.strip():
         base_url += f"&search={urllib.parse.quote(query.strip())}"
 
@@ -45,14 +101,17 @@ def fetch_huggingface_models(query: str = "", limit: int = 100) -> list:
                     seen_ids.add(model_id)
                     downloads = item.get("downloads", 0)
                     likes = item.get("likes", 0)
+                    gguf_info = item.get("gguf")
+                    display_name = clean_hf_name(repo_id)
+                    size_text = estimate_gguf_size(repo_id, filename, gguf_info)
                     models.append({
                         "id": model_id,
                         "provider": "llm",
-                        "name": repo_id,
-                        "subtitle": f"Hugging Face • {downloads:,} downloads • {likes} likes",
+                        "name": display_name,
+                        "subtitle": f"{repo_id} • {size_text} • {downloads:,} dl",
                         "repo": repo_id,
                         "file": filename,
-                        "size_text": "GGUF",
+                        "size_text": size_text,
                         "url": f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
                     })
     except Exception as e:
@@ -359,7 +418,7 @@ class LocalGGUFProvider:
         model_path = os.path.join(self.models_dir, filename)
         return os.path.exists(model_path) and os.path.getsize(model_path) > 50000000
 
-    def stream_tokens(self, prompt: str, system_prompt: str = "", model_name: Optional[str] = None) -> Generator[str, None, None]:
+    def stream_tokens(self, prompt: str, system_prompt: str = "", model_name: Optional[str] = None, history: Optional[List[Dict[str, str]]] = None) -> Generator[str, None, None]:
         if self.model_manager:
             self.model_manager.update_active_timestamp()
 
@@ -391,10 +450,10 @@ class LocalGGUFProvider:
             return
 
         sys_prompt = system_prompt or "Sei un assistente vocale italiano rapido e conciso. Rispondi in massimo 2 frasi brevi e dirette. Non divagare mai."
-        messages = [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": prompt}
-        ]
+        messages = [{"role": "system", "content": sys_prompt}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": prompt})
 
         try:
             response_stream = llm.create_chat_completion(
@@ -585,7 +644,7 @@ class OpenAICompatibleClient:
 
         if is_ollama_legacy:
             sys_msg = next((m["content"] for m in messages if m.get("role") == "system"), "")
-            usr_msg = next((m["content"] for m in messages if m.get("role") == "user"), "")
+            usr_msg = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
             payload["prompt"] = usr_msg
             if sys_msg:
                 payload["system"] = sys_msg
@@ -695,7 +754,7 @@ class LLMServiceManager:
         self.mcp_manager = mcp_manager
         self.local_gguf_provider = LocalGGUFProvider(model_manager=model_manager)
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self, context: str = "") -> Dict[str, Any]:
         providers_data = load_default_providers()
 
         mode = "local"
@@ -764,7 +823,7 @@ class LLMServiceManager:
             system_prompt,
             clock_context=clock_context,
             mcp_tools_prompt=mcp_tools_prompt,
-            context=""
+            context=context,
         )
 
         return {
@@ -813,7 +872,7 @@ class LLMServiceManager:
             return ""
         return run_async(self.mcp_manager.execute_tool(tool_name, args))
 
-    def _stream_anthropic(self, config: Dict[str, Any], prompt: str, _yield_and_track: Any) -> Generator[str, None, None]:
+    def _stream_anthropic(self, config: Dict[str, Any], prompt: str, _yield_and_track: Any, history: Optional[List[Dict[str, str]]] = None) -> Generator[str, None, None]:
         """Streaming per Anthropic Claude Messages API."""
         endpoint = config["endpoint"] if "anthropic.com" in config["endpoint"] else "https://api.anthropic.com/v1/messages"
         model_name = config["model_name"] if config["model_name"] and not config["model_name"].endswith(".gguf") else "claude-haiku-4-5-20251001"
@@ -822,11 +881,17 @@ class LLMServiceManager:
             "x-api-key": config["api_key"],
             "anthropic-version": "2023-06-01"
         }
+        
+        msgs = []
+        if history:
+            msgs.extend(history)
+        msgs.append({"role": "user", "content": prompt})
+        
         payload = {
             "model": model_name,
             "max_tokens": 300,
             "system": config["system_prompt"],
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": msgs,
             "stream": True
         }
         req_data = json.dumps(payload).encode('utf-8')
@@ -868,12 +933,17 @@ class LLMServiceManager:
             logger.error(f"[LLM] Errore streaming Anthropic API: {e}")
             yield f"Errore durante la chiamata ad Anthropic API: {e}"
 
-    def stream_tokens(self, prompt: str) -> Generator[str, None, None]:
+    def stream_tokens(
+        self,
+        prompt: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        context: str = "",
+    ) -> Generator[str, None, None]:
         """
         Invia il prompt al provider selezionato (Local GGUF, Anthropic API, o client unificato OpenAI-compatibile)
-        e produce un flusso di token in tempo reale, eseguendo eventuali tool call MCP.
+        e produce un flusso di token in tempo reale, includendo il contesto e i tool call.
         """
-        config = self.get_config()
+        config = self.get_config(context=context)
         mode = config["mode"]
         accumulated_tokens = []
 
@@ -889,6 +959,7 @@ class LLMServiceManager:
                         prompt,
                         system_prompt=config["system_prompt"],
                         model_name=config.get("model_name"),
+                        history=history
                     )
                 except TypeError:
                     stream_gen = self.local_gguf_provider.stream_tokens(
@@ -914,7 +985,7 @@ class LLMServiceManager:
 
         # 2. Anthropic Claude API Mode
         if mode == "anthropic" or "anthropic.com" in config["endpoint"]:
-            yield from self._stream_anthropic(config, prompt, _yield_and_track)
+            yield from self._stream_anthropic(config, prompt, _yield_and_track, history=history)
             return
 
         # 3. Unified OpenAI-Compatible HTTP Streaming (OpenAI, Ollama, Groq, DeepSeek, Local HTTP)
@@ -923,10 +994,10 @@ class LLMServiceManager:
         if not tools_schema:
             tools_schema = None
 
-        messages = [
-            {"role": "system", "content": config["system_prompt"]},
-            {"role": "user", "content": prompt}
-        ]
+        messages = [{"role": "system", "content": config["system_prompt"]}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": prompt})
 
         client_timeout = 30.0 if (mode == "ollama" or "localhost" in endpoint or "127.0.0.1" in endpoint) else 15.0
         client = OpenAICompatibleClient(

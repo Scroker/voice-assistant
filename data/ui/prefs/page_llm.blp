@@ -4,13 +4,62 @@ Adw.PreferencesPage llm_page {
   icon-name: "brain-augmented-symbolic";
   name: "llm";
 
-  Adw.PreferencesGroup {
-    title: _("Large Language Model (LLM)");
-    description: _("Enable and configure text generation capabilities.");
+  Adw.PreferencesGroup dispatch_group {
+    title: _("Command Processing");
+    description: _("How a recognized command is dispatched before reaching the full assistant.");
 
-    Adw.SwitchRow llm_enable_row {
-      title: _("Enable LLM Responses");
-      subtitle: _("Send voice transcriptions to the LLM to generate intelligent responses");
+    Adw.ExpanderRow dispatch_options_row {
+      title: _("Options");
+      subtitle: _("Fast-path direct execution and semantic routing threshold");
+
+      [prefix]
+      Gtk.Image {
+        icon-name: "media-playlist-consecutive-symbolic";
+        valign: center;
+      }
+
+      Adw.SwitchRow dispatch_fast_path_row {
+        title: _("Enable Fast-Path");
+        subtitle: _("Fastest, deterministic — direct action without model");
+      }
+
+      Adw.SpinRow dispatch_semantic_threshold_row {
+        title: _("Semantic Router Confidence Threshold");
+        subtitle: _("Minimum similarity score required to execute an action directly instead of falling through");
+        digits: 2;
+        adjustment: Gtk.Adjustment {
+          lower: 0.50;
+          upper: 0.95;
+          step-increment: 0.05;
+          page-increment: 0.05;
+          value: 0.62;
+        };
+      }
+    }
+  }
+
+  Adw.PreferencesGroup llm_system_prompt_group {
+    title: _("System Instructions");
+    description: _("Prompt and behavioral instructions for the assistant.");
+
+    Gtk.Frame {
+      styles ["card"]
+
+      Gtk.ScrolledWindow {
+        min-content-height: 140;
+        max-content-height: 280;
+        hscrollbar-policy: never;
+        propagate-natural-height: true;
+
+        Gtk.TextView llm_system_prompt_view {
+          top-margin: 10;
+          bottom-margin: 10;
+          left-margin: 12;
+          right-margin: 12;
+          wrap-mode: word;
+          buffer: Gtk.TextBuffer llm_system_prompt_buffer {};
+        }
+      }
     }
   }
 
@@ -180,7 +229,7 @@ Adw.PreferencesPage llm_page {
     title: _("Cloud Configuration");
     visible: false;
 
-    Adw.EntryRow llm_api_key_row {
+    Adw.PasswordEntryRow llm_api_key_row {
       title: _("API Key");
     }
 
@@ -201,75 +250,13 @@ Adw.PreferencesPage llm_page {
     }
   }
 
-  Adw.PreferencesGroup llm_system_prompt_group {
-    title: _("System Instructions");
+  Adw.PreferencesGroup llm_memory_group {
+    title: _("Conversation Memory");
+    description: _("Retain recent conversation history for multi-turn context.");
 
-    Adw.EntryRow llm_system_prompt_row {
-      title: _("System Prompt (Instructions)");
-    }
-  }
-
-  Adw.PreferencesGroup {
-    title: _("Tools &amp; Extensions");
-    description: _("Model Context Protocol (MCP) integrations and capabilities.");
-
-    Adw.ActionRow mcp_subpage_row {
-      title: _("Tools (MCP)");
-      subtitle: _("Configure Model Context Protocol tools and servers");
-      activatable: true;
-
-      [prefix]
-      Gtk.Image {
-        icon-name: "system-run-symbolic";
-        valign: center;
-      }
-
-      [suffix]
-      Gtk.Image {
-        icon-name: "go-next-symbolic";
-        valign: center;
-      }
-    }
-  }
-
-  Adw.PreferencesGroup {
-    title: _("Command Processing");
-    description: _("How a recognized command is dispatched before reaching the full assistant.");
-
-    Adw.ActionRow dispatch_subpage_row {
-      title: _("Command Dispatch");
-      subtitle: _("Enable or disable the Fast-Path and Medium-Path stages");
-      activatable: true;
-
-      [prefix]
-      Gtk.Image {
-        icon-name: "media-playlist-consecutive-symbolic";
-        valign: center;
-      }
-
-      [suffix]
-      Gtk.Image {
-        icon-name: "go-next-symbolic";
-        valign: center;
-      }
-    }
-
-    Adw.ActionRow skills_subpage_row {
-      title: _("Skills");
-      subtitle: _("View built-in skills and add your own trigger phrases");
-      activatable: true;
-
-      [prefix]
-      Gtk.Image {
-        icon-name: "applications-utilities-symbolic";
-        valign: center;
-      }
-
-      [suffix]
-      Gtk.Image {
-        icon-name: "go-next-symbolic";
-        valign: center;
-      }
+    Adw.SwitchRow llm_memory_enable_row {
+      title: _("Enable Memory");
+      subtitle: _("Remember previous messages in conversation");
     }
   }
 }

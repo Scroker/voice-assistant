@@ -285,6 +285,75 @@ class TestHybridVectorStore(unittest.TestCase):
         store.close()
         os.remove(custom_path)
 
+    def test_delete_by_metadata_removes_from_memory_and_db(self):
+        """Verify delete_by_metadata cleans memory and SQLite so reloading does not resurrect."""
+        store = VectorStore(db_path=self.db_path)
+        store.add_document("Nota segreta chat 1", metadata={"context_id": "conv-1"}, doc_id="d1")
+        store.add_document("Nota pubblica chat 2", metadata={"context_id": "conv-2"}, doc_id="d2")
+        store.force_sync()
+
+        # Delete conv-1
+        removed = store.delete_by_metadata("context_id", "conv-1")
+        self.assertEqual(removed, 1)
+        self.assertNotIn("d1", store.documents)
+        self.assertIn("d2", store.documents)
+        store.close()
+
+        # Create new store on same db
+        store2 = VectorStore(db_path=self.db_path)
+        self.assertNotIn("d1", store2.documents)
+        self.assertIn("d2", store2.documents)
+        self.assertEqual(len(store2.search("segreta", context_id="conv-1")), 0)
+        store2.close()
+
+    def test_same_phrase_in_two_chats_produces_two_isolated_documents(self):
+        """Verify same text in different chats gets isolated by doc_id and context."""
+        import hashlib
+        store = VectorStore(db_path=self.db_path)
+        text = "Qual è la ricetta della pizza margherita?"
+
+        id1 = hashlib.md5(f"chat-1\0{text}".encode("utf-8")).hexdigest()[:16]
+        id2 = hashlib.md5(f"chat-2\0{text}".encode("utf-8")).hexdigest()[:16]
+        self.assertNotEqual(id1, id2)
+
+        doc1 = store.add_document(text, metadata={"context_id": "chat-1"}, doc_id=id1)
+        doc2 = store.add_document(text, metadata={"context_id": "chat-2"}, doc_id=id2)
+
+        self.assertEqual(doc1, id1)
+        self.assertEqual(doc2, id2)
+        self.assertEqual(store.get_size(), 2)
+
+        res1 = store.search("pizza", context_id="chat-1")
+        res2 = store.search("pizza", context_id="chat-2")
+        res3 = store.search("pizza", context_id="chat-3")
+
+        self.assertEqual(len(res1), 1)
+        self.assertEqual(len(res2), 1)
+        self.assertEqual(len(res3), 0)
+        store.close()
+
+    def test_delete_conversation_via_main_cleans_rag(self):
+        """Verify DeleteConversation on VoiceAssistant delegates to RAG delete_by_metadata."""
+        from unittest.mock import MagicMock
+        from main import VoiceAssistant
+
+        daemon = VoiceAssistant.__new__(VoiceAssistant)
+        mock_cm = MagicMock()
+        mock_cm.delete.return_value = True
+        daemon.context_manager = mock_cm
+
+        mock_store = MagicMock()
+        mock_sp = MagicMock()
+        mock_sp.vector_store = mock_store
+        mock_pipe = MagicMock()
+        mock_pipe.smart_path = mock_sp
+        daemon.pipeline_controller = mock_pipe
+
+        result = daemon.DeleteConversation("test-uuid-1234")
+        self.assertTrue(result)
+        mock_cm.delete.assert_called_once_with("test-uuid-1234")
+        mock_store.delete_by_metadata.assert_called_once_with("context_id", "test-uuid-1234")
+
 
 if __name__ == "__main__":
     unittest.main()

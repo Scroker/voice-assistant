@@ -1,0 +1,103 @@
+// SPEAKER ENROLLMENT SUBPAGE
+Adw.NavigationPage speaker_enrollment_subpage {
+  tag: "speaker_enrollment_subpage";
+  title: _("Record Your Voice");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Record Your Voice");
+      };
+    }
+
+    content: Adw.Clamp {
+      maximum-size: 560;
+
+      child: Gtk.Box {
+        orientation: vertical;
+        spacing: 18;
+        margin-top: 24;
+        margin-bottom: 24;
+        margin-start: 24;
+        margin-end: 24;
+
+        Adw.Banner enrollment_download_banner {
+          title: _("Speaker identification model is downloading. Recording is currently disabled.");
+          revealed: false;
+        }
+
+        Gtk.Label enrollment_intro_label {
+          label: _("Read the text aloud in your natural tone, about 50 cm from the microphone.");
+          wrap: true;
+          justify: center;
+        }
+
+        Adw.PreferencesGroup {
+          Adw.ActionRow enrollment_user_row {
+            title: _("GNOME Session Account");
+            subtitle: "";
+            [prefix]
+            Gtk.Image {
+              icon-name: "avatar-default-symbolic";
+            }
+          }
+
+          Adw.EntryRow enrollment_name_entry {
+            title: _("Speaker Name");
+          }
+        }
+
+        Gtk.Frame {
+          Gtk.Label enrollment_text_label {
+            wrap: true;
+            selectable: false;
+            margin-top: 16;
+            margin-bottom: 16;
+            margin-start: 16;
+            margin-end: 16;
+            styles ["title-3"]
+          }
+        }
+
+        Gtk.LevelBar enrollment_level_bar {
+          min-value: 0.0;
+          max-value: 1.0;
+        }
+
+        Gtk.ProgressBar enrollment_progress_bar {
+          show-text: false;
+        }
+
+        Gtk.Label enrollment_status_label {
+          label: _("Ready");
+          styles ["dim-label"]
+        }
+
+        Gtk.Box {
+          orientation: horizontal;
+          homogeneous: true;
+          spacing: 12;
+
+          Gtk.Button enrollment_record_btn {
+            label: _("Start Recording");
+            styles ["suggested-action", "pill"]
+          }
+
+          Gtk.Button enrollment_cancel_btn {
+            label: _("Cancel");
+            visible: false;
+            styles ["pill"]
+          }
+        }
+
+        Adw.PreferencesGroup {
+          Adw.ButtonRow enrollment_delete_btn {
+            title: _("Delete Voice Profile");
+            styles ["destructive-action"]
+          }
+        }
+      };
+    };
+  };
+}

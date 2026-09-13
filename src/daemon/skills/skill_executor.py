@@ -79,7 +79,12 @@ class SkillExecutor:
         self.body = skill.get("_body", "")
         self.tools_allowed = skill.get("tools_allowed", [])
         self.triggers = skill.get("triggers", [])
-        self.description = skill.get("description", "")
+        self.action_type = skill.get("action_type") or "system"
+        self.command = skill.get("command", "")
+        self.prompt = skill.get("prompt", "")
+        self.response = skill.get("response", "")
+        self.tool = skill.get("tool", "")
+        self.args = skill.get("args") or {}
 
     def _extract_tool_keywords_from_body(self) -> List[str]:
         """Extract tool names from skill body based on keyword matching."""
@@ -220,6 +225,7 @@ class SkillExecutor:
         user_text: str,
         mcp_manager: Optional[Any] = None,
         llm_fallback: Optional[Any] = None,
+        is_voice: bool = False,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """Execute the skill based on user text.
 
@@ -228,6 +234,86 @@ class SkillExecutor:
         """
         if not user_text or not user_text.strip():
             return (False, "Testo di input vuoto.", None)
+
+        # 0. Tool nativi interni di sistema (data e ora)
+        if self.tool == "date_time" or self.intent in ("get_time", "get_date"):
+            from core.locale_utils import get_current_time_str, get_current_date_str
+            action_result = self._infer_action_from_text(user_text, "date_time")
+            action = action_result[0] if action_result else (self.args.get("format") or "time")
+            if action in ("date", "giorno") or self.intent == "get_date":
+                resp = get_current_date_str()
+            else:
+                resp = get_current_time_str()
+            return (True, resp, {"action": action, "response": resp})
+
+        # 1. Risposta statica
+        if self.action_type == "response":
+            resp = self.response or self.body or "Azione completata."
+            return (True, resp, {"response": resp})
+
+        # 2. Comando terminale / script
+        if self.action_type == "command":
+            if is_voice:
+                return (False, "I comandi di sistema non possono essere eseguiti tramite richiesta vocale per motivi di sicurezza.", None)
+            cmd = (self.command or "").strip()
+            if not cmd:
+                return (False, "Nessun comando configurato per la skill.", None)
+            import subprocess
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=15.0,
+                )
+                stdout = (proc.stdout or "").strip()
+                stderr = (proc.stderr or "").strip()
+                if proc.returncode == 0:
+                    msg = stdout if stdout else "Comando eseguito con successo."
+                    return (True, msg, {"stdout": stdout, "returncode": 0})
+                else:
+                    err_msg = stderr if stderr else f"Comando terminato con codice {proc.returncode}."
+                    return (False, f"Errore esecuzione comando: {err_msg}", {"stderr": stderr, "returncode": proc.returncode})
+            except subprocess.TimeoutExpired:
+                return (False, "Timeout durante l'esecuzione del comando.", None)
+            except Exception as e:
+                return (False, f"Errore durante l'esecuzione del comando: {e}", None)
+
+        # 3. Istruzione AI / Prompt personalizzato
+        if self.action_type == "prompt":
+            if not llm_fallback:
+                return (False, "Nessun modello LLM disponibile per questa skill.", None)
+            prompt_instruction = self.prompt or self.body or ""
+            full_prompt = (
+                f"Istruzioni per l'assistente ({self.name}):\n{prompt_instruction}\n\n"
+                f"Richiesta dell'utente:\n{user_text}"
+            )
+            try:
+                reply = llm_fallback(full_prompt)
+                return (True, reply, {"prompt": prompt_instruction})
+            except Exception as e:
+                logger.warning(f"Errore esecuzione prompt LLM: {e}")
+                return (False, f"Errore durante la risposta dell'AI: {e}", None)
+
+        # 4. Azione di sistema (MCP)
+        if self.tool and mcp_manager:
+            try:
+                inferred = self._infer_action_from_text(user_text, self.tool)
+                action_name = inferred[0] if inferred else "execute"
+                params = dict(self.args)
+                if inferred and inferred[1]:
+                    params.update(inferred[1])
+                res = mcp_manager.execute_tool(self.tool, params)
+                if hasattr(res, "__await__") or asyncio.iscoroutine(res):
+                    from core.async_bridge import run_async
+                    result = run_async(res, timeout=10.0)
+                else:
+                    result = res
+                response = self._generate_response(self.tool, action_name, result)
+                return (True, response, result)
+            except Exception as e:
+                logger.debug(f"Explicit tool {self.tool} execution failed: {e}")
 
         if not self.tools_allowed and not self._extract_tool_keywords_from_body():
             # No tools defined; fallback to LLM if available
@@ -242,7 +328,7 @@ class SkillExecutor:
             return (False, f"Skill {self.name} non può essere eseguita senza LLM.", None)
 
         # Determine which tools to try
-        tools_to_try = self.tools_allowed or self._extract_tool_keywords_from_body()
+        tools_to_try = [self.tool] if self.tool else (self.tools_allowed or self._extract_tool_keywords_from_body())
 
         if not mcp_manager:
             return (

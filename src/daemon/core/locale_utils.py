@@ -4,6 +4,7 @@ Locale & System Language Utilities for Voice Assistant
 
 import os
 import locale
+import datetime
 from typing import Optional
 
 
@@ -134,4 +135,89 @@ def get_language_label(code: str) -> str:
         if item.get("code") == code:
             return f"{item.get('name', code)} ({code})"
     return f"{code.upper()} ({code})"
+
+
+def get_current_time_str(lang: str = "", now: Optional[datetime.datetime] = None) -> str:
+    """Restituisce l'ora corrente formattata in linguaggio naturale."""
+    if now is None:
+        now = datetime.datetime.now()
+    if not lang:
+        lang = get_system_language(default="it")
+
+    try:
+        from core.data_loader import load_json_data
+        formats = load_json_data("locales/date_time_formats.json", fallback_default={}) or {}
+        locale_data = (
+            formats.get(lang)
+            or formats.get(lang.split("_")[0])
+            or formats.get("it")
+            or formats.get("default")
+            or {}
+        )
+        template = locale_data.get("time_template")
+    except Exception:
+        template = None
+
+    time_str = now.strftime("%H:%M")
+    if template:
+        try:
+            return template.format(time=time_str)
+        except Exception:
+            pass
+
+    if lang.startswith("en"):
+        return f"It is {time_str}."
+    return f"Sono le {time_str}."
+
+
+def get_current_date_str(lang: str = "", now: Optional[datetime.datetime] = None) -> str:
+    """Restituisce la data corrente formattata in linguaggio naturale."""
+    if now is None:
+        now = datetime.datetime.now()
+    if not lang:
+        lang = get_system_language(default="it")
+
+    try:
+        from core.data_loader import load_json_data
+        formats = load_json_data("locales/date_time_formats.json", fallback_default={}) or {}
+        locale_data = (
+            formats.get(lang)
+            or formats.get(lang.split("_")[0])
+            or formats.get("it")
+            or formats.get("default")
+            or {}
+        )
+        days = locale_data.get("days", [
+            "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"
+        ])
+        months = locale_data.get("months", [
+            "", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+            "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
+        ])
+        template = locale_data.get("date_template")
+    except Exception:
+        days = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+        months = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+        template = None
+
+    day_idx = now.weekday()
+    month_idx = now.month
+    day_name = days[day_idx] if 0 <= day_idx < len(days) else str(day_idx)
+    month_name = months[month_idx] if 0 <= month_idx < len(months) else str(month_idx)
+
+    if template:
+        try:
+            return template.format(
+                day_name=day_name,
+                day=now.day,
+                month_name=month_name,
+                year=now.year
+            )
+        except Exception:
+            pass
+
+    if lang.startswith("en"):
+        return f"Today is {day_name}, {month_name} {now.day}, {now.year}."
+    return f"Oggi è {day_name} {now.day} {month_name} {now.year}."
+
 

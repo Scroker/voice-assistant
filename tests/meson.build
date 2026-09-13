@@ -87,7 +87,7 @@ test('test_mcp_llm_integration', python3,
 
 test('test_gui', python3,
   args: [files('test_gui.py')],
-  env: ['GSETTINGS_BACKEND=memory'],
+  env: ['GSETTINGS_BACKEND=memory', 'GSETTINGS_SCHEMA_DIR=' + meson.project_source_root() / 'data/schemas'],
   workdir: meson.project_source_root(),
   timeout: 120
 )
@@ -175,6 +175,61 @@ test('test_app_slot_matcher', python3,
 
 test('test_skill_store', python3,
   args: [files('test_skill_store.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_speaker_profiles', python3,
+  args: [files('test_speaker_profiles.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_speaker_identifier', python3,
+  args: [files('test_speaker_identifier.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_speaker_policy', python3,
+  args: [files('test_speaker_policy.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_speaker_session', python3,
+  args: [files('test_speaker_session.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_speaker_enrollment', python3,
+  args: [files('test_speaker_enrollment.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_conversation_contexts', python3,
+  args: [files('test_conversation_contexts.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_hybrid_rag_store', python3,
+  args: [files('test_hybrid_rag_store.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_model_manager', python3,
+  args: [files('test_model_manager.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_cloud_config', python3,
+  args: [files('test_cloud_config.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_streaming_pipeline', python3,
+  args: [files('test_streaming_pipeline.py')],
+  workdir: meson.project_source_root()
+)
+
+test('test_ollama_fixes', python3,
+  args: [files('test_ollama_fixes.py')],
   workdir: meson.project_source_root()
 )
 

@@ -37,8 +37,10 @@ try:
         ModelsStorageManager,
         BugReportSettings,
         AboutSettings,
+        SpeakerIdSettings,
         SUPPORTED_LANGUAGES,
     )
+    from components.daemon_client import DaemonClient
 except ImportError:
     from gui.components.resources import register_resources, register_icons
     from gui.components.settings import (
@@ -55,8 +57,10 @@ except ImportError:
         ModelsStorageManager,
         BugReportSettings,
         AboutSettings,
+        SpeakerIdSettings,
         SUPPORTED_LANGUAGES,
     )
+    from gui.components.daemon_client import DaemonClient
 
 _SCHEMA = "org.gnome.shell.extensions.voice-assistant"
 _PREFS_UI = "/org/gnome/shell/extensions/voice-assistant/ui/prefs.ui"
@@ -109,6 +113,12 @@ def open_settings_window(parent=None, application=None) -> _SettingsDialog | Non
             global _active_dialog
             if _active_dialog is _d:
                 _active_dialog = None
+            if hasattr(_d, "_daemon_client") and _d._daemon_client is not None:
+                try:
+                    _d._daemon_client.close()
+                except Exception:
+                    pass
+                _d._daemon_client = None
             if parent is None and app:
                 GLib.idle_add(lambda: app.quit() if len(app.get_windows()) <= 1 else None)
 
@@ -179,6 +189,7 @@ class _SettingsDialog(Adw.PreferencesDialog, metaclass=_SettingsDialogMeta):
         self._transient_parent = transient_for
         self._is_modal = modal if modal is not None else bool(transient_for)
         self._application = None
+        self._daemon_client: DaemonClient | None = None
 
         self._settings = None
         try:
@@ -245,7 +256,24 @@ class _SettingsDialog(Adw.PreferencesDialog, metaclass=_SettingsDialogMeta):
         else:
             super().present(None)
 
+    @property
+    def daemon_client(self) -> DaemonClient:
+        if self._daemon_client is None:
+            self._daemon_client = DaemonClient()
+        return self._daemon_client
+
     def destroy(self) -> None:
+        if hasattr(self, "speaker_id_settings") and self.speaker_id_settings:
+            try:
+                self.speaker_id_settings.destroy()
+            except Exception:
+                pass
+        if getattr(self, "_daemon_client", None) is not None:
+            try:
+                self._daemon_client.close()
+            except Exception:
+                pass
+            self._daemon_client = None
         try:
             self.force_close()
         except Exception:
@@ -254,8 +282,16 @@ class _SettingsDialog(Adw.PreferencesDialog, metaclass=_SettingsDialogMeta):
     def _setup_components(self) -> None:
         """Inizializza i componenti modulari per ciascuna sezione delle preferenze."""
         self.model_selector = ModelSelectorController(self._b, self._settings, parent_window=self)
+        self.mcp_settings = MCPSettings(self._b, self._settings)
+        self.skills_settings = SkillsSettings(self._b, self._settings, parent_window=self)
         self.general_settings = GeneralSettings(self._b, self._settings, parent_window=self)
         self.audio_settings = AudioSettings(self._b, self._settings, parent_window=self)
+        self.speaker_id_settings = SpeakerIdSettings(
+            self._b,
+            self._settings,
+            parent_window=self,
+            daemon_client=self.daemon_client,
+        )
         self.dispatch_settings = DispatchSettings(self._b, self._settings, parent_window=self)
         self.wakeword_settings = WakeWordSettings(
             self._b,
@@ -279,8 +315,6 @@ class _SettingsDialog(Adw.PreferencesDialog, metaclass=_SettingsDialogMeta):
             on_open_model_selector=self.model_selector.open_selector,
             parent_window=self,
         )
-        self.mcp_settings = MCPSettings(self._b, self._settings)
-        self.skills_settings = SkillsSettings(self._b, self._settings, parent_window=self)
         self.models_manager = ModelsStorageManager(self._b, self._settings, parent_window=self)
         self.bugreport_settings = BugReportSettings(self._b, self._settings, parent_window=self)
         self.about_settings = AboutSettings(self._b)

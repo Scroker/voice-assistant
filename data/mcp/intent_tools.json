@@ -130,5 +130,11 @@
       "setting": "do_not_disturb",
       "enabled": false
     }
+  },
+  "compose_mail": {
+    "tool": "open_file",
+    "args": {
+      "path": "mailto:"
+    }
   }
 }

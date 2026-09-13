@@ -19,7 +19,12 @@ class ModelManager:
     def __init__(self, idle_timeout_sec: int = 300, idle_timeouts=None):
         self._lock = threading.RLock()
         self.idle_timeout_sec = idle_timeout_sec
-        self.idle_timeouts = {"stt": idle_timeout_sec, "llm": idle_timeout_sec, "tts": idle_timeout_sec}
+        self.idle_timeouts = {
+            "stt": idle_timeout_sec,
+            "llm": idle_timeout_sec,
+            "tts": idle_timeout_sec,
+            "speaker": idle_timeout_sec,
+        }
         self.set_idle_timeouts(idle_timeouts or {})
         self.last_active_time = time.time()
 
@@ -28,6 +33,7 @@ class ModelManager:
         self.llm_instance = None
         self.tts_instance = None
         self.embedding_instance = None
+        self.speaker_instance = None
         self._unload_callbacks = {}
 
     def register_instance(self, kind: str, instance, unload_callback=None):
@@ -47,7 +53,7 @@ class ModelManager:
     def set_idle_timeouts(self, idle_timeouts):
         """Set per-model idle timeouts; a non-positive value uses the global timeout."""
         with self._lock:
-            for kind in ("stt", "llm", "tts"):
+            for kind in ("stt", "llm", "tts", "speaker"):
                 value = int(idle_timeouts.get(kind, 0))
                 self.idle_timeouts[kind] = value if value > 0 else self.idle_timeout_sec
 
@@ -65,7 +71,7 @@ class ModelManager:
             elapsed = time.time() - self.last_active_time
             unload_kinds = {
                 kind: elapsed >= self.idle_timeouts[kind]
-                for kind in ("stt", "llm", "tts")
+                for kind in ("stt", "llm", "tts", "speaker")
             }
 
         if not any(unload_kinds.values()):
@@ -76,6 +82,7 @@ class ModelManager:
             unload_llm=unload_kinds["llm"],
             unload_stt=unload_kinds["stt"],
             unload_tts=unload_kinds["tts"],
+            unload_speaker=unload_kinds["speaker"],
         )
 
     def get_resource_metrics(self):
@@ -112,12 +119,18 @@ class ModelManager:
         with self._lock:
             metrics["loaded_models"] = {
                 kind: getattr(self, f"{kind}_instance") is not None
-                for kind in ("stt", "llm", "tts", "embedding")
+                for kind in ("stt", "llm", "tts", "embedding", "speaker")
             }
             metrics["idle_timeouts"] = dict(self.idle_timeouts)
         return metrics
 
-    def purge_vram_and_ram(self, unload_llm: bool = True, unload_stt: bool = True, unload_tts: bool = True) -> bool:
+    def purge_vram_and_ram(
+        self,
+        unload_llm: bool = True,
+        unload_stt: bool = True,
+        unload_tts: bool = True,
+        unload_speaker: bool = True,
+    ) -> bool:
         """
         Reclaims memory buffers across CUDA, AMD ROCm/HIP, Vulkan, and Intel SYCL.
         """
@@ -125,6 +138,7 @@ class ModelManager:
             "llm": unload_llm,
             "stt": unload_stt,
             "tts": unload_tts,
+            "speaker": unload_speaker,
         }
         callbacks = []
 

@@ -62,6 +62,10 @@ class AudioFilter:
         self.target_speech_rms = _clamp(agc_target_rms, *self.AGC_TARGET_RMS_RANGE)
         self.current_gain = 1.0
 
+    def get_noise_floor(self) -> float:
+        """Restituisce il livello stimato attuale del rumore di fondo (RMS int16)."""
+        return float(self._noise_floor)
+
     def _compute_biquad_coefficients(self) -> None:
         """Biquad Highpass Filter Coefficients (Direct Form I, Q = 0.707 Butterworth)."""
         w0 = 2 * np.pi * self.highpass_cutoff / self.sample_rate

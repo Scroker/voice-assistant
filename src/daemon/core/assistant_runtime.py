@@ -32,6 +32,8 @@ from skills.app_slot_matcher import AppSlotMatcher
 
 logger = logging.getLogger("VoiceAssistant.AssistantRuntime")
 
+from services.speaker_id.policy import STOP_WORDS, is_pure_stop_command
+
 import re as _re
 
 # Mapping intent → (tool_name, static_args)
@@ -82,15 +84,75 @@ class AssistantRuntimeController:
 
     def __init__(self, owner: DaemonOwner):
         self.owner = owner
+        if not hasattr(self.owner, "_active_listen_context_id"):
+            self.owner._active_listen_context_id = "voice"
         self.skill_registry = SkillRegistry.from_default_directory()
         self.app_matcher = AppSlotMatcher()
+        
+        import queue
+        import threading
+        self.request_queue = queue.PriorityQueue()
+        self.queue_worker_thread = threading.Thread(target=self._queue_worker_loop, daemon=True)
+        self.queue_worker_thread.start()
 
     def reload_skills(self) -> None:
         """Refresh the skill registry after the Skills console saves or deletes a skill."""
         self.skill_registry = SkillRegistry.from_default_directory()
 
+    def enqueue_request(
+        self,
+        text: str,
+        is_voice: bool = False,
+        context_id: str = "voice",
+        speaker_session: Any = None,
+        was_interrupting: Optional[bool] = None,
+    ):
+        import time
+        if was_interrupting is None:
+            if is_voice:
+                was_interrupting = bool(getattr(self.owner, "_was_interrupting", False))
+                self.owner._was_interrupting = False
+            else:
+                # Le richieste testuali (D-Bus/GUI) non devono leggere né resettare il
+                # flag vocale: altrimenti una richiesta digitata potrebbe "consumare"
+                # l'interruzione destinata a una successiva richiesta vocale.
+                was_interrupting = False
+
+        # Priority: 0 for voice, 1 for text. Timestamp ensures FIFO order for same priority.
+        priority = 0 if is_voice else 1
+        self.request_queue.put((priority, time.time(), text, is_voice, context_id, speaker_session, was_interrupting))
+        logger.info(f"[Queue] Accodata richiesta '{text}' (voice={is_voice}, ctx={context_id}, prio={priority}, interrupting={was_interrupting})")
+        if is_voice:
+            # Change state immediately so audio loop stops listening and timing out while waiting for worker
+            self.owner.set_state("processing")
+
+    def _queue_worker_loop(self):
+        while True:
+            try:
+                item = self.request_queue.get()
+                if len(item) == 7:
+                    priority, timestamp, text, is_voice, context_id, speaker_session, was_interrupting = item
+                elif len(item) == 6:
+                    priority, timestamp, text, is_voice, context_id, speaker_session = item
+                    was_interrupting = False
+                else:
+                    priority, timestamp, text, is_voice, context_id = item
+                    speaker_session = None
+                    was_interrupting = False
+                logger.info(f"[Queue] Elaborazione richiesta (voice={is_voice}, ctx={context_id})")
+                self._process_text(
+                    text,
+                    is_voice=is_voice,
+                    context_id=context_id,
+                    speaker_session=speaker_session,
+                    was_interrupting=was_interrupting,
+                )
+                self.request_queue.task_done()
+            except Exception as e:
+                logger.error(f"[Queue] Errore in elaborazione coda: {e}")
+
     def _execute_skill(
-        self, skill_name: str, user_text: str, use_llm_fallback: bool = True
+        self, skill_name: str, user_text: str, use_llm_fallback: bool = True, is_voice: bool = False
     ):
         """Execute a markdown skill with tool mapping and optional LLM fallback."""
         skill = self.skill_registry.find_by_intent(skill_name)
@@ -101,23 +163,99 @@ class AssistantRuntimeController:
         llm_fallback = None
         if use_llm_fallback and hasattr(self.owner, "llm_service"):
             try:
-                llm_fallback = lambda prompt: self.owner.llm_service.get_response(prompt)
+                llm_fallback = lambda prompt: "".join(self.owner.llm_service.stream_tokens(prompt))
             except Exception:
                 pass
 
         success, response, result = executor.execute(
-            user_text, mcp_manager=self.owner.mcp_manager, llm_fallback=llm_fallback
+            user_text, mcp_manager=self.owner.mcp_manager, llm_fallback=llm_fallback, is_voice=is_voice
         )
         return (success, response)
 
-    def _launch_desktop_app_native(self, app_name: str) -> bool:
-        """Fallback nativo per l'avvio delle applicazioni desktop su GNOME/Linux."""
-        if not app_name or not app_name.strip():
-            return False
-        clean = app_name.lower().strip()
+    @staticmethod
+    def _build_mailto_uri(to: str = "", subject: str = "", body: str = "") -> str:
+        """Costruisce un URI mailto standard (RFC 6068) con parametri opzionali."""
+        import urllib.parse
+        query = {}
+        if subject:
+            query["subject"] = subject
+        if body:
+            query["body"] = body
+        query_str = urllib.parse.urlencode(query, quote_via=urllib.parse.quote) if query else ""
+        recipient = (to or "").strip()
+        return f"mailto:{recipient}?{query_str}" if query_str else f"mailto:{recipient}"
+
+    def _launch_desktop_app_native(
+        self, app_name: str, desktop_id: str = None, desktop_path: str = None
+    ) -> bool:
+        """Launch a desktop application using native system mechanisms (Gio, gtk-launch, flatpak, subprocess)."""
+        clean = (app_name or "").lower().strip()
         try:
             from gi.repository import Gio
+            import shutil
+            import subprocess
+
+            def _safe_app_info(ident):
+                if not ident:
+                    return None
+                try:
+                    if "/" in ident:
+                        return Gio.DesktopAppInfo.new_from_filename(ident)
+                    if ident.endswith(".desktop"):
+                        return Gio.DesktopAppInfo.new(ident)
+                    return Gio.DesktopAppInfo.new(f"{ident}.desktop")
+                except Exception:
+                    return None
+
+            # 0. Mail default handler shortcut
+            if clean in ("posta", "mail", "email", "e-mail", "posta elettronica"):
+                try:
+                    app_info = Gio.AppInfo.get_default_for_type("x-scheme-handler/mailto", False)
+                    if app_info and app_info.launch([], None):
+                        return True
+                except Exception as e:
+                    logger.debug(f"Default mailto launch failed: {e}")
+
+            # 1. Direct path/id launch
+            for target in (desktop_path, desktop_id):
+                if target:
+                    info = _safe_app_info(target)
+                    if info:
+                        try:
+                            if info.launch([], None):
+                                return True
+                        except Exception as e:
+                            logger.debug(f"info.launch failed for {target}: {e}")
+
+            # 2. Try gtk-launch with desktop_id
+            if desktop_id and shutil.which("gtk-launch"):
+                try:
+                    subprocess.Popen(["gtk-launch", desktop_id], start_new_session=True)
+                    return True
+                except Exception as e:
+                    logger.debug(f"gtk-launch failed for {desktop_id}: {e}")
+
+            # 3. If flatpak app
+            if desktop_id and shutil.which("flatpak"):
+                flatpak_id = desktop_id.removesuffix(".desktop")
+                if "." in flatpak_id:
+                    try:
+                        subprocess.Popen(["flatpak", "run", flatpak_id], start_new_session=True)
+                        return True
+                    except Exception as e:
+                        logger.debug(f"flatpak run failed for {flatpak_id}: {e}")
+
+            if not clean:
+                return False
+
+            # 4. Known aliases map
             app_map = {
+                "posta": ["org.gnome.Evolution.desktop", "thunderbird.desktop", "org.mozilla.Thunderbird.desktop", "geary.desktop", "org.gnome.Geary.desktop", "evolution", "thunderbird"],
+                "mail": ["org.gnome.Evolution.desktop", "thunderbird.desktop", "org.mozilla.Thunderbird.desktop", "geary.desktop", "org.gnome.Geary.desktop", "evolution", "thunderbird"],
+                "email": ["org.gnome.Evolution.desktop", "thunderbird.desktop", "org.mozilla.Thunderbird.desktop", "geary.desktop", "org.gnome.Geary.desktop", "evolution", "thunderbird"],
+                "evolution": ["org.gnome.Evolution.desktop", "evolution.desktop", "evolution"],
+                "thunderbird": ["thunderbird.desktop", "org.mozilla.Thunderbird.desktop", "thunderbird"],
+                "geary": ["org.gnome.Geary.desktop", "geary.desktop", "geary"],
                 "calendario": ["org.gnome.Calendar.desktop", "gnome-calendar.desktop", "gnome-calendar"],
                 "calendar": ["org.gnome.Calendar.desktop", "gnome-calendar.desktop", "gnome-calendar"],
                 "calcolatrice": ["org.gnome.Calculator.desktop", "gnome-calculator.desktop", "gnome-calculator"],
@@ -130,39 +268,105 @@ class AssistantRuntimeController:
                 "clocks": ["org.gnome.clocks.desktop", "org.gnome.Clocks.desktop", "gnome-clocks"],
                 "file": ["org.gnome.Nautilus.desktop", "nautilus.desktop", "nautilus"],
                 "nautilus": ["org.gnome.Nautilus.desktop", "nautilus.desktop", "nautilus"],
+                "software": ["org.gnome.Software.desktop", "gnome-software.desktop", "gnome-software"],
                 "browser": ["firefox.desktop", "org.mozilla.firefox.desktop", "google-chrome.desktop", "chromium.desktop", "firefox"],
                 "firefox": ["firefox.desktop", "org.mozilla.firefox.desktop", "firefox"],
+                "spotify": ["com.spotify.Client.desktop", "spotify.desktop", "spotify"],
+                "musica": ["org.gnome.Music.desktop", "com.spotify.Client.desktop", "rhythmbox.desktop"],
             }
             candidates = app_map.get(clean, [f"{clean}.desktop", clean])
             for cand in candidates:
                 if cand.endswith(".desktop"):
-                    app_info = Gio.DesktopAppInfo.new(cand)
-                    if app_info:
-                        return app_info.launch([], None)
+                    info = _safe_app_info(cand)
+                    if info:
+                        try:
+                            if info.launch([], None):
+                                return True
+                        except Exception:
+                            pass
+                    if shutil.which("gtk-launch"):
+                        try:
+                            subprocess.Popen(["gtk-launch", cand], start_new_session=True)
+                            return True
+                        except Exception:
+                            pass
                 else:
-                    import shutil, subprocess
                     bin_path = shutil.which(cand)
                     if bin_path:
-                        subprocess.Popen([bin_path], start_new_session=True)
-                        return True
+                        try:
+                            subprocess.Popen([bin_path], start_new_session=True)
+                            return True
+                        except Exception:
+                            pass
 
-            all_apps = Gio.AppInfo.get_all()
-            for info in all_apps:
-                name = (info.get_name() or "").lower()
-                disp = (info.get_display_name() or "").lower()
-                if clean in name or clean in disp:
-                    return info.launch([], None)
+            # 5. Search in all Gio desktop apps
+            try:
+                for info in Gio.AppInfo.get_all():
+                    name = (info.get_name() or "").lower()
+                    disp = (info.get_display_name() or "").lower()
+                    aid = (info.get_id() or "").lower()
+                    if clean in name or clean in disp or (clean and clean in aid):
+                        try:
+                            if info.launch([], None):
+                                return True
+                        except Exception:
+                            pass
+                        if aid and shutil.which("gtk-launch"):
+                            try:
+                                subprocess.Popen(["gtk-launch", aid], start_new_session=True)
+                                return True
+                            except Exception:
+                                pass
+            except Exception as e:
+                logger.debug(f"Native app scan error: {e}")
+
+            # 6. Direct binary fallback
+            bin_path = shutil.which(clean)
+            if bin_path:
+                try:
+                    subprocess.Popen([bin_path], start_new_session=True)
+                    return True
+                except Exception:
+                    pass
+
         except Exception as e:
             logger.debug(f"Native app launch fallback error for '{app_name}': {e}")
         return False
 
     def _handle_fast_path_intent(self, intent_name: str, params, text: str = ""):
+        if intent_name == "get_time":
+            from core.locale_utils import get_current_time_str
+            return (True, get_current_time_str())
+
+        if intent_name == "get_date":
+            from core.locale_utils import get_current_date_str
+            return (True, get_current_date_str())
+
         if not self.owner.mcp_manager:
+            if intent_name == "compose_mail":
+                to_addr = params.get("to") or params.get("recipient") or params.get("email") or ""
+                subject = params.get("subject") or params.get("oggetto") or ""
+                body = params.get("body") or params.get("text") or params.get("testo") or params.get("messaggio") or ""
+                uri = self._build_mailto_uri(to=to_addr, subject=subject, body=body)
+                try:
+                    from gi.repository import Gio
+                    if Gio.AppInfo.launch_default_for_uri(uri, None):
+                        if to_addr:
+                            return (True, f"Apro la composizione email per {to_addr}.")
+                        return (True, "Apro la finestra per una nuova email.")
+                except Exception as e:
+                    logger.debug(f"Native compose mail error: {e}")
+                return (True, "Non sono riuscito ad aprire la posta.")
+
             if intent_name == "launch_app":
                 app = params.get("app") or params.get("app_name") or ""
-                if self._launch_desktop_app_native(app):
-                    target_name = app if app else "l'applicazione"
-                    return (True, f"Apro {target_name}.")
+                resolved = self.app_matcher.match(app) if app else None
+                display_name = resolved["name"] if resolved else (app or "l'applicazione")
+                desktop_id = resolved.get("desktop_id") if resolved else None
+                desktop_path = resolved.get("path") if resolved else None
+                if self._launch_desktop_app_native(app, desktop_id=desktop_id, desktop_path=desktop_path):
+                    return (True, f"Apro {display_name}.")
+                return (True, f"Non sono riuscito ad avviare {display_name}.")
             return (False, "")
 
         def run_tool(tool_name, args):
@@ -171,8 +375,53 @@ class AssistantRuntimeController:
                 result = run_async(result)
             return result
 
+        def is_tool_success(res):
+            if not res:
+                return False
+            if isinstance(res, str):
+                import json
+                try:
+                    data = json.loads(res)
+                    if isinstance(data, dict):
+                        if data.get("success") is False or "error" in data:
+                            return False
+                        if data.get("success") is True or "result" in data:
+                            return True
+                except Exception:
+                    pass
+                res_lower = res.lower()
+                if "error" in res_lower or '"success":false' in res.replace(" ", ""):
+                    return False
+                if "successfully launched" in res_lower or '"success":true' in res.replace(" ", ""):
+                    return True
+            return bool(res)
+
         try:
             # --- Intent con parametri dinamici ---
+            if intent_name == "compose_mail":
+                to_addr = params.get("to") or params.get("recipient") or params.get("email") or ""
+                subject = params.get("subject") or params.get("oggetto") or ""
+                body = params.get("body") or params.get("text") or params.get("testo") or params.get("messaggio") or ""
+                uri = self._build_mailto_uri(to=to_addr, subject=subject, body=body)
+
+                res = run_tool("open_file", {"path": uri})
+                if is_tool_success(res):
+                    if to_addr:
+                        return (True, f"Apro la composizione email per {to_addr}.")
+                    return (True, "Apro la finestra per una nuova email.")
+
+                # Fallback to native launch
+                try:
+                    from gi.repository import Gio
+                    if Gio.AppInfo.launch_default_for_uri(uri, None):
+                        if to_addr:
+                            return (True, f"Apro la composizione email per {to_addr}.")
+                        return (True, "Apro la finestra per una nuova email.")
+                except Exception as e:
+                    logger.debug(f"Native compose mail fallback error: {e}")
+
+                return (True, "Non sono riuscito ad aprire la posta.")
+
             if intent_name == "set_volume":
                 vol = max(0, min(100, int(params.get("volume", 50))))
                 return (True, run_tool("set_volume", {"volume": float(vol)}))
@@ -187,26 +436,41 @@ class AssistantRuntimeController:
                     if m:
                         app = m.group(1).strip()
                 resolved = self.app_matcher.match(app) if app else None
-                if resolved:
-                    res = run_tool("launch_application", {"app_name": resolved["desktop_id"]})
-                    if isinstance(res, str) and ("Successfully launched" in res or '"success":true' in res or '"success": true' in res):
-                        return (True, f"Apro {resolved['name']}.")
-                    if self._launch_desktop_app_native(app):
-                        return (True, f"Apro {resolved['name']}.")
-                    return (True, res)
+                display_name = resolved["name"] if resolved else (app or "l'applicazione")
+                desktop_id = resolved.get("desktop_id") if resolved else None
+                desktop_path = resolved.get("path") if resolved else None
 
-                res = run_tool("launch_application", {"app_name": app or "firefox"})
-                if isinstance(res, str) and ("Successfully launched" in res or '"success":true' in res or '"success": true' in res):
-                    target_name = app if app else "l'applicazione"
-                    return (True, f"Apro {target_name}.")
-                if self._launch_desktop_app_native(app):
-                    target_name = app if app else "l'applicazione"
-                    return (True, f"Apro {target_name}.")
-                return (True, res)
+                # Candidates to try with MCP launch_application:
+                # gnome-mcp-server matches against human-readable name or executable,
+                # NOT desktop file IDs. So prioritize resolved['name'] and clean 'app'.
+                mcp_candidates = []
+                if resolved and resolved.get("name"):
+                    mcp_candidates.append(resolved["name"])
+                if app and app not in mcp_candidates:
+                    mcp_candidates.append(app)
+                if desktop_id and desktop_id not in mcp_candidates:
+                    mcp_candidates.append(desktop_id)
+
+                for cand in mcp_candidates:
+                    res = run_tool("launch_application", {"app_name": cand})
+                    if is_tool_success(res):
+                        return (True, f"Apro {display_name}.")
+
+                # Fallback to native launch
+                native_ok = (
+                    self._launch_desktop_app_native(app, desktop_id=desktop_id, desktop_path=desktop_path)
+                    if (desktop_id or desktop_path)
+                    else self._launch_desktop_app_native(app)
+                )
+                if native_ok:
+                    return (True, f"Apro {display_name}.")
+
+                # If both MCP and native failed, return friendly message instead of raw JSON
+                return (True, f"Non sono riuscito ad avviare {display_name}.")
 
             if intent_name == "system_control":
                 if text:
-                    success, response = self._execute_skill("system_control", text)
+                    success, response = self._execute_skill("system_control", text, is_voice=is_voice)
                     if success:
                         return (success, response)
                 action = str(params.get("action", params.get("mode", "") or "")).lower()
@@ -222,12 +486,17 @@ class AssistantRuntimeController:
                     return (True, run_tool("quick_settings", {"setting": "dark_style", "enabled": False}))
                 app_name = params.get("app") or params.get("app_name") or "firefox"
                 if action in {"launch_app", "app", "open_app"}:
-                    res = run_tool("launch_application", {"app_name": app_name})
-                    if isinstance(res, str) and ("Successfully launched" in res or '"success":true' in res or '"success": true' in res):
-                        return (True, f"Apro {app_name}.")
-                    if self._launch_desktop_app_native(app_name):
-                        return (True, f"Apro {app_name}.")
-                    return (True, res)
+                    resolved = self.app_matcher.match(app_name) if app_name else None
+                    display_name = resolved["name"] if resolved else app_name
+                    desktop_id = resolved.get("desktop_id") if resolved else None
+                    desktop_path = resolved.get("path") if resolved else None
+
+                    res = run_tool("launch_application", {"app_name": display_name})
+                    if is_tool_success(res):
+                        return (True, f"Apro {display_name}.")
+                    if self._launch_desktop_app_native(app_name, desktop_id=desktop_id, desktop_path=desktop_path):
+                        return (True, f"Apro {display_name}.")
+                    return (True, f"Non sono riuscito ad avviare {display_name}.")
                 return (False, "")
 
             # --- Tema (gestisce anche i parametri bool legacy) ---
@@ -430,6 +699,31 @@ class AssistantRuntimeController:
             if llm_svc and hasattr(llm_svc, "local_gguf_provider"):
                 llm_svc.local_gguf_provider.unload_model()
             logger.info(f"Impostazione LLM '{key}' aggiornata a: '{new_val}'")
+        elif key == "memory-enabled":
+            enabled = settings.get_boolean(key)
+            pipeline = getattr(self.owner, "pipeline_controller", None)
+            if pipeline:
+                pipeline.memory_enabled = enabled
+            logger.info(f"Memoria conversazione {'abilitata' if enabled else 'disabilitata'}.")
+        elif key == "speaker-id-mode":
+            mode = settings.get_string(key)
+            spk_ctrl = getattr(self.owner, 'speaker_id_controller', None)
+            if spk_ctrl:
+                spk_ctrl.set_mode(mode)
+                if mode != "disabled" and not spk_ctrl.backend.is_available():
+                    if hasattr(self.owner, 'notify_dependency_required'):
+                        self.owner.notify_dependency_required(
+                            "resemblyzer",
+                            "Speaker Identification",
+                            is_critical=False,
+                        )
+            logger.info("Speaker ID mode impostato a: '%s'", mode)
+        elif key == "speaker-id-threshold":
+            th = settings.get_double(key)
+            spk_ctrl = getattr(self.owner, 'speaker_id_controller', None)
+            if spk_ctrl:
+                spk_ctrl.set_threshold(th)
+            logger.info("Speaker ID soglia impostata a: %.2f", th)
 
     def reset_wakeword_recognizer(self):
         engine = getattr(self.owner, 'wakeword_engine', 'vosk')
@@ -525,7 +819,7 @@ class AssistantRuntimeController:
                         spotter.reset_stream(stream)
                     elif hasattr(stream, 'reset'):
                         stream.reset()
-                    self.trigger_assistant()
+                    self.trigger_assistant(origin="wakeword")
                     return
         except Exception as e:
             logger.warning(f"Errore Sherpa-ONNX detect: {e}")
@@ -562,19 +856,44 @@ class AssistantRuntimeController:
                 if score > 0.5:
                     logger.info(f"OpenWakeWord: '{model_name}' rilevata (score={score:.2f})")
                     self.reset_wakeword_recognizer()
-                    self.trigger_assistant()
+                    self.trigger_assistant(origin="wakeword")
                     return
             except Exception as e:
                 logger.warning(f"Errore OWW predict: {e}")
 
         self.owner._oww_buffer = buf
 
-    def trigger_assistant(self):
+    def _cancel_speaker_session(self):
+        if getattr(self.owner, '_speaker_session', None):
+            try:
+                self.owner._speaker_session.cancel()
+            except Exception:
+                pass
+            self.owner._speaker_session = None
+
+    def _detach_speaker_session(self):
+        session = getattr(self.owner, '_speaker_session', None)
+        self.owner._speaker_session = None
+        return session
+
+    def trigger_assistant(self, origin: str = "manual", context_id: str = "voice"):
         import time
+        self.owner._active_listen_context_id = context_id or "voice"
+        is_interrupting = self.owner._state in ("speaking", "processing", "AssistantState.SPEAKING", "AssistantState.PROCESSING")
+        self.owner._was_interrupting = is_interrupting
+
         if hasattr(self.owner, 'pipeline_controller') and self.owner.pipeline_controller:
             self.owner.pipeline_controller.cancel_pipeline(target_state=None)
         elif hasattr(self.owner, 'audio_player') and self.owner.audio_player:
             self.owner.audio_player.stop_playback()
+
+        self._cancel_speaker_session()
+
+        spk_ctrl = getattr(self.owner, 'speaker_id_controller', None)
+        if spk_ctrl and spk_ctrl.mode != "disabled":
+            audio_filter = getattr(self.owner, 'audio_filter', None)
+            noise_floor_getter = audio_filter.get_noise_floor if audio_filter else None
+            self.owner._speaker_session = spk_ctrl.create_session(origin=origin, noise_floor_getter=noise_floor_getter)
 
         while not self.owner.q.empty():
             try:
@@ -617,8 +936,25 @@ class AssistantRuntimeController:
                 except Exception:
                     raw_data = None
 
+                # L'enrollment va gestito PRIMA del check "disabled": la registrazione
+                # può essere in corso anche mentre l'assistente è disabilitato, e va
+                # comunque protetta da un timeout di sicurezza per non restare bloccata
+                # per sempre in attesa di audio che non arriva più.
+                spk_ctrl = getattr(self.owner, 'speaker_id_controller', None)
+                if spk_ctrl and spk_ctrl.is_enrollment_active:
+                    if raw_data:
+                        spk_ctrl.feed_enrollment_audio(raw_data)
+                    spk_ctrl.check_enrollment_timeout()
+                    continue
+
                 if self.owner._state == "disabled":
                     continue
+
+                if spk_ctrl and raw_data and self.owner._state in ("idle", "speaking", "processing", "AssistantState.IDLE", "AssistantState.SPEAKING", "AssistantState.PROCESSING"):
+                    spk_ctrl.preroll_buffer.append(raw_data)
+
+                if getattr(self.owner, '_speaker_session', None) and raw_data and self.owner._state in ("listening", "AssistantState.LISTENING"):
+                    self.owner._speaker_session.feed(raw_data)
 
                 data = self.owner.audio_filter.process(raw_data) if raw_data else b""
 
@@ -662,7 +998,7 @@ class AssistantRuntimeController:
 
                         is_speaking_or_proc = self.owner._state in ("speaking", "processing", "AssistantState.SPEAKING", "AssistantState.PROCESSING")
                         if is_speaking_or_proc:
-                            ww_variants.update(["stop", "basta", "zitto", "fermati", "silenzio", "interrompi", "cancella"])
+                            ww_variants.update(STOP_WORDS)
 
                         words = recognized_str.split()
 
@@ -684,7 +1020,7 @@ class AssistantRuntimeController:
                             parts = recognized_str.split(matched_ww, 1)
                             remainder = parts[1].strip() if len(parts) > 1 else ""
 
-                            self.trigger_assistant()
+                            self.trigger_assistant(origin="wakeword")
 
                             filler_words = {"e", "ed", "uh", "um", "ah", "oh", "eh", "o", "il", "la", "le", "lo", "un", "una", "uno", "a", "di", "da", "in", "con", "su", "per", "tra", "fra"}
                             remainder_words = [w for w in remainder.split() if w not in filler_words]
@@ -699,7 +1035,12 @@ class AssistantRuntimeController:
 
                             if is_valid_command:
                                 logger.info(f"Comando allegato alla wakeword valido: '{remainder}'")
-                                self._process_text(remainder, is_voice=True)
+                                self.enqueue_request(
+                                    remainder,
+                                    is_voice=True,
+                                    context_id="voice",
+                                    speaker_session=self._detach_speaker_session(),
+                                )
                                 self.owner._listening_start_time = None
                                 self.owner._last_speech_time = None
                                 self.owner._last_partial_text = ""
@@ -734,10 +1075,19 @@ class AssistantRuntimeController:
 
                         if is_only_ww:
                             logger.info(f"Trascrizione immediata '{text}' contiene solo la wakeword, torno in idle.")
+                            self._cancel_speaker_session()
                             self.owner.provider.reset()
+                            self.owner._active_listen_context_id = "voice"
                             self.owner.set_state("idle")
                         else:
-                            self._process_text(text, is_voice=True)
+                            listen_ctx = getattr(self.owner, "_active_listen_context_id", "voice") or "voice"
+                            self.owner._active_listen_context_id = "voice"
+                            self.enqueue_request(
+                                text,
+                                is_voice=True,
+                                context_id=listen_ctx,
+                                speaker_session=self._detach_speaker_session(),
+                            )
                         continue
 
                     partial_clean = partial_text.strip().lower()
@@ -761,9 +1111,18 @@ class AssistantRuntimeController:
                         is_only_ww = all(w in ww_known_variants for w in meaningful) if meaningful else True
 
                         if batch_text and not is_only_ww:
-                            self._process_text(batch_text, is_voice=True)
+                            listen_ctx = getattr(self.owner, "_active_listen_context_id", "voice") or "voice"
+                            self.owner._active_listen_context_id = "voice"
+                            self.enqueue_request(
+                                batch_text,
+                                is_voice=True,
+                                context_id=listen_ctx,
+                                speaker_session=self._detach_speaker_session(),
+                            )
                         else:
                             logger.info("Trascrizione finale vuota o contenente solo la wakeword, ritorno in idle.")
+                            self._cancel_speaker_session()
+                            self.owner._active_listen_context_id = "voice"
                             self.owner.set_state("idle")
 
                     elif not last_change and (now - self.owner._listening_start_time) >= 2.5:
@@ -773,6 +1132,8 @@ class AssistantRuntimeController:
                         self.owner._listening_start_time = None
                         self.owner._last_partial_text = ""
                         self.owner._last_partial_change_time = None
+                        self._cancel_speaker_session()
+                        self.owner._active_listen_context_id = "voice"
                         self.owner.set_state("idle")
 
                     elif (now - self.owner._listening_start_time) >= 6.0:
@@ -787,8 +1148,17 @@ class AssistantRuntimeController:
                         is_only_ww = all(w in ww_known_variants for w in meaningful) if meaningful else True
 
                         if batch_text and not is_only_ww:
-                            self._process_text(batch_text, is_voice=True)
+                            listen_ctx = getattr(self.owner, "_active_listen_context_id", "voice") or "voice"
+                            self.owner._active_listen_context_id = "voice"
+                            self.enqueue_request(
+                                batch_text,
+                                is_voice=True,
+                                context_id=listen_ctx,
+                                speaker_session=self._detach_speaker_session(),
+                            )
                         else:
+                            self._cancel_speaker_session()
+                            self.owner._active_listen_context_id = "voice"
                             self.owner.set_state("idle")
 
         except Exception as e:
@@ -800,32 +1170,132 @@ class AssistantRuntimeController:
                 self.owner._audio_thread = threading.Thread(target=self.owner._audio_loop, daemon=True)
                 self.owner._audio_thread.start()
 
-    def _process_text(self, text, is_voice=False):
+    def _process_text(self, text, is_voice=False, context_id="voice", speaker_session=None, was_interrupting=False):
         if not text or not text.strip():
             return
 
-        logger.info(f"[Testo Riconosciuto]: {text} (is_voice={is_voice})")
+        logger.info(f"[Testo Riconosciuto]: {text} (is_voice={is_voice}, context_id={context_id}, was_interrupting={was_interrupting})")
 
-        if is_voice:
+        if is_voice and context_id == "voice":
             try:
                 self.owner.TranscriptReceived(text, True)
             except Exception:
                 pass
+        try:
+            if hasattr(self.owner, "ConversationTranscript"):
+                self.owner.ConversationTranscript(context_id, text, True)
+        except Exception:
+            pass
 
         self.owner.set_state("processing")
 
-        res = self.owner.pipeline_controller.process_text_input(text, speak=is_voice)
+        # Speaker ID verification policy
+        spk_ctrl = getattr(self.owner, 'speaker_id_controller', None)
+        extra_context = ""
+        ww_variants = getattr(self.owner, 'wakeword_variants', ())
+        if not ww_variants and hasattr(self.owner, 'wakeword') and self.owner.wakeword:
+            ww_variants = (self.owner.wakeword,)
+        is_pure_stop = is_pure_stop_command(text, ww_variants)
+        is_stop = is_pure_stop and was_interrupting
+
+        if spk_ctrl and spk_ctrl.mode != "disabled":
+            verdict = None
+            if is_voice and speaker_session:
+                verdict = speaker_session.finalize(timeout_s=1.5)
+
+            decision = spk_ctrl.evaluate_policy(
+                verdict,
+                is_voice=is_voice,
+                is_stop_command=is_stop,
+            )
+
+            # Emit SpeakerIdentified signal whenever there is a verdict
+            if verdict and hasattr(self.owner, "SpeakerIdentified"):
+                try:
+                    self.owner.SpeakerIdentified(
+                        verdict.display_name or "",
+                        float(verdict.score),
+                        str(verdict.status),
+                        bool(verdict.overlap_detected),
+                    )
+                except Exception as exc:
+                    logger.debug("Error emitting SpeakerIdentified: %s", exc)
+
+            if not decision.allow:
+                from core.data_loader import load_json_data
+                from core.locale_utils import get_system_language
+                lang = get_system_language(default="it")
+                resp_data = load_json_data("locales/responses.json", fallback_default={}) or {}
+                spk_loc = (resp_data.get(lang) or resp_data.get("it", {})).get("speaker_id", {})
+                rejection_msg = spk_loc.get(decision.reason) or spk_loc.get("unknown_speaker") or "Comando vocale non autorizzato."
+
+                logger.warning(
+                    "Voice command rejected by speaker policy: reason=%s (message: '%s')",
+                    decision.reason,
+                    rejection_msg,
+                )
+
+                if hasattr(self.owner, "SpeakerRejected"):
+                    try:
+                        self.owner.SpeakerRejected(str(decision.reason), str(rejection_msg))
+                    except Exception as exc:
+                        logger.debug("Error emitting SpeakerRejected: %s", exc)
+
+                if is_voice and hasattr(self.owner, "tts_manager") and self.owner.tts_manager:
+                    self.owner.tts_manager.speak(rejection_msg)
+
+                self.owner.set_state("idle")
+                return
+
+            if decision.reason == "stop_command":
+                logger.info("Comando di stop puro ricevuto durante interruzione: arresto pipeline.")
+                if hasattr(self.owner, 'pipeline_controller') and self.owner.pipeline_controller:
+                    self.owner.pipeline_controller.cancel_pipeline()
+                elif hasattr(self.owner, 'audio_player') and self.owner.audio_player:
+                    self.owner.audio_player.stop_playback()
+                self.owner.set_state("idle")
+                return
+
+            extra_context = decision.llm_context
+
+        elif is_stop:
+            logger.info("Comando di stop puro ricevuto durante interruzione (senza speaker policy): arresto pipeline.")
+            if hasattr(self.owner, 'pipeline_controller') and self.owner.pipeline_controller:
+                self.owner.pipeline_controller.cancel_pipeline()
+            elif hasattr(self.owner, 'audio_player') and self.owner.audio_player:
+                self.owner.audio_player.stop_playback()
+            self.owner.set_state("idle")
+            return
+
+        res = self.owner.pipeline_controller.process_text_input(
+            text,
+            speak=is_voice,
+            context_id=context_id,
+            extra_context=extra_context,
+        )
 
         if res.get("fast_path") and res.get("response"):
             resp = res.get("response")
+            if context_id == "voice":
+                try:
+                    self.owner.ResponseTokenStreamed(resp, True)
+                except Exception:
+                    pass
             try:
-                self.owner.ResponseTokenStreamed(resp, True)
+                if hasattr(self.owner, "ConversationToken"):
+                    self.owner.ConversationToken(context_id, resp, True)
             except Exception:
                 pass
         elif res.get("smart_path") or (not res.get("fast_path") and res.get("response")):
             # Streamed tokens were emitted via on_token_callback; signal stream completion
+            if context_id == "voice":
+                try:
+                    self.owner.ResponseTokenStreamed("", True)
+                except Exception:
+                    pass
             try:
-                self.owner.ResponseTokenStreamed("", True)
+                if hasattr(self.owner, "ConversationToken"):
+                    self.owner.ConversationToken(context_id, "", True)
             except Exception:
                 pass
         elif not res.get("fast_path") and not res.get("response"):
@@ -833,8 +1303,14 @@ class AssistantRuntimeController:
             if is_voice:
                 logger.info(f"[TTS Fallback] Sintesi vocale per: '{text}'")
                 self.owner.tts_manager.speak(resp)
+            if context_id == "voice":
+                try:
+                    self.owner.ResponseTokenStreamed(resp, True)
+                except Exception:
+                    pass
             try:
-                self.owner.ResponseTokenStreamed(resp, True)
+                if hasattr(self.owner, "ConversationToken"):
+                    self.owner.ConversationToken(context_id, resp, True)
             except Exception:
                 pass
 
