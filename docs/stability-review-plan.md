@@ -346,7 +346,12 @@ jobs:
     # Fedora, not Ubuntu 24.04: the UI uses Adw.ButtonRow (libadwaita >= 1.6),
     # while Ubuntu 24.04 ships libadwaita 1.5.
     runs-on: ubuntu-24.04
-    container: registry.fedoraproject.org/fedora:latest
+    container:
+      image: registry.fedoraproject.org/fedora:latest
+      # Real memory cap (cgroup), same idea as systemd-run MemoryMax.
+      # Do NOT use "ulimit -v": it caps virtual address space and breaks the
+      # suite (MemoryError in pytest, fatal LLVM error in Mesa's llvmpipe).
+      options: --memory 4g --memory-swap 4g
     timeout-minutes: 30
     steps:
       - name: System packages
@@ -366,7 +371,6 @@ jobs:
           meson compile -C build
       - name: Tests
         run: |
-          ulimit -v 4000000
           xvfb-run -a dbus-run-session -- .venv/bin/python -m pytest -q
 
   lint:
@@ -387,7 +391,7 @@ jobs:
 ```
 
 Note obbligatorie:
-- `ulimit -v` limita la memoria virtuale del job: se un test impazzisce, il job fallisce invece di bloccarsi.
+- `options: --memory 4g --memory-swap 4g` limita la memoria **reale** del container: se un test impazzisce, il job fallisce invece di bloccare il runner. **Non usare `ulimit -v`**: limita lo spazio di indirizzi virtuale e fa fallire la suite anche senza alcun problema reale (verificato: `MemoryError` in pytest dopo 29 test in locale, errore fatale di LLVM dentro Mesa in CI). Con il limite sul container la suite completa passa (499 superati, 11 saltati).
 - `xvfb-run` fornisce un display: senza, i test GUI vengono saltati (`_has_display` è falso).
 - Se `meson compile` fallisce in CI per dipendenze mancanti, **non togliere il passo**: aggiungi il pacchetto apt mancante.
 - pyright è "solo report" (`|| true`) in questa fase; diventerà bloccante nella Fase 4 (§8.5).
