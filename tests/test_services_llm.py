@@ -1,13 +1,7 @@
 import os
 import sys
-import glob
 import unittest
 from unittest.mock import MagicMock, patch
-
-# Aggiunge venv site-packages se presente
-venv_sites = glob.glob(os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@scroker.github.io/daemon/venv/lib/python*/site-packages"))
-if venv_sites:
-    sys.path.insert(0, venv_sites[0])
 
 # Add src/daemon to import path
 daemon_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src", "daemon"))

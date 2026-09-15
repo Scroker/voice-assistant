@@ -1,14 +1,8 @@
 import os
 import sys
-import glob
 import unittest
 import threading
 import time
-
-# Aggiunge venv site-packages se presente
-venv_sites = glob.glob(os.path.expanduser("~/.local/share/gnome-shell/extensions/voice-assistant@scroker.github.io/daemon/venv/lib/python*/site-packages"))
-if venv_sites:
-    sys.path.insert(0, venv_sites[0])
 
 # Aggiunge src/daemon al path di importazione
 daemon_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src", "daemon"))

@@ -13,6 +13,7 @@ from core.smart_path_controller import SmartPathController
 class TestSmartPathController(unittest.TestCase):
     def test_add_user_message_records_in_memory_and_rag(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
         controller.add_user_message("Alza il volume")
 
         messages = controller.memory.get_recent_messages(1)
@@ -25,6 +26,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_add_assistant_message_records_in_memory_and_rag(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
         controller.add_assistant_message("Volume alzato.")
 
         messages = controller.memory.get_recent_messages(1)
@@ -33,6 +35,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_build_smart_prompt_includes_rag_context(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
         controller.add_user_message("Ho alzato il volume prima")
         controller.add_assistant_message("Capito")
 
@@ -45,6 +48,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_parse_llm_response_extracts_tool_calls(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
         response = (
             "Aumento il volume ora. "
             '{"tool": "set_volume", "args": {"direction": "up", "volume": 10.0}}'
@@ -59,6 +63,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_parse_llm_response_validates_args(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
         response = (
             '{"tool": "set_volume", "args": {"volume": 150}}'
         )
@@ -70,6 +75,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_execute_smart_path_full_flow(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
 
         mock_llm = MagicMock(
             return_value=[
@@ -92,6 +98,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_execute_smart_path_streams_visible_tokens_and_hides_tool_json(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
         visible_tokens = []
         spoken_sentences = []
 
@@ -126,6 +133,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_parse_llm_response_accepts_actual_quick_settings_schema(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
         response = '{"tool": "quick_settings", "args": {"setting": "dark_style", "enabled": true}}'
 
         tool_calls, _ = controller.parse_llm_response(response)
@@ -135,6 +143,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_execute_smart_path_without_llm_fails(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
 
         success, response, result = controller.execute_smart_path(
             "Alza il volume", llm_streamer=None
@@ -144,6 +153,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_conversation_memory_accumulates(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
 
         controller.add_user_message("Messaggio 1")
         controller.add_assistant_message("Risposta 1")
@@ -156,6 +166,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_get_stats_returns_metrics(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
         controller.add_user_message("Test message")
         controller.add_assistant_message("Test response")
 
@@ -169,6 +180,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_clear_memory_resets_history(self):
         controller = SmartPathController()
+        self.addCleanup(controller.vector_store.close)
         controller.add_user_message("Message 1")
         controller.add_assistant_message("Response 1")
 
@@ -180,6 +192,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_memory_enabled_toggle_clears_memory_when_disabled(self):
         controller = SmartPathController(memory_enabled=True)
+        self.addCleanup(controller.vector_store.close)
         controller.add_user_message("Message 1")
         controller.add_assistant_message("Response 1")
         self.assertEqual(len(controller.memory.messages), 2)
@@ -190,6 +203,7 @@ class TestSmartPathController(unittest.TestCase):
 
     def test_memory_disabled_does_not_record_or_inject_history(self):
         controller = SmartPathController(memory_enabled=False)
+        self.addCleanup(controller.vector_store.close)
         controller.add_user_message("Message 1")
         controller.add_assistant_message("Response 1")
         self.assertEqual(len(controller.memory.messages), 0)

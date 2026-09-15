@@ -131,10 +131,10 @@ class VectorStore:
         self._load_from_db()
         
         # Background sync thread
+        self._stop_event = threading.Event()
         self._sync_thread = threading.Thread(
             target=self._periodic_sync, daemon=True, name="VectorStoreSync"
         )
-        self._sync_running = True
         self._sync_thread.start()
         
         logger.info(f"[VectorStore] Initialized: db={db_path}, in-memory docs={len(self.documents)}")
@@ -350,13 +350,11 @@ class VectorStore:
             return len(self.documents)
 
     def _periodic_sync(self) -> None:
-        """Background thread: periodically sync memory to SQLite."""
-        while self._sync_running:
+        while not self._stop_event.wait(self.sync_interval):
             try:
-                time.sleep(self.sync_interval)
                 self._sync_to_db()
-            except Exception as e:
-                logger.error(f"[VectorStore] Periodic sync failed: {e}")
+            except Exception:
+                logger.exception("[VectorStore] Periodic sync failed")
 
     def _sync_to_db(self) -> None:
         """Sync all in-memory documents to SQLite."""
@@ -403,8 +401,7 @@ class VectorStore:
         logger.info("[VectorStore] Forced sync completed")
 
     def close(self) -> None:
-        """Shutdown: sync and close database."""
-        self._sync_running = False
+        self._stop_event.set()
         if self._sync_thread.is_alive():
             self._sync_thread.join(timeout=5)
         self._sync_to_db()
