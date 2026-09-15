@@ -20,9 +20,10 @@ jobs:
       - name: System packages
         run: |
           # python3-dbus: notify2 imports the 'dbus' module (dbus-python)
+          # nodejs: tests/test_js_syntax.py runs "node --check" on extension.js and prefs.js
           dnf install -y git python3 python3-pip python3-gobject python3-dbus gtk4 libadwaita portaudio \
             /usr/bin/glib-compile-schemas /usr/bin/dbus-run-session /usr/bin/xvfb-run \
-            blueprint-compiler meson ninja-build gettext
+            blueprint-compiler meson ninja-build gettext nodejs
       - uses: actions/checkout@v4
       - name: Python deps
         run: |
