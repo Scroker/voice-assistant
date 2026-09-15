@@ -13,7 +13,6 @@ extensiondir = join_paths(get_option('datadir'), 'gnome-shell', 'extensions', uu
 subdir('data')
 subdir('src')
 subdir('po')
-subdir('tests')
 
 # stylesheet.css is installed via data/meson.build
 

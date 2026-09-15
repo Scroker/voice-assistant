@@ -45,7 +45,7 @@ meson setup build --prefix=$HOME/.local
 meson compile -C build
 
 # Esegue la suite completa di Unit Test automatizzati
-meson test -C build
+dbus-run-session -- python3 -m pytest -q
 
 # Installa l'estensione e i servizi nella home utente (~/.local)
 meson install -C build
@@ -67,24 +67,24 @@ meson compile -C build zip
 
 ## 🧪 Esecuzione e Struttura dei Test Automatizzati
 
-La suite di test è integrata direttamente in **Meson** ed esegue automaticamente la verifica di sintassi, risorse, provider e gestione thread dei download.
+La suite di test viene eseguita tramite **pytest** isolata dal demone di sistema tramite `dbus-run-session`.
+
+> [!WARNING]
+> Run the suite with a memory cap while developing: `systemd-run --user --scope -p MemoryMax=3G -p MemorySwapMax=0 timeout 180 python3 -m pytest -q`
 
 ### Comandi Rapidi per i Test
 ```bash
-# Esecuzione standard di tutti i test registrati in Meson
-meson test -C build
+# Esecuzione standard di tutti i test (isolati dal bus D-Bus reale)
+dbus-run-session -- python3 -m pytest -q
 
-# Esecuzione in modalità prolissa (mostra l'output dettagliato di ogni test)
-meson test -C build --verbose
+# Esecuzione con limite di memoria
+systemd-run --user --scope -p MemoryMax=3G -p MemorySwapMax=0 timeout 180 dbus-run-session -- python3 -m pytest -q
 
 # Esecuzione mirata di un singolo modulo di test (es. test_gui)
-meson test -C build test_gui --verbose
-
-# Esecuzione diretta via unittest Python con display grafico attivo
-python3 -m unittest tests/test_gui.py
+dbus-run-session -- python3 -m pytest -q tests/test_gui.py
 
 # Esecuzione in ambienti headless o CI (con display virtuale Xvfb)
-GDK_BACKEND=x11 HOME=/tmp/test_home xvfb-run -a python3 -m unittest tests/test_gui.py
+xvfb-run -a dbus-run-session -- python3 -m pytest -q
 ```
 
 ### Moduli di Test (`tests/`)
@@ -130,7 +130,7 @@ GDK_BACKEND=x11 HOME=/tmp/test_home xvfb-run -a python3 -m unittest tests/test_g
 | `test_wakeword.py` | Verifica i motori wakeword alternativi (OpenWakeWord, Sherpa-ONNX) oltre a Vosk. |
 
 > [!NOTE]
-> Questa tabella e `tests/meson.build` non sono perfettamente allineati: `test_cloud_config.py`, `test_hybrid_rag_store.py`, `test_model_manager.py`, `test_ollama_fixes.py` e `test_streaming_pipeline.py` esistono come file ma **non sono registrati come target in `tests/meson.build`** — `meson test -C build` non li esegue mai, nonostante siano eseguibili direttamente con `python3 -m unittest`. Verificare `tests/meson.build` per l'elenco aggiornato dei target effettivamente registrati.
+> Tutti i file di test in `tests/` vengono eseguiti automaticamente tramite `pytest`. Per eseguire i test in modo sicuro durante lo sviluppo, usare sempre `dbus-run-session -- python3 -m pytest -q` con un limite di memoria.
 
 ---
 
@@ -282,7 +282,7 @@ python3 scripts/assemble_blueprints.py
 blueprint-compiler compile --output data/ui/prefs.ui data/ui/prefs.blp
 
 # 3. Ricompila il bundle GResource e riesegui i test
-meson compile -C build && meson test -C build
+meson compile -C build && dbus-run-session -- python3 -m pytest -q
 ```
 
 > [!NOTE]
@@ -300,7 +300,7 @@ L'interfaccia delle preferenze è scritta in **Blueprint** nei moduli `data/ui/p
 # Assembla i blueprint, ricompila, testa ed installa l'estensione
 python3 scripts/assemble_blueprints.py
 blueprint-compiler compile --output data/ui/prefs.ui data/ui/prefs.blp
-meson compile -C build && meson test -C build && meson install -C build
+meson compile -C build && dbus-run-session -- python3 -m pytest -q && meson install -C build
 ```
 
 ### Modifiche al Daemon Python (`src/daemon/`)
