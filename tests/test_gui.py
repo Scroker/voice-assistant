@@ -21,6 +21,18 @@ except Exception:
     _has_display = False
 
 
+def drain_main_loop(max_iterations: int = 1000) -> None:
+    """Process pending GLib events, failing loudly if they never settle."""
+    context = GLib.MainContext.default()
+    for _ in range(max_iterations):
+        if not context.iteration(False):
+            return
+    raise AssertionError(
+        f"GLib main loop still busy after {max_iterations} iterations: "
+        "a source is probably rescheduling itself forever"
+    )
+
+
 class TestGUI(unittest.TestCase):
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
@@ -39,6 +51,7 @@ class TestGUI(unittest.TestCase):
         
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestGUI")
         win = AssistantWindow(application=app)
+        self.addCleanup(win.destroy)
         self.assertIsNotNone(win.chat_box)
         self.assertIsNotNone(win.entry)
         self.assertIsNotNone(win.send_btn)
@@ -56,6 +69,7 @@ class TestGUI(unittest.TestCase):
         
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestGUI2")
         win = AssistantWindow(application=app)
+        self.addCleanup(win.destroy)
         result = win._on_close_request(win)
         self.assertFalse(result, "_on_close_request deve restituire False per consentire la distruzione della finestra")
         self.assertIsNone(win.daemon_client._proxy)
@@ -68,6 +82,7 @@ class TestGUI(unittest.TestCase):
         
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestGUI3")
         win = AssistantWindow(application=app)
+        self.addCleanup(win.destroy)
         handled = win._on_key_pressed(None, Gdk.KEY_Escape, 0, 0)
         self.assertTrue(handled)
 
@@ -79,6 +94,7 @@ class TestGUI(unittest.TestCase):
 
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestGUI4")
         win = AssistantWindow(application=app)
+        self.addCleanup(win.destroy)
         self.assertEqual(win.get_icon_name(), "vocal-assistant-icon")
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
@@ -89,6 +105,7 @@ class TestGUI(unittest.TestCase):
         
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestGUI4")
         win = AssistantWindow(application=app)
+        self.addCleanup(win.destroy)
         
         win.add_user_message("Ciao assistente")
         self.assertIsNone(win.current_assistant_bubble)
@@ -107,6 +124,7 @@ class TestGUI(unittest.TestCase):
 
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestGUI_NoDup")
         win = AssistantWindow(application=app)
+        self.addCleanup(win.destroy)
 
         # Conta i figli iniziali (messaggio di benvenuto)
         initial_count = 0
@@ -253,6 +271,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         self.assertIsNotNone(win.general_settings)
         self.assertIsNotNone(win.wakeword_settings)
         self.assertIsNotNone(win.stt_settings)
@@ -269,6 +288,7 @@ class TestGUI(unittest.TestCase):
         from gui.settings_window import _SettingsWindow
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         test_btn = win._b.get_object("test_bugreport_btn")
         self.assertIsNotNone(test_btn)
         self.assertIsInstance(test_btn, Adw.ButtonRow)
@@ -471,6 +491,7 @@ class TestGUI(unittest.TestCase):
         from gui.settings_window import _SettingsWindow
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         settings = win._settings
         self.assertIsNotNone(settings)
         local_radio = win._b.get_object("tts_mode_local_radio")
@@ -507,9 +528,7 @@ class TestGUI(unittest.TestCase):
 
         # 5. Cambia voce Piper
         settings.set_string("tts-voice", "it_IT-riccardo-x_low")
-        from gi.repository import GLib
-        while GLib.MainContext.default().iteration(False):
-            pass
+        drain_main_loop()
         self.assertIn("it_IT-riccardo-x_low", current_row.get_subtitle())
 
         # 6. Attiva Cloud mode
@@ -517,8 +536,7 @@ class TestGUI(unittest.TestCase):
         openai_radio = win._b.get_object("tts_engine_openai_radio")
         cloud_cfg = win._b.get_object("tts_cloud_config_group")
         cloud_radio.set_active(True)
-        while GLib.MainContext.default().iteration(False):
-            pass
+        drain_main_loop()
         self.assertEqual(settings.get_string("tts-provider"), "openai")
         self.assertEqual(settings.get_string("tts-engine"), "openai")
         self.assertTrue(openai_radio.get_active())
@@ -655,10 +673,12 @@ class TestGUI(unittest.TestCase):
         from gui.settings_window import _SettingsWindow
 
         win_standalone = _SettingsWindow()
+        self.addCleanup(win_standalone.destroy)
         self.assertFalse(win_standalone.get_modal())
 
         parent = Gtk.Window()
         win = _SettingsWindow(transient_for=parent, modal=False)
+        self.addCleanup(win.destroy)
         self.assertFalse(win.get_modal())
         self.assertEqual(win.get_transient_for(), parent)
         self.assertIsNotNone(win.stt_settings)
@@ -675,6 +695,7 @@ class TestGUI(unittest.TestCase):
 
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestGUIProfile")
         win = AssistantWindow(application=app)
+        self.addCleanup(win.destroy)
         expected_name = GLib.get_real_name() or GLib.get_user_name()
         if expected_name and expected_name.strip() and expected_name != "Unknown":
             self.assertEqual(win.user_title.get_title(), expected_name)
@@ -705,6 +726,7 @@ class TestGUI(unittest.TestCase):
         from gui.settings_window import _SettingsWindow
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
 
         # 1. Test STT model selector opening via row activation
         stt_row = win._b.get_object("current_model_row")
@@ -750,6 +772,7 @@ class TestGUI(unittest.TestCase):
         from unittest.mock import patch
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         selector = win.model_selector
         selector.current_service = "tts"
         selector.current_provider = "piper"
@@ -824,6 +847,7 @@ class TestGUI(unittest.TestCase):
         from unittest.mock import patch
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         settings = win._settings
         selector = win.model_selector
 
@@ -913,6 +937,7 @@ class TestGUI(unittest.TestCase):
         from gui.settings_window import _SettingsWindow
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         selector = win.model_selector
 
         # Verifica vhomogeneous e hhomogeneous disattivati
@@ -968,6 +993,7 @@ class TestGUI(unittest.TestCase):
         from unittest.mock import patch
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         selector = win.model_selector
 
         catalog = [
@@ -996,6 +1022,7 @@ class TestGUI(unittest.TestCase):
         from unittest.mock import patch
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         selector = win.model_selector
 
         # 1. Catalogo locale GGUF
@@ -1031,6 +1058,7 @@ class TestGUI(unittest.TestCase):
         from gui.settings_window import _SettingsWindow
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         if win._settings:
             win._settings.reset("llm-mode")
             win._settings.reset("llm-model")
@@ -1090,6 +1118,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         selector = win.model_selector
 
         selector.open_selector("llm", "ollama_cloud")
@@ -1120,6 +1149,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
 
         cloud_radio = win._b.get_object("tts_mode_cloud_radio")
         openai_radio = win._b.get_object("tts_engine_openai_radio")
@@ -1141,6 +1171,7 @@ class TestGUI(unittest.TestCase):
         from daemon.core.cloud_config import get_cloud_config
         cloud_cfg = get_cloud_config()
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
 
         api_key_row = win._b.get_object("tts_cloud_api_key_row")
         endpoint_row = win._b.get_object("tts_cloud_endpoint_row")
@@ -1171,6 +1202,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         for row_id in ("llm_api_key_row", "stt_cloud_api_key_row", "tts_cloud_api_key_row", "bugreport_apikey_row"):
             row = win._b.get_object(row_id)
             self.assertIsNotNone(row, f"{row_id} non trovato nel builder")
@@ -1182,6 +1214,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         row = win._b.get_object("llm_memory_enable_row")
         self.assertIsNotNone(row)
         self.assertIsInstance(row, Adw.SwitchRow)
@@ -1197,6 +1230,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
 
         models_row = win._b.get_object("models_subpage_row")
         models_subpage = win._b.get_object("models_subpage")
@@ -1229,6 +1263,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         selector = win.model_selector
 
         self.assertIsNotNone(selector.hf_custom_group)
@@ -1271,6 +1306,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         selector = win.model_selector
 
         with patch("gi.repository.Adw.AlertDialog.present") as mock_present:
@@ -1283,6 +1319,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         selector = win.model_selector
 
         selector.open_selector("llm", "openai")
@@ -1298,6 +1335,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
 
         total_size_row = win._b.get_object("models_total_size_row")
         self.assertIsNotNone(total_size_row)
@@ -1327,6 +1365,7 @@ class TestGUI(unittest.TestCase):
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         selector = win.model_selector
         llm = win.llm_settings
 
@@ -1373,6 +1412,7 @@ class TestGUI(unittest.TestCase):
 
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestGUIMCP")
         win = AssistantWindow(application=app)
+        self.addCleanup(win.destroy)
 
         if not hasattr(win, "sidebar_item_mcp"):
             self.skipTest("sidebar_item_mcp non presente nell'attuale layout multi-chat")
@@ -1405,61 +1445,60 @@ class TestGUI(unittest.TestCase):
         """Verifica che la lista delle chat non contenga mai la riga 'Comandi Vocali'."""
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.assistant_window import AssistantWindow
-        from unittest.mock import MagicMock
 
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestNoVoiceRow")
         win = AssistantWindow(application=app)
-        win.daemon_client.list_conversations_sync = MagicMock(return_value=[
+        self.addCleanup(win.destroy)
+        with patch.object(win.daemon_client, "list_conversations_sync", return_value=[
             {"id": "c1", "title": "Chat 1"},
             {"id": "c2", "title": "Chat 2"}
-        ])
+        ]):
+            win._refresh_chats_list()
 
-        win._refresh_chats_list()
+            row = win.chats_list.get_first_child()
+            titles = []
+            context_ids = []
+            while row:
+                if hasattr(row, "get_title"):
+                    titles.append(row.get_title())
+                if hasattr(row, "context_id"):
+                    context_ids.append(row.context_id)
+                row = row.get_next_sibling()
 
-        row = win.chats_list.get_first_child()
-        titles = []
-        context_ids = []
-        while row:
-            if hasattr(row, "get_title"):
-                titles.append(row.get_title())
-            if hasattr(row, "context_id"):
-                context_ids.append(row.context_id)
-            row = row.get_next_sibling()
-
-        self.assertNotIn("Comandi Vocali", titles)
-        self.assertNotIn("voice", context_ids)
-        self.assertNotEqual(win._current_context_id, "voice")
+            self.assertNotIn("Comandi Vocali", titles)
+            self.assertNotIn("voice", context_ids)
+            self.assertNotEqual(win._current_context_id, "voice")
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
     def test_transcript_received_does_not_change_current_chat(self):
         """Verifica che un segnale TranscriptReceived globale non cambi la chat corrente."""
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.assistant_window import AssistantWindow
-        from unittest.mock import MagicMock
 
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestTranscriptNoSwitch")
         win = AssistantWindow(application=app)
-        win.daemon_client.list_conversations_sync = MagicMock(return_value=[
+        self.addCleanup(win.destroy)
+        with patch.object(win.daemon_client, "list_conversations_sync", return_value=[
             {"id": "chat-uuid-1", "title": "Mia Chat"}
-        ])
-        win._refresh_chats_list()
-        self.assertEqual(win._current_context_id, "chat-uuid-1")
+        ]):
+            win._refresh_chats_list()
+            self.assertEqual(win._current_context_id, "chat-uuid-1")
 
-        # Ricezione segnale vocale globale
-        win._on_transcript_received("comando vocale estraneo", True)
+            # Ricezione segnale vocale globale
+            win._on_transcript_received("comando vocale estraneo", True)
 
-        # La chat corrente deve restare chat-uuid-1
-        self.assertEqual(win._current_context_id, "chat-uuid-1")
+            # La chat corrente deve restare chat-uuid-1
+            self.assertEqual(win._current_context_id, "chat-uuid-1")
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
     def test_conversation_token_for_non_visible_chat_not_written(self):
         """Verifica che ConversationToken per una chat diversa da quella visibile non venga scritto."""
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.assistant_window import AssistantWindow
-        from unittest.mock import MagicMock
 
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestTokenFilter")
         win = AssistantWindow(application=app)
+        self.addCleanup(win.destroy)
         win._current_context_id = "visible-chat"
 
         # Conta i bubble prima dell'arrivo del token
@@ -1477,29 +1516,28 @@ class TestGUI(unittest.TestCase):
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
     def test_toggle_mic_uses_active_context_or_creates_new(self):
         """Verifica che cliccare il microfono leghi l'ascolto alla chat corrente o ne crei una nuova se assente."""
-        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.assistant_window import AssistantWindow
-        from unittest.mock import MagicMock
 
         app = Adw.Application(application_id="org.local.VoiceAssistant.TestMicContext")
         win = AssistantWindow(application=app)
-        win.daemon_client.toggle_listening_in_context = MagicMock()
-        win.daemon_client.create_conversation_sync = MagicMock(return_value="chat-new-999")
-        win._refresh_chats_list = MagicMock()
+        self.addCleanup(win.destroy)
 
-        # Caso 1: chat corrente attiva
-        win._current_context_id = "chat-active-123"
-        win._on_toggle_mic(win.mic_btn)
-        win.daemon_client.toggle_listening_in_context.assert_called_with("chat-active-123")
-        win.daemon_client.create_conversation_sync.assert_not_called()
+        with patch.object(win.daemon_client, "toggle_listening_in_context") as toggle, \
+             patch.object(win.daemon_client, "create_conversation_sync", return_value="chat-new-999") as create, \
+             patch.object(win, "_refresh_chats_list", return_value=False):
+            # Case 1: active chat
+            win._current_context_id = "chat-active-123"
+            win._on_toggle_mic(win.mic_btn)
+            toggle.assert_called_with("chat-active-123")
+            create.assert_not_called()
 
-        # Caso 2: nessuna chat corrente o chat "voice"
-        win.daemon_client.toggle_listening_in_context.reset_mock()
-        win._current_context_id = ""
-        win._on_toggle_mic(win.mic_btn)
-        win.daemon_client.create_conversation_sync.assert_called_once()
-        self.assertEqual(win._current_context_id, "chat-new-999")
-        win.daemon_client.toggle_listening_in_context.assert_called_with("chat-new-999")
+            # Case 2: no current chat
+            toggle.reset_mock()
+            win._current_context_id = ""
+            win._on_toggle_mic(win.mic_btn)
+            create.assert_called_once()
+            self.assertEqual(win._current_context_id, "chat-new-999")
+            toggle.assert_called_with("chat-new-999")
 
 
     @unittest.skipIf(not _has_display, "No display available (headless environment)")
@@ -1509,6 +1547,7 @@ class TestGUI(unittest.TestCase):
         from gui.settings_window import _SettingsWindow
 
         win = _SettingsWindow()
+        self.addCleanup(win.destroy)
         speaker_id = win.speaker_id_settings
         b = win._b
         settings = win._settings
