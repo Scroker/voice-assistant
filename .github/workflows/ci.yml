@@ -9,7 +9,12 @@ jobs:
     # Fedora, not Ubuntu 24.04: the UI uses Adw.ButtonRow (libadwaita >= 1.6),
     # while Ubuntu 24.04 ships libadwaita 1.5.
     runs-on: ubuntu-24.04
-    container: registry.fedoraproject.org/fedora:latest
+    container:
+      image: registry.fedoraproject.org/fedora:latest
+      # Real memory cap (cgroup), same idea as systemd-run MemoryMax.
+      # Do NOT use "ulimit -v": it caps virtual address space and breaks the
+      # suite (MemoryError in pytest, fatal LLVM error in Mesa's llvmpipe).
+      options: --memory 4g --memory-swap 4g
     timeout-minutes: 30
     steps:
       - name: System packages
@@ -29,7 +34,6 @@ jobs:
           meson compile -C build
       - name: Tests
         run: |
-          ulimit -v 4000000
           xvfb-run -a dbus-run-session -- .venv/bin/python -m pytest -q
 
   lint:
