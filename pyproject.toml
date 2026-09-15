@@ -1,0 +1,20 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src/daemon", "src/gui", "src"]
+extend-exclude = ["src/daemon/venv", "experiments", ".claude", "build", "builddir"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "C901", "PLR0915", "BLE001", "S110"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-statements = 60
+
+[tool.pyright]
+typeCheckingMode = "basic"
+include = ["src/daemon", "src/gui"]
+exclude = ["src/daemon/venv", "**/__pycache__"]
+extraPaths = ["src/daemon", "src/daemon/core", "src"]

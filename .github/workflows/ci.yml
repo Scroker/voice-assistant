@@ -1,0 +1,43 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 \
+            libglib2.0-bin dbus xvfb blueprint-compiler meson ninja-build gettext
+      - name: Python deps
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install -r requirements-dev.txt
+      - name: Build resources
+        run: |
+          meson setup build
+          meson compile -C build
+      - name: Tests
+        run: |
+          ulimit -v 4000000
+          xvfb-run -a dbus-run-session -- .venv/bin/python -m pytest -q
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install ruff pyright
+      - name: Ruff (new/changed files block, whole tree reports)
+        run: |
+          ruff check --exit-zero src
+          git fetch origin main --depth=1 || true
+          CHANGED=$(git diff --name-only --diff-filter=AM origin/main -- 'src/**/*.py' || true)
+          if [ -n "$CHANGED" ]; then ruff check $CHANGED; fi
+      - name: Pyright (report only for now)
+        run: pyright || true
