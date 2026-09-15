@@ -1334,8 +1334,16 @@ class TestGUI(unittest.TestCase):
         """Verifica che Storage e Models mostri lo spazio occupato e solo i modelli scaricati in Wake Word."""
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
         from gui.settings_window import _SettingsWindow
-        win = _SettingsWindow()
-        self.addCleanup(win.destroy)
+        from core.model_registry import ModelRegistry
+
+        mock_installed = {
+            "openwakeword": [{"id": "alexa", "name": "Alexa (openWakeWord)", "path": "/fake/alexa.onnx", "size_bytes": 1024, "provider": "openwakeword"}],
+            "sherpa-onnx": [{"id": "sherpa-kws", "name": "Sherpa-ONNX KWS", "path": "/fake/sherpa.onnx", "size_bytes": 2048, "provider": "sherpa-onnx"}],
+        }
+
+        with patch.object(ModelRegistry, "get_installed_models", side_effect=lambda prov: mock_installed.get(prov, [])):
+            win = _SettingsWindow()
+            self.addCleanup(win.destroy)
 
         total_size_row = win._b.get_object("models_total_size_row")
         self.assertIsNotNone(total_size_row)
