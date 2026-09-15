@@ -351,7 +351,8 @@ jobs:
     steps:
       - name: System packages
         run: |
-          dnf install -y git python3 python3-pip python3-gobject gtk4 libadwaita portaudio \
+          # python3-dbus: notify2 imports the 'dbus' module (dbus-python)
+          dnf install -y git python3 python3-pip python3-gobject python3-dbus gtk4 libadwaita portaudio \
             /usr/bin/glib-compile-schemas /usr/bin/dbus-run-session /usr/bin/xvfb-run \
             blueprint-compiler meson ninja-build gettext
       - uses: actions/checkout@v4
@@ -1787,7 +1788,7 @@ fi
 cd "$DIR"
 exec "$VENV/bin/VoiceAssistant" main.py
 ```
-Il blocco `NEEDS_INSTALL` / `pip install` sparisce: le dipendenze di base diventano voci di `data/dependencies/python_deps.json` con `"is_critical": true` — `sounddevice`, `dasbus`, `notify2`, `huggingface-hub` (con `import_name` rispettivamente `sounddevice`, `dasbus`, `notify2`, `huggingface_hub`).
+Il blocco `NEEDS_INSTALL` / `pip install` sparisce: le dipendenze di base diventano voci di `data/dependencies/python_deps.json` con `"is_critical": true` — `sounddevice`, `dasbus`, `notify2`, `huggingface-hub` (con `import_name` rispettivamente `sounddevice`, `dasbus`, `notify2`, `huggingface_hub`). **Attenzione:** `notify2` importa il modulo `dbus` (dbus-python), che su Fedora arriva dal pacchetto di sistema `python3-dbus` (verificato con la CI). Aggiungi a `data/dependencies/system_deps.json` una voce per dbus-python (Fedora `python3-dbus`, Debian/Ubuntu `python3-dbus`, Arch `python-dbus`; verifica i nomi per ogni gestore già elencato in `package_managers.json`), e il primo avvio (§7.5) deve controllarla prima di creare il venv.
 
 **Passo 7.3.c — Altri riferimenti al vecchio venv:**
 - `src/gui/start.sh` riga ~7: `DAEMON_VENV="${XDG_DATA_HOME:-$HOME/.local/share}/voice-assistant/venv"` (il resto resta: se il venv non c'è, la GUI parte col Python di sistema, che basta per il primo avvio).
