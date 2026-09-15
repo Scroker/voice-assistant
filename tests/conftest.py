@@ -15,6 +15,33 @@ os.environ["XDG_CACHE_HOME"] = os.path.join(_test_home.name, ".cache")
 for _d in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"):
     os.makedirs(os.environ[_d], exist_ok=True)
 
+try:
+    import keyring
+    import keyring.errors
+    from keyring.backend import KeyringBackend
+except ImportError:
+    keyring = None
+
+if keyring is not None:
+    class _MemoryKeyring(KeyringBackend):
+        priority = 1
+
+        def __init__(self):
+            super().__init__()
+            self._store = {}
+
+        def get_password(self, service, username):
+            return self._store.get((service, username))
+
+        def set_password(self, service, username, password):
+            self._store[(service, username)] = password
+
+        def delete_password(self, service, username):
+            if self._store.pop((service, username), None) is None:
+                raise keyring.errors.PasswordDeleteError(username)
+
+    keyring.set_keyring(_MemoryKeyring())
+
 # Make daemon and gui source importable from every test module
 _root = Path(__file__).resolve().parent.parent
 _daemon_dir = _root / "src" / "daemon"
