@@ -6,15 +6,18 @@ on:
 
 jobs:
   tests:
+    # Fedora, not Ubuntu 24.04: the UI uses Adw.ButtonRow (libadwaita >= 1.6),
+    # while Ubuntu 24.04 ships libadwaita 1.5.
     runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
       - name: System packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 \
-            libglib2.0-bin dbus xvfb blueprint-compiler meson ninja-build gettext
+          dnf install -y git python3 python3-pip python3-gobject gtk4 libadwaita portaudio \
+            /usr/bin/glib-compile-schemas /usr/bin/dbus-run-session /usr/bin/xvfb-run \
+            blueprint-compiler meson ninja-build gettext
+      - uses: actions/checkout@v4
       - name: Python deps
         run: |
           python3 -m venv --system-site-packages .venv
@@ -32,12 +35,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m pip install ruff pyright
+        with:
+          fetch-depth: 0
+      # A venv: Ubuntu 24.04 refuses pip installs into the system Python (PEP 668).
+      - run: python3 -m venv .lint-venv && .lint-venv/bin/pip install ruff pyright
       - name: Ruff (new/changed files block, whole tree reports)
         run: |
-          ruff check --exit-zero src
-          git fetch origin main --depth=1 || true
+          .lint-venv/bin/ruff check --exit-zero src
           CHANGED=$(git diff --name-only --diff-filter=AM origin/main -- 'src/**/*.py' || true)
-          if [ -n "$CHANGED" ]; then ruff check $CHANGED; fi
+          if [ -n "$CHANGED" ]; then .lint-venv/bin/ruff check $CHANGED; fi
       - name: Pyright (report only for now)
-        run: pyright || true
+        run: .lint-venv/bin/pyright || true
+
